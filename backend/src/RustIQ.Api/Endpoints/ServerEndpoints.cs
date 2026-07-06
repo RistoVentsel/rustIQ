@@ -1,0 +1,86 @@
+using RustIQ.Application.Servers;
+using RustIQ.Domain.Servers;
+
+namespace RustIQ.Api.Endpoints;
+
+public static class ServerEndpoints
+{
+    public static IEndpointRouteBuilder MapServerEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        var servers = endpoints.MapGroup("/servers")
+            .WithTags("Servers");
+
+        servers.MapGet("", async (
+            string? search,
+            ServerStatus? status,
+            int? page,
+            int? pageSize,
+            ServerReadService serverReadService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await serverReadService.GetServersAsync(
+                search,
+                status,
+                page,
+                pageSize,
+                cancellationToken);
+
+            return Results.Ok(result);
+        })
+        .WithName("GetServers");
+
+        servers.MapGet("/{id:guid}", async (
+            Guid id,
+            ServerReadService serverReadService,
+            CancellationToken cancellationToken) =>
+        {
+            var server = await serverReadService.GetServerAsync(id, cancellationToken);
+
+            return server is null ? Results.NotFound() : Results.Ok(server);
+        })
+        .WithName("GetServer");
+
+        servers.MapGet("/{id:guid}/snapshots", async (
+            Guid id,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
+            int? limit,
+            ServerReadService serverReadService,
+            CancellationToken cancellationToken) =>
+        {
+            var snapshots = await serverReadService.GetSnapshotsAsync(
+                id,
+                from,
+                to,
+                limit,
+                cancellationToken);
+
+            return snapshots is null ? Results.NotFound() : Results.Ok(snapshots);
+        })
+        .WithName("GetServerSnapshots");
+
+        servers.MapGet("/{id:guid}/players", async (
+            Guid id,
+            ServerReadService serverReadService,
+            CancellationToken cancellationToken) =>
+        {
+            var players = await serverReadService.GetCurrentPlayersAsync(id, cancellationToken);
+
+            return players is null ? Results.NotFound() : Results.Ok(players);
+        })
+        .WithName("GetServerPlayers");
+
+        servers.MapGet("/{id:guid}/map", async (
+            Guid id,
+            ServerReadService serverReadService,
+            CancellationToken cancellationToken) =>
+        {
+            var metadata = await serverReadService.GetMapMetadataAsync(id, cancellationToken);
+
+            return metadata is null ? Results.NotFound() : Results.Ok(metadata);
+        })
+        .WithName("GetServerMap");
+
+        return endpoints;
+    }
+}

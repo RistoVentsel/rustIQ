@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: rustiq-postgres
+    environment:
+      POSTGRES_DB: rustiq
+      POSTGRES_USER: rustiq
+      POSTGRES_PASSWORD: rustiq_dev_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - rustiq-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  rustiq-postgres-data:
