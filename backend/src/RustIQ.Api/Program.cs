@@ -5,11 +5,35 @@ using RustIQ.Api.Workers;
 using RustIQ.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+const string DevCorsPolicy = "DevCorsPolicy";
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.Services.AddSignalR();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(DevCorsPolicy, policy =>
+    {
+        policy
+            .SetIsOriginAllowed(origin =>
+            {
+                if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                {
+                    return false;
+                }
+
+                var isLocalhost = string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase);
+                var isLoopback = string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
+
+                return (isLocalhost || isLoopback)
+                    && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+            })
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 builder.Services
     .AddOptions<RustServerQueryOptions>()
     .Bind(builder.Configuration.GetSection(RustServerQueryOptions.SectionName))
@@ -29,6 +53,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseCors(DevCorsPolicy);
 
 app.MapServerEndpoints();
 app.MapHub<ServerUpdatesHub>("/hubs/servers");
