@@ -1,10 +1,11 @@
-import { getJson } from './http'
+import { getJson, postJson } from './http'
 import type {
   CurrentPlayersResponse,
   PagedResult,
   ServerDetails,
   ServerListItem,
   ServerMapMetadataResponse,
+  ServerRefreshStatus,
   ServerSnapshot,
   ServerStatus,
 } from './types'
@@ -30,6 +31,14 @@ export function getServers(signal?: AbortSignal, params: GetServersParams = {}) 
     signal,
     query: params,
   })
+}
+
+export function queueServerRefresh(signal?: AbortSignal) {
+  return postJson<ServerRefreshStatus>('servers/refresh', { signal })
+}
+
+export function getServerRefreshStatus(signal?: AbortSignal) {
+  return getJson<ServerRefreshStatus>('servers/refresh', { signal })
 }
 
 export function getServerById(serverId: string, signal?: AbortSignal, refresh?: 'page') {

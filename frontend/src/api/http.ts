@@ -62,3 +62,21 @@ export async function getJson<T>(path: string, options: RequestOptions = {}): Pr
 
   return (await response.json()) as T
 }
+
+export async function postJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const url = buildUrl(path, options.query)
+  const response = await fetch(url, {
+    method: 'POST',
+    signal: options.signal,
+    cache: 'no-store',
+    headers: {
+      Accept: 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw new ApiError(await readErrorMessage(response), response.status, url)
+  }
+
+  return (await response.json()) as T
+}

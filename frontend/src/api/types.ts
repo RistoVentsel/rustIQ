@@ -13,6 +13,16 @@ export type PagedResult<T> = {
   totalItems: number
 }
 
+export type ServerRefreshStatus = {
+  isQueuedOrRunning: boolean
+  isRunning: boolean
+  queuedAtUtc: string | null
+  startedAtUtc: string | null
+  completedAtUtc: string | null
+  failedAtUtc: string | null
+  lastErrorMessage: string | null
+}
+
 export type ServerMapSummary = {
   mapName: string | null
   seed: number | null

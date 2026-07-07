@@ -294,6 +294,40 @@ public sealed class ServerReadServiceTests
     }
 
     [Fact]
+    public async Task GetServersAsync_ReturnsCachedPageWhenRefreshAllFails()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = Guid.NewGuid(),
+            Host = "cached.test",
+            QueryPort = 28015,
+            Name = "Cached Server",
+            Players = 10,
+            MaxPlayers = 100,
+            Status = ServerStatus.Online,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        });
+        var refreshService = new RecordingServerRefreshService { ThrowOnRefreshAll = true };
+        var service = new ServerReadService(repository, refreshService);
+
+        var result = await service.GetServersAsync(
+            null,
+            null,
+            1,
+            25,
+            null,
+            null,
+            ServerReadService.RefreshAllMode,
+            CancellationToken.None);
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal("cached.test", item.Host);
+        Assert.Equal(1, refreshService.RefreshAllCallCount);
+    }
+
+    [Fact]
     public async Task GetServerAsync_RefreshesRequestedServerBeforeMapping()
     {
         var serverId = Guid.NewGuid();
@@ -317,5 +351,35 @@ public sealed class ServerReadServiceTests
 
         var refreshedServer = Assert.Single(refreshService.RefreshedServers);
         Assert.Equal(serverId, refreshedServer.Id);
+    }
+
+    [Fact]
+    public async Task GetServerAsync_ReturnsCachedServerWhenRefreshFails()
+    {
+        var serverId = Guid.NewGuid();
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = serverId,
+            Host = "cached.test",
+            QueryPort = 28015,
+            Name = "Cached Server",
+            Players = 10,
+            MaxPlayers = 100,
+            Status = ServerStatus.Online,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        });
+        var refreshService = new RecordingServerRefreshService { ThrowOnRefreshServer = true };
+        var service = new ServerReadService(repository, refreshService);
+
+        var result = await service.GetServerAsync(
+            serverId,
+            ServerReadService.RefreshPageMode,
+            CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal("cached.test", result.Host);
+        Assert.Empty(refreshService.RefreshedServers);
     }
 }

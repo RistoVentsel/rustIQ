@@ -7,6 +7,12 @@ internal sealed class RecordingServerRefreshService : IServerRefreshService
 {
     public int RefreshAllCallCount { get; private set; }
 
+    public bool ThrowOnRefreshAll { get; set; }
+
+    public bool ThrowOnRefreshServers { get; set; }
+
+    public bool ThrowOnRefreshServer { get; set; }
+
     public List<IReadOnlyList<Server>> RefreshBatches { get; } = [];
 
     public List<Server> RefreshedServers { get; } = [];
@@ -15,6 +21,11 @@ internal sealed class RecordingServerRefreshService : IServerRefreshService
         IReadOnlyList<Server> servers,
         CancellationToken cancellationToken)
     {
+        if (ThrowOnRefreshServers)
+        {
+            throw new InvalidOperationException("Refresh page failed.");
+        }
+
         RefreshBatches.Add(servers.ToArray());
         return Task.CompletedTask;
     }
@@ -23,6 +34,11 @@ internal sealed class RecordingServerRefreshService : IServerRefreshService
         CancellationToken cancellationToken)
     {
         RefreshAllCallCount++;
+        if (ThrowOnRefreshAll)
+        {
+            throw new InvalidOperationException("Refresh all failed.");
+        }
+
         return Task.CompletedTask;
     }
 
@@ -30,6 +46,11 @@ internal sealed class RecordingServerRefreshService : IServerRefreshService
         Server server,
         CancellationToken cancellationToken)
     {
+        if (ThrowOnRefreshServer)
+        {
+            throw new InvalidOperationException("Refresh server failed.");
+        }
+
         RefreshedServers.Add(server);
         return Task.CompletedTask;
     }

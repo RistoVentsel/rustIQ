@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { ApiError, getServers, serverStatus } from '../api'
+import { ApiError, getServerRefreshStatus, getServers, queueServerRefresh, serverStatus } from '../api'
 import { SectionCard } from '../components/SectionCard'
 import { StateNotice } from '../components/StateNotice'
 import { ServerListCard } from '../features/servers/ServerListCard'
@@ -19,8 +19,8 @@ export function ServersPage() {
   const [pageSize, setPageSize] = useState(10)
   const [sortBy, setSortBy] = useState<ServerSortBy>('players')
   const [sortDirection, setSortDirection] = useState<ServerSortDirection>('desc')
-  const [refreshRequestId, setRefreshRequestId] = useState(1)
-  const [lastCompletedRefreshRequestId, setLastCompletedRefreshRequestId] = useState(0)
+  const [hideServerDataForRefresh, setHideServerDataForRefresh] = useState(false)
+  const [refreshStatusPollingEnabled, setRefreshStatusPollingEnabled] = useState(false)
   const nowMs = useNow()
   const debouncedSearch = useDebouncedValue(searchInput.trim(), 300)
   const statusValue = useMemo(() => {
@@ -35,10 +35,7 @@ export function ServersPage() {
   }, [statusFilter])
 
   const serversQuery = useQuery({
-    queryKey: [
-      'servers',
-      { search: debouncedSearch, status: statusValue, page, pageSize, sortBy, sortDirection, refreshRequestId },
-    ],
+    queryKey: ['servers', { search: debouncedSearch, status: statusValue, page, pageSize, sortBy, sortDirection }],
     queryFn: ({ signal }) => (
       getServers(signal, {
         search: debouncedSearch || undefined,
@@ -47,19 +44,52 @@ export function ServersPage() {
         pageSize,
         sortBy,
         sortDirection,
-        refresh: refreshRequestId === lastCompletedRefreshRequestId ? undefined : 'all',
       })
     ),
     staleTime: 0,
     refetchOnMount: 'always',
-    retry: false,
+    refetchInterval: hideServerDataForRefresh ? false : 10_000,
   })
+  const refreshStatusQuery = useQuery({
+    queryKey: ['server-refresh-status'],
+    enabled: refreshStatusPollingEnabled,
+    queryFn: ({ signal }) => getServerRefreshStatus(signal),
+    staleTime: 0,
+    refetchInterval: (query) => (
+      query.state.data?.isQueuedOrRunning ? 1_000 : false
+    ),
+  })
+  const queueRefreshMutation = useMutation({
+    mutationFn: () => queueServerRefresh(),
+    onMutate: () => {
+      setHideServerDataForRefresh(true)
+      setRefreshStatusPollingEnabled(false)
+    },
+    onSuccess: () => {
+      setRefreshStatusPollingEnabled(true)
+    },
+    onError: () => {
+      setHideServerDataForRefresh(false)
+      setRefreshStatusPollingEnabled(false)
+    },
+  })
+  const refetchServers = serversQuery.refetch
 
   useEffect(() => {
-    if (serversQuery.isSuccess && !serversQuery.isFetching) {
-      setLastCompletedRefreshRequestId(refreshRequestId)
+    const status = refreshStatusQuery.data
+    if (hideServerDataForRefresh && status && !status.isQueuedOrRunning) {
+      setHideServerDataForRefresh(false)
+      setRefreshStatusPollingEnabled(false)
+      void refetchServers()
     }
-  }, [refreshRequestId, serversQuery.isFetching, serversQuery.isSuccess])
+  }, [hideServerDataForRefresh, refreshStatusQuery.data, refetchServers])
+
+  useEffect(() => {
+    if (hideServerDataForRefresh && refreshStatusQuery.isError) {
+      setHideServerDataForRefresh(false)
+      setRefreshStatusPollingEnabled(false)
+    }
+  }, [hideServerDataForRefresh, refreshStatusQuery.isError])
   const serversPageData = serversQuery.data ?? null
   const servers = serversPageData?.items ?? []
   const hasSingleServer = servers.length === 1
@@ -67,12 +97,23 @@ export function ServersPage() {
   const totalPages = serversPageData ? Math.max(1, Math.ceil(totalItems / serversPageData.pageSize)) : 1
   const hasServersData = Boolean(serversPageData)
   const isLoadingServers = serversQuery.isFetching && !hasServersData
-  const isRefreshingServers = serversQuery.isFetching && hasServersData
-  const shouldShowServerData = hasServersData && !serversQuery.isFetching
+  const isRefreshingServers = hideServerDataForRefresh || (serversQuery.isFetching && hasServersData)
+  const shouldShowServerData = hasServersData && !serversQuery.isFetching && !hideServerDataForRefresh
+  const isRefreshButtonDisabled = queueRefreshMutation.isPending
+    || refreshStatusQuery.data?.isQueuedOrRunning
+    || hideServerDataForRefresh
   const serverListErrorDetail =
     serversQuery.error instanceof ApiError
       ? `${serversQuery.error.message} (${serversQuery.error.url})`
       : 'Unexpected error while loading the server list.'
+  const refreshErrorDetail =
+    queueRefreshMutation.error instanceof ApiError
+      ? `${queueRefreshMutation.error.message} (${queueRefreshMutation.error.url})`
+      : refreshStatusQuery.error instanceof ApiError
+        ? `${refreshStatusQuery.error.message} (${refreshStatusQuery.error.url})`
+        : refreshStatusQuery.data?.lastErrorMessage
+          ? refreshStatusQuery.data.lastErrorMessage
+          : 'Unexpected error while queuing the server refresh.'
 
   function updateSearch(value: string) {
     setSearchInput(value)
@@ -115,8 +156,8 @@ export function ServersPage() {
         <p className="page-eyebrow">Server List</p>
         <h2 className="page-heading">Cached Rust server snapshot</h2>
         <p className="page-text">
-          This page loads stored backend data from <code>GET /servers</code>. Open a server to
-          move into the detail route, where live behavior will attach in later phases.
+          This page loads cached backend data from <code>GET /servers</code>. Use refresh to queue
+          a BattleMetrics sync, or open a server for live playercount updates.
         </p>
       </div>
 
@@ -143,10 +184,10 @@ export function ServersPage() {
             <button
               type="button"
               className="button-link button-link--secondary"
-              onClick={() => setRefreshRequestId((current) => current + 1)}
-              disabled={serversQuery.isFetching}
+              onClick={() => queueRefreshMutation.mutate()}
+              disabled={isRefreshButtonDisabled}
             >
-              {serversQuery.isFetching ? 'Refreshing...' : 'Refresh'}
+              {isRefreshButtonDisabled ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
         }
@@ -187,7 +228,16 @@ export function ServersPage() {
         {isRefreshingServers ? (
           <StateNotice
             title="Refreshing server populations"
-            description="Reloading every server population and updated timestamp before showing the list again."
+            description="Running a BattleMetrics directory sync before showing the refreshed cached list."
+          />
+        ) : null}
+
+        {queueRefreshMutation.isError || refreshStatusQuery.isError || refreshStatusQuery.data?.lastErrorMessage ? (
+          <StateNotice
+            title="Refresh could not complete"
+            description="Showing cached server data. The background refresh can be retried."
+            detail={refreshErrorDetail}
+            tone="error"
           />
         ) : null}
 

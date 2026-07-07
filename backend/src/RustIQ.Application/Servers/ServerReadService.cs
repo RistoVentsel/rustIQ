@@ -52,27 +52,39 @@ public sealed class ServerReadService(
 
             if (normalizedRefreshMode == RefreshAllMode)
             {
-                await serverRefreshService.RefreshAllServersAsync(cancellationToken);
-                servers = await serverRepository.GetPagedAsync(
-                    search,
-                    status,
-                    normalizedSortBy,
-                    sortDescending,
-                    skip,
-                    normalizedPageSize,
-                    cancellationToken);
+                try
+                {
+                    await serverRefreshService.RefreshAllServersAsync(cancellationToken);
+                    servers = await serverRepository.GetPagedAsync(
+                        search,
+                        status,
+                        normalizedSortBy,
+                        sortDescending,
+                        skip,
+                        normalizedPageSize,
+                        cancellationToken);
+                }
+                catch (Exception exception) when (!IsRequestCancellation(exception, cancellationToken))
+                {
+                }
             }
             else if (normalizedRefreshMode == RefreshPageMode && servers.Count > 0)
             {
-                await serverRefreshService.RefreshServersAsync(servers, cancellationToken);
-                servers = await serverRepository.GetPagedAsync(
-                    search,
-                    status,
-                    normalizedSortBy,
-                    sortDescending,
-                    skip,
-                    normalizedPageSize,
-                    cancellationToken);
+                try
+                {
+                    await serverRefreshService.RefreshServersAsync(servers, cancellationToken);
+                    servers = await serverRepository.GetPagedAsync(
+                        search,
+                        status,
+                        normalizedSortBy,
+                        sortDescending,
+                        skip,
+                        normalizedPageSize,
+                        cancellationToken);
+                }
+                catch (Exception exception) when (!IsRequestCancellation(exception, cancellationToken))
+                {
+                }
             }
         }
 
@@ -99,8 +111,14 @@ public sealed class ServerReadService(
             && server is not null
             && serverRefreshService is not null)
         {
-            await serverRefreshService.RefreshServerAsync(server, cancellationToken);
-            server = await serverRepository.GetByIdWithMapMetadataAsync(serverId, cancellationToken);
+            try
+            {
+                await serverRefreshService.RefreshServerAsync(server, cancellationToken);
+                server = await serverRepository.GetByIdWithMapMetadataAsync(serverId, cancellationToken);
+            }
+            catch (Exception exception) when (!IsRequestCancellation(exception, cancellationToken))
+            {
+            }
         }
 
         return server is null ? null : ToDetailsDto(server, DateTimeOffset.UtcNow);
@@ -286,6 +304,11 @@ public sealed class ServerReadService(
     private static int SecondsAgo(DateTimeOffset value, DateTimeOffset now)
     {
         return Math.Max(0, (int)(now - value).TotalSeconds);
+    }
+
+    private static bool IsRequestCancellation(Exception exception, CancellationToken cancellationToken)
+    {
+        return exception is OperationCanceledException && cancellationToken.IsCancellationRequested;
     }
 
     private static string NormalizeRefreshMode(string? refreshMode)

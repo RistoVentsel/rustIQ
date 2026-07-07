@@ -3,8 +3,10 @@ export {
   getServerById,
   getServerMap,
   getServerPlayers,
+  getServerRefreshStatus,
   getServerSnapshots,
   getServers,
+  queueServerRefresh,
 } from './servers'
 export type { GetServerSnapshotsParams, GetServersParams } from './servers'
 export {
@@ -20,5 +22,6 @@ export type {
   ServerMapMetadata,
   ServerMapMetadataResponse,
   ServerMapSummary,
+  ServerRefreshStatus,
   ServerSnapshot,
 } from './types'

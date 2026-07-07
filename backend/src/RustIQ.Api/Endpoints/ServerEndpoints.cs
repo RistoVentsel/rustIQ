@@ -1,3 +1,4 @@
+using RustIQ.Api.Workers;
 using RustIQ.Application.Servers;
 using RustIQ.Domain.Servers;
 
@@ -18,9 +19,16 @@ public static class ServerEndpoints
             string? sortBy,
             string? sortDirection,
             string? refresh,
+            IServerRefreshJobQueue refreshJobQueue,
             ServerReadService serverReadService,
             CancellationToken cancellationToken) =>
         {
+            if (string.Equals(refresh, ServerReadService.RefreshAllMode, StringComparison.OrdinalIgnoreCase))
+            {
+                refreshJobQueue.TryQueueRefreshAll();
+                refresh = ServerReadService.RefreshNoneMode;
+            }
+
             var result = await serverReadService.GetServersAsync(
                 search,
                 status,
@@ -34,6 +42,22 @@ public static class ServerEndpoints
             return Results.Ok(result);
         })
         .WithName("GetServers");
+
+        servers.MapPost("/refresh", (
+            IServerRefreshJobQueue refreshJobQueue) =>
+        {
+            refreshJobQueue.TryQueueRefreshAll();
+
+            return Results.Accepted("/servers/refresh", refreshJobQueue.GetStatus());
+        })
+        .WithName("QueueServerRefresh");
+
+        servers.MapGet("/refresh", (
+            IServerRefreshJobQueue refreshJobQueue) =>
+        {
+            return Results.Ok(refreshJobQueue.GetStatus());
+        })
+        .WithName("GetServerRefreshStatus");
 
         servers.MapGet("/{id:guid}", async (
             Guid id,
