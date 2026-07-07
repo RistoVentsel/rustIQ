@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import { useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { ApiError, getServerById, getServerMap, getServerPlayers, getServerSnapshots } from '../api'
@@ -59,17 +58,15 @@ export function ServerDetailPage() {
   const { serverId } = useParams<{ serverId: string }>()
   const liveStatus = useServerLiveUpdates(serverId)
   const nowMs = useNow()
-  const refreshOnInitialLoadRef = useRef<'page' | null>('page')
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
     enabled: Boolean(serverId),
-    queryFn: ({ signal }) => {
-      const refresh = refreshOnInitialLoadRef.current
-      refreshOnInitialLoadRef.current = null
-      return getServerById(serverId!, signal, refresh ?? undefined)
-    },
+    queryFn: ({ signal }) => getServerById(serverId!, signal, 'page'),
     staleTime: 0,
     refetchOnMount: 'always',
+    refetchInterval: 2500,
+    refetchIntervalInBackground: false,
+    retry: false,
   })
   const playersQuery = useQuery({
     queryKey: ['server', serverId, 'players'],
@@ -121,6 +118,7 @@ export function ServerDetailPage() {
         actions={
           <div className="server-detail-actions">
             <span className={getLiveStatusClassName(liveStatus)}>{getLiveStatusLabel(liveStatus)}</span>
+            <span className="status-pill status-pill--online">Live playercount</span>
             <Link to="/" className="button-link button-link--secondary">
               Back
             </Link>
@@ -159,13 +157,6 @@ export function ServerDetailPage() {
           <StateNotice
             title="Loading server details"
             description="The detail page is waiting for GET /servers/{id}."
-          />
-        ) : null}
-
-        {serverQuery.isFetching && hasServerData ? (
-          <StateNotice
-            title="Refreshing server details"
-            description="Showing the current server snapshot while the detail query refreshes in the background."
           />
         ) : null}
 
