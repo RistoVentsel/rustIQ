@@ -81,6 +81,7 @@ public sealed class ServerRefreshService(
             return;
         }
 
+        var refreshCompletedAtUtc = DateTimeOffset.UtcNow;
         var trackedServers = await serverRepository.GetTrackedByIdsAsync(
             refreshResults.Keys.ToArray(),
             cancellationToken);
@@ -92,7 +93,11 @@ public sealed class ServerRefreshService(
                 continue;
             }
 
-            ApplyPlayerCountRefresh(trackedServer, refreshResult, offlineThreshold);
+            ApplyPlayerCountRefresh(
+                trackedServer,
+                refreshResult,
+                refreshCompletedAtUtc,
+                offlineThreshold);
         }
 
         await serverRepository.SaveChangesAsync(cancellationToken);
@@ -160,6 +165,7 @@ public sealed class ServerRefreshService(
     private static void ApplyPlayerCountRefresh(
         Server server,
         PlayerCountRefreshResult refreshResult,
+        DateTimeOffset refreshCompletedAtUtc,
         TimeSpan offlineThreshold)
     {
         var checkedAtUtc = refreshResult.PlayerCount.CheckedAtUtc;
@@ -169,8 +175,8 @@ public sealed class ServerRefreshService(
         server.BattleMetricsServerId = refreshResult.BattleMetricsServerId;
         server.PlayerCountSource = ServerPlayerCountSource.BattleMetrics;
         server.LastCheckedAtUtc = checkedAtUtc;
-        server.LastPlayerCountUpdatedAtUtc = checkedAtUtc;
-        server.UpdatedAtUtc = checkedAtUtc;
+        server.LastPlayerCountUpdatedAtUtc = refreshCompletedAtUtc;
+        server.UpdatedAtUtc = refreshCompletedAtUtc;
         server.MaxPlayers = maxPlayers;
         server.Country = string.IsNullOrWhiteSpace(refreshResult.PlayerCount.Country)
             ? server.Country

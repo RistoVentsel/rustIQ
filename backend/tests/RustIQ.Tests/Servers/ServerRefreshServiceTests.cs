@@ -54,7 +54,9 @@ public sealed class ServerRefreshServiceTests
             pollingService,
             TimeSpan.FromSeconds(60));
 
+        var beforeRefreshUtc = DateTimeOffset.UtcNow;
         await service.RefreshAllServersAsync(CancellationToken.None);
+        var afterRefreshUtc = DateTimeOffset.UtcNow;
 
         var server = Assert.Single(repository.Servers);
         Assert.Equal(42, server.BattleMetricsServerId);
@@ -63,9 +65,86 @@ public sealed class ServerRefreshServiceTests
         Assert.Equal(200, server.MaxPlayers);
         Assert.Equal("GB", server.Country);
         Assert.Equal(checkedAtUtc, server.LastCheckedAtUtc);
-        Assert.Equal(checkedAtUtc, server.LastPlayerCountUpdatedAtUtc);
-        Assert.Equal(checkedAtUtc, server.UpdatedAtUtc);
+        Assert.InRange(server.LastPlayerCountUpdatedAtUtc!.Value, beforeRefreshUtc, afterRefreshUtc);
+        Assert.Equal(server.LastPlayerCountUpdatedAtUtc, server.UpdatedAtUtc);
         Assert.Equal(DateTimeOffset.Parse("2026-07-07T08:00:00Z"), server.LastWipeAtUtc);
         Assert.Equal(DateTimeOffset.Parse("2026-07-14T08:00:00Z"), server.NextWipeAtUtc);
+    }
+
+    [Fact]
+    public async Task RefreshAllServersAsync_UsesOneUpdatedAtTimestampForBatch()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.AddRange(
+        [
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                BattleMetricsServerId = 1,
+                Host = "one.test",
+                QueryPort = 28015,
+                Players = 1,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-1),
+                UpdatedAtUtc = DateTimeOffset.UtcNow.AddHours(-1)
+            },
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                BattleMetricsServerId = 2,
+                Host = "two.test",
+                QueryPort = 28015,
+                Players = 2,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-1),
+                UpdatedAtUtc = DateTimeOffset.UtcNow.AddHours(-1)
+            }
+        ]);
+        var battleMetricsClient = new FakeBattleMetricsPlayerCountClient(
+            new Dictionary<(string Host, int QueryPort), long?>(),
+            new Dictionary<long, BattleMetricsPlayerCountResult?>
+            {
+                [1] = new BattleMetricsPlayerCountResult(
+                    1,
+                    10,
+                    100,
+                    true,
+                    Country: null,
+                    Latitude: null,
+                    Longitude: null,
+                    LastWipeAtUtc: null,
+                    NextWipeAtUtc: null,
+                    DateTimeOffset.Parse("2026-07-07T12:00:00Z")),
+                [2] = new BattleMetricsPlayerCountResult(
+                    2,
+                    20,
+                    100,
+                    true,
+                    Country: null,
+                    Latitude: null,
+                    Longitude: null,
+                    LastWipeAtUtc: null,
+                    NextWipeAtUtc: null,
+                    DateTimeOffset.Parse("2026-07-07T12:05:00Z"))
+            });
+        var pollingService = new ServerPollingService(
+            new FakeRustServerQueryClient(),
+            battleMetricsClient,
+            new FakeRustServerMapMetadataClient(),
+            repository);
+        var service = new ServerRefreshService(
+            repository,
+            new FakeRustServerCatalog(),
+            battleMetricsClient,
+            pollingService,
+            TimeSpan.FromSeconds(60));
+
+        await service.RefreshAllServersAsync(CancellationToken.None);
+
+        Assert.Equal(10, repository.Servers.Single(server => server.Host == "one.test").Players);
+        Assert.Equal(20, repository.Servers.Single(server => server.Host == "two.test").Players);
+        Assert.Single(repository.Servers.Select(server => server.UpdatedAtUtc).Distinct());
     }
 }

@@ -6,7 +6,7 @@ import { ApiError, getServers, serverStatus } from '../api'
 import { SectionCard } from '../components/SectionCard'
 import { StateNotice } from '../components/StateNotice'
 import { ServerListCard } from '../features/servers/ServerListCard'
-import { useDebouncedValue } from '../hooks'
+import { useDebouncedValue, useNow } from '../hooks'
 
 const pageSizeOptions = [10, 25, 50]
 type ServerSortBy = 'players' | 'lastWipe' | 'nextWipe'
@@ -20,6 +20,7 @@ export function ServersPage() {
   const [sortBy, setSortBy] = useState<ServerSortBy>('players')
   const [sortDirection, setSortDirection] = useState<ServerSortDirection>('desc')
   const refreshOnNextRequestRef = useRef<'all' | null>('all')
+  const nowMs = useNow()
   const debouncedSearch = useDebouncedValue(searchInput.trim(), 300)
   const statusValue = useMemo(() => {
     switch (statusFilter) {
@@ -269,7 +270,7 @@ export function ServersPage() {
               <span>Updated</span>
             </div>
             {servers.map((server) => (
-              <ServerListCard key={server.id} server={server} />
+              <ServerListCard key={server.id} server={server} nowMs={nowMs} />
             ))}
           </div>
         ) : null}

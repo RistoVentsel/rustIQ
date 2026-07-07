@@ -10,9 +10,10 @@ import {
 
 type ServerListCardProps = {
   server: ServerListItem
+  nowMs: number
 }
 
-export function ServerListCard({ server }: ServerListCardProps) {
+export function ServerListCard({ server, nowMs }: ServerListCardProps) {
   return (
     <Link to={`/servers/${server.id}`} className="server-list-card">
       <div className="server-list-card__identity">
@@ -23,10 +24,10 @@ export function ServerListCard({ server }: ServerListCardProps) {
       </div>
 
       <div className="server-list-card__cell">{server.players}/{server.maxPlayers}</div>
-      <div className="server-list-card__cell">{formatRelativeTimestamp(server.lastWipeAtUtc)}</div>
-      <div className="server-list-card__cell">{formatRelativeTimestamp(server.nextWipeAtUtc)}</div>
+      <div className="server-list-card__cell">{formatRelativeTimestamp(server.lastWipeAtUtc, nowMs)}</div>
+      <div className="server-list-card__cell">{formatRelativeTimestamp(server.nextWipeAtUtc, nowMs)}</div>
       <div className="server-list-card__cell">{formatServerLocationShort(server)}</div>
-      <div className="server-list-card__cell">{formatRelativeTimestamp(server.updatedAtUtc)}</div>
+      <div className="server-list-card__cell">{formatRelativeTimestamp(server.updatedAtUtc, nowMs)}</div>
     </Link>
   )
 }
