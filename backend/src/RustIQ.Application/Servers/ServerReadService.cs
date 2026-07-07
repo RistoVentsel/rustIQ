@@ -14,22 +14,33 @@ public sealed class ServerReadService(
     private const int MaxPageSize = 100;
     private const int DefaultSnapshotLimit = 100;
     private const int MaxSnapshotLimit = 500;
+    public const string SortByPlayers = "players";
+    public const string SortByLastWipe = "lastWipe";
+    public const string SortByLocation = "location";
+    public const string SortAscending = "asc";
+    public const string SortDescending = "desc";
 
     public async Task<PagedResult<ServerListItemDto>> GetServersAsync(
         string? search,
         ServerStatus? status,
         int? page,
         int? pageSize,
+        string? sortBy,
+        string? sortDirection,
         string? refreshMode,
         CancellationToken cancellationToken)
     {
         var normalizedPage = Math.Max(page ?? DefaultPage, 1);
         var normalizedPageSize = Math.Clamp(pageSize ?? DefaultPageSize, 1, MaxPageSize);
+        var normalizedSortBy = NormalizeSortBy(sortBy);
+        var sortDescending = NormalizeSortDirection(sortDirection);
         var skip = (normalizedPage - 1) * normalizedPageSize;
 
         var servers = await serverRepository.GetPagedAsync(
             search,
             status,
+            normalizedSortBy,
+            sortDescending,
             skip,
             normalizedPageSize,
             cancellationToken);
@@ -44,6 +55,8 @@ public sealed class ServerReadService(
                 servers = await serverRepository.GetPagedAsync(
                     search,
                     status,
+                    normalizedSortBy,
+                    sortDescending,
                     skip,
                     normalizedPageSize,
                     cancellationToken);
@@ -54,6 +67,8 @@ public sealed class ServerReadService(
                 servers = await serverRepository.GetPagedAsync(
                     search,
                     status,
+                    normalizedSortBy,
+                    sortDescending,
                     skip,
                     normalizedPageSize,
                     cancellationToken);
@@ -162,6 +177,10 @@ public sealed class ServerReadService(
             server.GamePort,
             server.QueryPort,
             server.Country,
+            server.Latitude,
+            server.Longitude,
+            server.LastWipeAtUtc,
+            server.NextWipeAtUtc,
             server.Name,
             server.Map,
             server.Players,
@@ -190,6 +209,10 @@ public sealed class ServerReadService(
             server.GamePort,
             server.QueryPort,
             server.Country,
+            server.Latitude,
+            server.Longitude,
+            server.LastWipeAtUtc,
+            server.NextWipeAtUtc,
             server.Name,
             server.Map,
             server.Players,
@@ -272,5 +295,20 @@ public sealed class ServerReadService(
             RefreshAllMode => RefreshAllMode,
             _ => RefreshNoneMode
         };
+    }
+
+    private static string NormalizeSortBy(string? sortBy)
+    {
+        return sortBy?.Trim() switch
+        {
+            SortByLastWipe => SortByLastWipe,
+            SortByLocation => SortByLocation,
+            _ => SortByPlayers
+        };
+    }
+
+    private static bool NormalizeSortDirection(string? sortDirection)
+    {
+        return sortDirection?.Trim().ToLowerInvariant() != SortAscending;
     }
 }

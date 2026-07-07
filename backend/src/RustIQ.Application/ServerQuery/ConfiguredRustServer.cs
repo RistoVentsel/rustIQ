@@ -18,6 +18,14 @@ public sealed class ConfiguredRustServer
 
     public string? Country { get; init; }
 
+    public double? Latitude { get; init; }
+
+    public double? Longitude { get; init; }
+
+    public DateTimeOffset? LastWipeAtUtc { get; init; }
+
+    public DateTimeOffset? NextWipeAtUtc { get; init; }
+
     public ServerDiscoverySource DiscoverySource { get; init; } = ServerDiscoverySource.Manual;
 
     public ServerSummarySource SummarySource { get; init; } = ServerSummarySource.A2S;

@@ -16,6 +16,10 @@ public sealed class Server
 
     public string? Country { get; set; }
 
+    public double? Latitude { get; set; }
+
+    public double? Longitude { get; set; }
+
     public string? Name { get; set; }
 
     public string? Map { get; set; }
@@ -45,6 +49,10 @@ public sealed class Server
     public DateTimeOffset? LastDiscoveredAtUtc { get; set; }
 
     public DateTimeOffset? LastPlayerCountUpdatedAtUtc { get; set; }
+
+    public DateTimeOffset? LastWipeAtUtc { get; set; }
+
+    public DateTimeOffset? NextWipeAtUtc { get; set; }
 
     public DateTimeOffset CreatedAtUtc { get; set; }
 

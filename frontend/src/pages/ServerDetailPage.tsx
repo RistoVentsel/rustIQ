@@ -7,7 +7,9 @@ import { SectionCard } from '../components/SectionCard'
 import { StateNotice } from '../components/StateNotice'
 import { ServerLayoutPreview } from '../features/servers/ServerLayoutPreview'
 import {
+  formatServerLocation,
   formatServerSubtitle,
+  formatServerTimestamp,
   getServerDisplayName,
   getServerStatusLabel,
 } from '../features/servers/serverPresentation'
@@ -193,6 +195,9 @@ export function ServerDetailPage() {
                   label: 'Last seen',
                   value: formatSecondsAgo(lastSeenSecondsAgo),
                 },
+                { label: 'Last wiped', value: formatServerTimestamp(serverQuery.data.lastWipeAtUtc) },
+                { label: 'Next wipe', value: formatServerTimestamp(serverQuery.data.nextWipeAtUtc) },
+                { label: 'Location', value: formatServerLocation(serverQuery.data) },
               ]}
             />
 
@@ -218,6 +223,18 @@ export function ServerDetailPage() {
               <div className="server-detail-meta__item">
                 <dt>Last checked</dt>
                 <dd>{serverQuery.data.lastCheckedAtUtc ?? 'Unavailable'}</dd>
+              </div>
+              <div className="server-detail-meta__item">
+                <dt>Last wiped</dt>
+                <dd>{formatServerTimestamp(serverQuery.data.lastWipeAtUtc)}</dd>
+              </div>
+              <div className="server-detail-meta__item">
+                <dt>Next wipe</dt>
+                <dd>{formatServerTimestamp(serverQuery.data.nextWipeAtUtc)}</dd>
+              </div>
+              <div className="server-detail-meta__item">
+                <dt>Location</dt>
+                <dd>{formatServerLocation(serverQuery.data)}</dd>
               </div>
               <div className="server-detail-meta__item">
                 <dt>Map summary</dt>

@@ -57,23 +57,42 @@ export type CurrentPlayersResponse = {
 
 export type ServerListItem = {
   id: string
+  battleMetricsServerId: number | null
+  address: string | null
   host: string
+  gamePort: number | null
   queryPort: number
+  country: string | null
+  latitude: number | null
+  longitude: number | null
+  lastWipeAtUtc: string | null
+  nextWipeAtUtc: string | null
   name: string | null
   map: string | null
   players: number
   maxPlayers: number
   status: ServerStatus
+  lastValidationReason: string | null
   lastSeenAtUtc: string | null
   lastCheckedAtUtc: string | null
+  lastDiscoveredAtUtc: string | null
+  lastPlayerCountUpdatedAtUtc: string | null
   updatedAtUtc: string
   updatedSecondsAgo: number
 }
 
 export type ServerDetails = {
   id: string
+  battleMetricsServerId: number | null
+  address: string | null
   host: string
+  gamePort: number | null
   queryPort: number
+  country: string | null
+  latitude: number | null
+  longitude: number | null
+  lastWipeAtUtc: string | null
+  nextWipeAtUtc: string | null
   name: string | null
   map: string | null
   players: number

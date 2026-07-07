@@ -41,6 +41,10 @@ public sealed class RustIqDbContext(DbContextOptions<RustIqDbContext> options)
             entity.Property(server => server.Country)
                 .HasMaxLength(8);
 
+            entity.Property(server => server.Latitude);
+
+            entity.Property(server => server.Longitude);
+
             entity.Property(server => server.Status)
                 .HasConversion<string>()
                 .HasMaxLength(32)

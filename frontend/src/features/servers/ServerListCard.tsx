@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import type { ServerListItem } from '../../api'
 import {
   formatAddress,
+  formatServerLocation,
+  formatServerTimestamp,
   getServerDisplayName,
   getServerStatusClassName,
   getServerStatusLabel,
@@ -15,14 +17,9 @@ type ServerListCardProps = {
 export function ServerListCard({ server }: ServerListCardProps) {
   return (
     <Link to={`/servers/${server.id}`} className="server-list-card">
-      <div className="server-list-card__top">
-        <div className="server-list-card__identity">
-          <h3 className="server-list-card__name">{getServerDisplayName(server)}</h3>
-          <p className="server-list-card__address">{formatAddress(server)}</p>
-        </div>
-        <span className={getServerStatusClassName(server.status)}>
-          {getServerStatusLabel(server.status)}
-        </span>
+      <div className="server-list-card__identity">
+        <h3 className="server-list-card__name">{getServerDisplayName(server)}</h3>
+        <p className="server-list-card__address">{formatAddress(server)}</p>
       </div>
 
       <dl className="server-list-card__stats">
@@ -37,10 +34,22 @@ export function ServerListCard({ server }: ServerListCardProps) {
           <dd>{server.map ?? 'Unavailable'}</dd>
         </div>
         <div className="server-list-card__stat">
-          <dt>Updated</dt>
-          <dd>{server.updatedSecondsAgo}s ago</dd>
+          <dt>Location</dt>
+          <dd>{formatServerLocation(server)}</dd>
+        </div>
+        <div className="server-list-card__stat">
+          <dt>Last wiped</dt>
+          <dd>{formatServerTimestamp(server.lastWipeAtUtc)}</dd>
+        </div>
+        <div className="server-list-card__stat">
+          <dt>Next wipe</dt>
+          <dd>{formatServerTimestamp(server.nextWipeAtUtc)}</dd>
         </div>
       </dl>
+
+      <span className={getServerStatusClassName(server.status)}>
+        {getServerStatusLabel(server.status)}
+      </span>
     </Link>
   )
 }

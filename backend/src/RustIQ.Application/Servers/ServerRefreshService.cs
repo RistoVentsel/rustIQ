@@ -48,6 +48,10 @@ public sealed class ServerRefreshService(
             GamePort = server.GamePort,
             QueryPort = server.QueryPort,
             Country = server.Country,
+            Latitude = server.Latitude,
+            Longitude = server.Longitude,
+            LastWipeAtUtc = server.LastWipeAtUtc,
+            NextWipeAtUtc = server.NextWipeAtUtc,
             DiscoverySource = server.DiscoverySource,
             SummarySource = server.SummarySource,
             PlayerCountSource = server.PlayerCountSource,
@@ -169,6 +173,13 @@ public sealed class ServerRefreshService(
         server.LastPlayerCountUpdatedAtUtc = checkedAtUtc;
         server.UpdatedAtUtc = checkedAtUtc;
         server.MaxPlayers = maxPlayers;
+        server.Country = string.IsNullOrWhiteSpace(refreshResult.PlayerCount.Country)
+            ? server.Country
+            : refreshResult.PlayerCount.Country;
+        server.Latitude = refreshResult.PlayerCount.Latitude ?? server.Latitude;
+        server.Longitude = refreshResult.PlayerCount.Longitude ?? server.Longitude;
+        server.LastWipeAtUtc = refreshResult.PlayerCount.LastWipeAtUtc ?? server.LastWipeAtUtc;
+        server.NextWipeAtUtc = refreshResult.PlayerCount.NextWipeAtUtc ?? server.NextWipeAtUtc;
 
         if (refreshResult.PlayerCount.IsOnline)
         {

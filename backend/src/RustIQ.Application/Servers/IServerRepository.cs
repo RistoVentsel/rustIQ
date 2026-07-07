@@ -12,6 +12,8 @@ public interface IServerRepository
     Task<IReadOnlyList<Server>> GetPagedAsync(
         string? search,
         ServerStatus? status,
+        string sortBy,
+        bool sortDescending,
         int skip,
         int take,
         CancellationToken cancellationToken);

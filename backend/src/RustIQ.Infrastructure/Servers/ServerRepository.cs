@@ -37,6 +37,8 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
     public async Task<IReadOnlyList<Server>> GetPagedAsync(
         string? search,
         ServerStatus? status,
+        string sortBy,
+        bool sortDescending,
         int skip,
         int take,
         CancellationToken cancellationToken)
@@ -44,11 +46,7 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         var servers = await ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status)
             .ToListAsync(cancellationToken);
 
-        return DeduplicateServers(servers)
-            .OrderByDescending(server => server.Status == ServerStatus.Online)
-            .ThenByDescending(server => server.Players)
-            .ThenBy(server => server.Name)
-            .ThenBy(server => server.Host)
+        return ApplyServerSort(DeduplicateServers(servers), sortBy, sortDescending)
             .Skip(skip)
             .Take(take)
             .ToArray();
@@ -249,5 +247,29 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
                 .ThenByDescending(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
                 .First())
             .ToArray();
+    }
+
+    private static IOrderedEnumerable<Server> ApplyServerSort(
+        IEnumerable<Server> servers,
+        string sortBy,
+        bool sortDescending)
+    {
+        var sorted = sortBy switch
+        {
+            ServerReadService.SortByLastWipe => sortDescending
+                ? servers.OrderByDescending(server => server.LastWipeAtUtc ?? DateTimeOffset.MinValue)
+                : servers.OrderBy(server => server.LastWipeAtUtc ?? DateTimeOffset.MaxValue),
+            ServerReadService.SortByLocation => sortDescending
+                ? servers.OrderByDescending(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                : servers.OrderBy(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            _ => sortDescending
+                ? servers.OrderByDescending(server => server.Players)
+                : servers.OrderBy(server => server.Players)
+        };
+
+        return sorted
+            .ThenByDescending(server => server.Status == ServerStatus.Online)
+            .ThenBy(server => server.Name)
+            .ThenBy(server => server.Host);
     }
 }

@@ -75,6 +75,15 @@ namespace RustIQ.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<DateTimeOffset?>("LastWipeAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision");
+
                     b.Property<string>("Map")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
@@ -85,6 +94,9 @@ namespace RustIQ.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("NextWipeAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PlayerCountSource")
                         .IsRequired()

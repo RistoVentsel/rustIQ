@@ -5,4 +5,9 @@ public sealed record BattleMetricsPlayerCountResult(
     int Players,
     int MaxPlayers,
     bool IsOnline,
+    string? Country,
+    double? Latitude,
+    double? Longitude,
+    DateTimeOffset? LastWipeAtUtc,
+    DateTimeOffset? NextWipeAtUtc,
     DateTimeOffset CheckedAtUtc);

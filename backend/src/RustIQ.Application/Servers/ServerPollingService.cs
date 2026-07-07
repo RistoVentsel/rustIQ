@@ -33,6 +33,10 @@ public sealed class ServerPollingService(
                     GamePort = configuredServer.GamePort,
                     QueryPort = configuredServer.QueryPort,
                     Country = configuredServer.Country,
+                    Latitude = configuredServer.Latitude,
+                    Longitude = configuredServer.Longitude,
+                    LastWipeAtUtc = configuredServer.LastWipeAtUtc,
+                    NextWipeAtUtc = configuredServer.NextWipeAtUtc,
                     Name = configuredName,
                     Status = ServerStatus.Unknown,
                     DiscoverySource = configuredServer.DiscoverySource,
@@ -112,6 +116,10 @@ public sealed class ServerPollingService(
             GamePort = server.GamePort,
             QueryPort = server.QueryPort,
             Country = server.Country,
+            Latitude = server.Latitude,
+            Longitude = server.Longitude,
+            LastWipeAtUtc = server.LastWipeAtUtc,
+            NextWipeAtUtc = server.NextWipeAtUtc,
             DiscoverySource = server.DiscoverySource,
             SummarySource = server.SummarySource,
             PlayerCountSource = server.PlayerCountSource,
@@ -199,6 +207,10 @@ public sealed class ServerPollingService(
         hasChanges |= UpdateGamePort(server, configuredServer.GamePort);
         hasChanges |= UpdateQueryPort(server, configuredServer.QueryPort);
         hasChanges |= UpdateCountry(server, configuredServer.Country);
+        hasChanges |= UpdateLatitude(server, configuredServer.Latitude);
+        hasChanges |= UpdateLongitude(server, configuredServer.Longitude);
+        hasChanges |= UpdateLastWipeAt(server, configuredServer.LastWipeAtUtc);
+        hasChanges |= UpdateNextWipeAt(server, configuredServer.NextWipeAtUtc);
         hasChanges |= UpdateDiscoverySource(server, configuredServer.DiscoverySource);
         hasChanges |= UpdateSummarySource(server, configuredServer.SummarySource);
         hasChanges |= UpdatePlayerCountSource(server, configuredServer.PlayerCountSource);
@@ -234,6 +246,10 @@ public sealed class ServerPollingService(
         server.GamePort = queryResult.GamePort ?? configuredServer.GamePort ?? server.GamePort;
         server.QueryPort = queryResult.QueryPort;
         server.Country = Coalesce(queryResult.Country, configuredServer.Country, server.Country);
+        server.Latitude = queryResult.Latitude ?? configuredServer.Latitude ?? server.Latitude;
+        server.Longitude = queryResult.Longitude ?? configuredServer.Longitude ?? server.Longitude;
+        server.LastWipeAtUtc = queryResult.LastWipeAtUtc ?? configuredServer.LastWipeAtUtc ?? server.LastWipeAtUtc;
+        server.NextWipeAtUtc = queryResult.NextWipeAtUtc ?? configuredServer.NextWipeAtUtc ?? server.NextWipeAtUtc;
         server.DiscoverySource = configuredServer.DiscoverySource;
         server.SummarySource = queryResult.SummarySource;
         server.PlayerCountSource = queryResult.PlayerCountSource;
@@ -475,6 +491,10 @@ public sealed class ServerPollingService(
             server.GamePort,
             server.QueryPort,
             server.Country,
+            server.Latitude,
+            server.Longitude,
+            server.LastWipeAtUtc,
+            server.NextWipeAtUtc,
             server.Name,
             server.Map,
             server.Players,
@@ -570,6 +590,26 @@ public sealed class ServerPollingService(
     private static bool UpdateCountry(Server server, string? nextValue)
     {
         return UpdateIfDifferent(server.Country, nextValue, value => server.Country = value);
+    }
+
+    private static bool UpdateLatitude(Server server, double? nextValue)
+    {
+        return UpdateIfDifferent(server.Latitude, nextValue, value => server.Latitude = value);
+    }
+
+    private static bool UpdateLongitude(Server server, double? nextValue)
+    {
+        return UpdateIfDifferent(server.Longitude, nextValue, value => server.Longitude = value);
+    }
+
+    private static bool UpdateLastWipeAt(Server server, DateTimeOffset? nextValue)
+    {
+        return UpdateIfDifferent(server.LastWipeAtUtc, nextValue, value => server.LastWipeAtUtc = value);
+    }
+
+    private static bool UpdateNextWipeAt(Server server, DateTimeOffset? nextValue)
+    {
+        return UpdateIfDifferent(server.NextWipeAtUtc, nextValue, value => server.NextWipeAtUtc = value);
     }
 
     private static bool UpdateDiscoverySource(Server server, ServerDiscoverySource nextValue)

@@ -33,6 +33,8 @@ public sealed class ServerReadServiceTests
             status: null,
             page: 1,
             pageSize: 1_000,
+            sortBy: ServerReadService.SortByPlayers,
+            sortDirection: ServerReadService.SortDescending,
             refreshMode: ServerReadService.RefreshNoneMode,
             CancellationToken.None);
 
@@ -42,7 +44,7 @@ public sealed class ServerReadServiceTests
     }
 
     [Fact]
-    public async Task GetServersAsync_SortsOnlineFirstThenPlayersDescending()
+    public async Task GetServersAsync_SortsPlayersDescendingByDefault()
     {
         var repository = new InMemoryServerRepository();
         repository.Servers.AddRange(
@@ -87,11 +89,67 @@ public sealed class ServerReadServiceTests
 
         var service = new ServerReadService(repository);
 
-        var result = await service.GetServersAsync(null, null, 1, 25, ServerReadService.RefreshNoneMode, CancellationToken.None);
+        var result = await service.GetServersAsync(
+            null,
+            null,
+            1,
+            25,
+            null,
+            null,
+            ServerReadService.RefreshNoneMode,
+            CancellationToken.None);
 
-        Assert.Equal("online-high.test", result.Items[0].Host);
-        Assert.Equal("online-low.test", result.Items[1].Host);
-        Assert.Equal("offline-high.test", result.Items[2].Host);
+        Assert.Equal("offline-high.test", result.Items[0].Host);
+        Assert.Equal("online-high.test", result.Items[1].Host);
+        Assert.Equal("online-low.test", result.Items[2].Host);
+    }
+
+    [Fact]
+    public async Task GetServersAsync_SortsLocationAscending()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.AddRange(
+        [
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "estonia.test",
+                QueryPort = 28015,
+                Country = "EE",
+                Players = 10,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            },
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "canada.test",
+                QueryPort = 28015,
+                Country = "CA",
+                Players = 50,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            }
+        ]);
+
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(
+            null,
+            null,
+            1,
+            25,
+            ServerReadService.SortByLocation,
+            ServerReadService.SortAscending,
+            ServerReadService.RefreshNoneMode,
+            CancellationToken.None);
+
+        Assert.Equal("canada.test", result.Items[0].Host);
+        Assert.Equal("estonia.test", result.Items[1].Host);
     }
 
     [Fact]
@@ -203,7 +261,7 @@ public sealed class ServerReadServiceTests
         var refreshService = new RecordingServerRefreshService();
         var service = new ServerReadService(repository, refreshService);
 
-        await service.GetServersAsync(null, null, 1, 25, ServerReadService.RefreshPageMode, CancellationToken.None);
+        await service.GetServersAsync(null, null, 1, 25, null, null, ServerReadService.RefreshPageMode, CancellationToken.None);
 
         var refreshBatch = Assert.Single(refreshService.RefreshBatches);
         var refreshedServer = Assert.Single(refreshBatch);
@@ -230,7 +288,7 @@ public sealed class ServerReadServiceTests
         var refreshService = new RecordingServerRefreshService();
         var service = new ServerReadService(repository, refreshService);
 
-        await service.GetServersAsync(null, null, 1, 25, ServerReadService.RefreshAllMode, CancellationToken.None);
+        await service.GetServersAsync(null, null, 1, 25, null, null, ServerReadService.RefreshAllMode, CancellationToken.None);
 
         Assert.Equal(1, refreshService.RefreshAllCallCount);
     }

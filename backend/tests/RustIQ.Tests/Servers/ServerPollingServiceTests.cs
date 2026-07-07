@@ -479,7 +479,20 @@ public sealed class ServerPollingServiceTests
                 null));
         var battleMetricsClient = new FakeBattleMetricsPlayerCountClient(
             new Dictionary<(string Host, int QueryPort), long?> { [("example.test", 28015)] = 42 },
-            new Dictionary<long, BattleMetricsPlayerCountResult?> { [42] = new BattleMetricsPlayerCountResult(42, 77, 200, true, checkedAtUtc) });
+            new Dictionary<long, BattleMetricsPlayerCountResult?>
+            {
+                [42] = new BattleMetricsPlayerCountResult(
+                    42,
+                    77,
+                    200,
+                    true,
+                    Country: null,
+                    Latitude: null,
+                    Longitude: null,
+                    LastWipeAtUtc: null,
+                    NextWipeAtUtc: null,
+                    checkedAtUtc)
+            });
         var service = new ServerPollingService(
             queryClient,
             battleMetricsClient,
@@ -521,6 +534,10 @@ public sealed class ServerPollingServiceTests
             GamePort: null,
             QueryPort: queryPort,
             Country: null,
+            Latitude: null,
+            Longitude: null,
+            LastWipeAtUtc: null,
+            NextWipeAtUtc: null,
             Name: name,
             Map: map,
             Players: players,

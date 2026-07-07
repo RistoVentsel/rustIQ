@@ -15,6 +15,8 @@ public static class ServerEndpoints
             ServerStatus? status,
             int? page,
             int? pageSize,
+            string? sortBy,
+            string? sortDirection,
             string? refresh,
             ServerReadService serverReadService,
             CancellationToken cancellationToken) =>
@@ -24,6 +26,8 @@ public static class ServerEndpoints
                 status,
                 page,
                 pageSize,
+                sortBy,
+                sortDirection,
                 refresh,
                 cancellationToken);
 
