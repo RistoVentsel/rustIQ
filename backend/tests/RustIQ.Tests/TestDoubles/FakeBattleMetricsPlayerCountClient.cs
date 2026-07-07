@@ -6,6 +6,8 @@ internal sealed class FakeBattleMetricsPlayerCountClient : IBattleMetricsPlayerC
 {
     private readonly Dictionary<(string Host, int QueryPort), long?> _idsByEndpoint;
     private readonly Dictionary<long, BattleMetricsPlayerCountResult?> _playerCountsById;
+    public int FindServerIdCallCount { get; private set; }
+    public int GetPlayerCountCallCount { get; private set; }
 
     public FakeBattleMetricsPlayerCountClient()
         : this(
@@ -27,6 +29,8 @@ internal sealed class FakeBattleMetricsPlayerCountClient : IBattleMetricsPlayerC
         int queryPort,
         CancellationToken cancellationToken)
     {
+        FindServerIdCallCount++;
+
         return Task.FromResult(
             _idsByEndpoint.TryGetValue((host, queryPort), out var id)
                 ? id
@@ -37,6 +41,8 @@ internal sealed class FakeBattleMetricsPlayerCountClient : IBattleMetricsPlayerC
         long battleMetricsServerId,
         CancellationToken cancellationToken)
     {
+        GetPlayerCountCallCount++;
+
         return Task.FromResult(
             _playerCountsById.TryGetValue(battleMetricsServerId, out var result)
                 ? result

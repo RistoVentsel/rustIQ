@@ -78,10 +78,26 @@ public sealed class ServerRefreshService(
             return;
         }
 
-        var directoryRefreshResults = await FetchDirectoryPlayerCountsAsync(servers, cancellationToken);
+        Dictionary<Guid, PlayerCountRefreshResult> directoryRefreshResults;
+        var directoryRateLimited = false;
+        try
+        {
+            directoryRefreshResults = await FetchDirectoryPlayerCountsAsync(servers, cancellationToken);
+        }
+        catch (BattleMetricsRateLimitException exception)
+        {
+            directoryRateLimited = true;
+            directoryRefreshResults = BuildDirectoryPlayerCounts(servers, exception.PartialSummaries);
+        }
+
         if (directoryRefreshResults.Count > 0)
         {
             await ApplyPlayerCountRefreshesAsync(directoryRefreshResults, cancellationToken);
+        }
+
+        if (directoryRateLimited)
+        {
+            return;
         }
 
         var serversNotRefreshedFromDirectory = servers
@@ -142,6 +158,13 @@ public sealed class ServerRefreshService(
             return [];
         }
 
+        return BuildDirectoryPlayerCounts(servers, summaries);
+    }
+
+    private static Dictionary<Guid, PlayerCountRefreshResult> BuildDirectoryPlayerCounts(
+        IReadOnlyList<Server> servers,
+        IReadOnlyList<BattleMetricsServerSummary> summaries)
+    {
         var summariesByBattleMetricsId = summaries
             .GroupBy(summary => summary.BattleMetricsServerId)
             .ToDictionary(group => group.Key, group => group.First());

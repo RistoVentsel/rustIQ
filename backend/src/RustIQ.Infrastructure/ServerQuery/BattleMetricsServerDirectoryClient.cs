@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using RustIQ.Application.ServerQuery;
@@ -51,6 +52,13 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
         for (var pageIndex = 0; pageIndex < maxPages && requestUri is not null; pageIndex++)
         {
             using var response = await client.GetAsync(requestUri, cancellationToken);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                throw new BattleMetricsRateLimitException(
+                    results.ToArray(),
+                    response.Headers.RetryAfter?.ToString());
+            }
+
             response.EnsureSuccessStatusCode();
 
             var payload = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: cancellationToken);

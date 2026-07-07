@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using RustIQ.Application.ServerQuery;
 using RustIQ.Domain.Servers;
 using RustIQ.Infrastructure.ServerQuery;
 
@@ -69,6 +70,53 @@ public sealed class BattleMetricsClientTests
         Assert.Equal(28015, server.QueryPort);
         Assert.Equal("GB", server.Country);
         Assert.Equal(ServerPlayerCountSource.BattleMetrics, server.PlayerCountSource);
+    }
+
+    [Fact]
+    public async Task GetRustServerSummariesAsync_ThrowsRateLimitExceptionWithPartialSummaries()
+    {
+        var callCount = 0;
+        using var handler = new StubHttpMessageHandler(_ =>
+        {
+            callCount++;
+            if (callCount == 2)
+            {
+                return new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+            }
+
+            return JsonResponse("""
+                {
+                  "data": [
+                    {
+                      "type": "server",
+                      "id": "42",
+                      "attributes": {
+                        "name": "BattleMetrics Server",
+                        "address": "203.0.113.10:28015",
+                        "ip": "203.0.113.10",
+                        "port": 28015,
+                        "portQuery": 28015,
+                        "players": 77,
+                        "maxPlayers": 200,
+                        "status": "online"
+                      }
+                    }
+                  ],
+                  "links": {
+                    "next": "https://api.battlemetrics.com/servers?filter[game]=rust&page[size]=100&page[offset]=100"
+                  }
+                }
+                """);
+        });
+        var client = new BattleMetricsServerDirectoryClient(new StubHttpClientFactory(handler));
+
+        var exception = await Assert.ThrowsAsync<BattleMetricsRateLimitException>(() =>
+            client.GetRustServerSummariesAsync(100, 20, CancellationToken.None));
+
+        var summary = Assert.Single(exception.PartialSummaries);
+        Assert.Equal(42, summary.BattleMetricsServerId);
+        Assert.Equal(77, summary.Players);
+        Assert.Equal(2, callCount);
     }
 
     private static HttpResponseMessage JsonResponse(string json)

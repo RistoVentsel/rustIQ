@@ -5,11 +5,14 @@ namespace RustIQ.Tests.TestDoubles;
 internal sealed class FakeBattleMetricsServerDirectoryClient : IBattleMetricsServerDirectoryClient
 {
     private readonly IReadOnlyList<BattleMetricsServerSummary> _summaries;
+    private readonly Exception? _exception;
 
     public FakeBattleMetricsServerDirectoryClient(
-        IReadOnlyList<BattleMetricsServerSummary>? summaries = null)
+        IReadOnlyList<BattleMetricsServerSummary>? summaries = null,
+        Exception? exception = null)
     {
         _summaries = summaries ?? [];
+        _exception = exception;
     }
 
     public Task<IReadOnlyList<ConfiguredRustServer>> GetRustServersAsync(
@@ -42,6 +45,11 @@ internal sealed class FakeBattleMetricsServerDirectoryClient : IBattleMetricsSer
         int maxPages,
         CancellationToken cancellationToken)
     {
+        if (_exception is not null)
+        {
+            return Task.FromException<IReadOnlyList<BattleMetricsServerSummary>>(_exception);
+        }
+
         return Task.FromResult(_summaries);
     }
 }

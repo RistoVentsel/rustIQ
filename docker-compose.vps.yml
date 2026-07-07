@@ -39,9 +39,9 @@ services:
       BattleMetricsDiscovery__MaxPages: 20
       BattleMetricsDiscovery__RefreshIntervalMinutes: 10
       BattleMetricsSummaryRefresh__Enabled: "true"
-      BattleMetricsSummaryRefresh__BatchSize: 100
-      BattleMetricsSummaryRefresh__RefreshIntervalSeconds: 30
-      BattleMetricsSummaryRefresh__StaleAfterSeconds: 90
+      BattleMetricsSummaryRefresh__BatchSize: 25
+      BattleMetricsSummaryRefresh__RefreshIntervalSeconds: 120
+      BattleMetricsSummaryRefresh__StaleAfterSeconds: 300
       BattleMetricsSummaryRefresh__RefreshCurrentPlayers: "false"
       BattleMetricsSummaryRefresh__RefreshMapMetadata: "false"
       SnapshotRetention__Enabled: "true"

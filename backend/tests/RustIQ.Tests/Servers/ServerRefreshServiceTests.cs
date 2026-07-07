@@ -220,4 +220,98 @@ public sealed class ServerRefreshServiceTests
         Assert.Equal(checkedAtUtc, server.LastCheckedAtUtc);
         Assert.InRange(server.UpdatedAtUtc, beforeRefreshUtc, afterRefreshUtc);
     }
+
+    [Fact]
+    public async Task RefreshAllServersAsync_StopsPerServerFallbackWhenBattleMetricsDirectoryIsRateLimited()
+    {
+        var checkedAtUtc = DateTimeOffset.Parse("2026-07-07T12:00:00Z");
+        var existingUpdatedAtUtc = checkedAtUtc.AddMinutes(-30);
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = Guid.NewGuid(),
+            BattleMetricsServerId = 42,
+            Host = "203.0.113.10",
+            QueryPort = 28015,
+            Name = "Partial Server",
+            Players = 10,
+            MaxPlayers = 50,
+            Status = ServerStatus.Online,
+            PlayerCountSource = ServerPlayerCountSource.BattleMetrics,
+            CreatedAtUtc = existingUpdatedAtUtc,
+            UpdatedAtUtc = existingUpdatedAtUtc
+        });
+        repository.Servers.Add(new Server
+        {
+            Id = Guid.NewGuid(),
+            BattleMetricsServerId = 43,
+            Host = "203.0.113.11",
+            QueryPort = 28015,
+            Name = "Unfetched Server",
+            Players = 20,
+            MaxPlayers = 100,
+            Status = ServerStatus.Online,
+            PlayerCountSource = ServerPlayerCountSource.BattleMetrics,
+            CreatedAtUtc = existingUpdatedAtUtc,
+            UpdatedAtUtc = existingUpdatedAtUtc
+        });
+        var partialSummaries = new[]
+        {
+            new BattleMetricsServerSummary(
+                42,
+                "Partial Server",
+                "203.0.113.10:28015",
+                "203.0.113.10",
+                28015,
+                28015,
+                "GB",
+                51.5,
+                -0.12,
+                null,
+                null,
+                77,
+                200,
+                true,
+                checkedAtUtc)
+        };
+        var directoryClient = new FakeBattleMetricsServerDirectoryClient(
+            exception: new BattleMetricsRateLimitException(partialSummaries, retryAfter: null));
+        var battleMetricsClient = new FakeBattleMetricsPlayerCountClient(
+            new Dictionary<(string Host, int QueryPort), long?>(),
+            new Dictionary<long, BattleMetricsPlayerCountResult?>
+            {
+                [43] = new BattleMetricsPlayerCountResult(
+                    43,
+                    88,
+                    250,
+                    true,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    checkedAtUtc)
+            });
+        var pollingService = new ServerPollingService(
+            new FakeRustServerQueryClient(),
+            battleMetricsClient,
+            new FakeRustServerMapMetadataClient(),
+            repository);
+        var service = new ServerRefreshService(
+            repository,
+            new FakeRustServerCatalog(),
+            directoryClient,
+            battleMetricsClient,
+            pollingService,
+            battleMetricsDirectoryPageSize: 100,
+            battleMetricsDirectoryMaxPages: 20,
+            TimeSpan.FromSeconds(60));
+
+        await service.RefreshAllServersAsync(CancellationToken.None);
+
+        Assert.Equal(77, repository.Servers.Single(server => server.BattleMetricsServerId == 42).Players);
+        Assert.Equal(20, repository.Servers.Single(server => server.BattleMetricsServerId == 43).Players);
+        Assert.Equal(0, battleMetricsClient.GetPlayerCountCallCount);
+        Assert.Equal(0, battleMetricsClient.FindServerIdCallCount);
+    }
 }
