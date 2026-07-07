@@ -6,4 +6,9 @@ public interface IBattleMetricsServerDirectoryClient
         int pageSize,
         int maxPages,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<BattleMetricsServerSummary>> GetRustServerSummariesAsync(
+        int pageSize,
+        int maxPages,
+        CancellationToken cancellationToken);
 }

@@ -32,8 +32,11 @@ public static class DependencyInjection
             new ServerRefreshService(
                 serviceProvider.GetRequiredService<IServerRepository>(),
                 serviceProvider.GetRequiredService<IRustServerCatalog>(),
+                serviceProvider.GetRequiredService<IBattleMetricsServerDirectoryClient>(),
                 serviceProvider.GetRequiredService<IBattleMetricsPlayerCountClient>(),
                 serviceProvider.GetRequiredService<ServerPollingService>(),
+                serviceProvider.GetRequiredService<IOptions<BattleMetricsDiscoveryOptions>>().Value.PageSize,
+                serviceProvider.GetRequiredService<IOptions<BattleMetricsDiscoveryOptions>>().Value.MaxPages,
                 TimeSpan.FromSeconds(serviceProvider
                     .GetRequiredService<IOptions<RustServerQueryOptions>>()
                     .Value

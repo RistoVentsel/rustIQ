@@ -6,8 +6,11 @@ namespace RustIQ.Application.Servers;
 public sealed class ServerRefreshService(
     IServerRepository serverRepository,
     IRustServerCatalog serverCatalog,
+    IBattleMetricsServerDirectoryClient battleMetricsServerDirectoryClient,
     IBattleMetricsPlayerCountClient battleMetricsPlayerCountClient,
     ServerPollingService serverPollingService,
+    int battleMetricsDirectoryPageSize,
+    int battleMetricsDirectoryMaxPages,
     TimeSpan offlineThreshold) : IServerRefreshService
 {
     private const int PlayerCountRefreshConcurrency = 16;
@@ -75,7 +78,29 @@ public sealed class ServerRefreshService(
             return;
         }
 
-        var refreshResults = await FetchPlayerCountsAsync(servers, cancellationToken);
+        var directoryRefreshResults = await FetchDirectoryPlayerCountsAsync(servers, cancellationToken);
+        if (directoryRefreshResults.Count > 0)
+        {
+            await ApplyPlayerCountRefreshesAsync(directoryRefreshResults, cancellationToken);
+        }
+
+        var serversNotRefreshedFromDirectory = servers
+            .Where(server => !directoryRefreshResults.ContainsKey(server.Id))
+            .ToArray();
+
+        if (serversNotRefreshedFromDirectory.Length == 0)
+        {
+            return;
+        }
+
+        var refreshResults = await FetchPlayerCountsAsync(serversNotRefreshedFromDirectory, cancellationToken);
+        await ApplyPlayerCountRefreshesAsync(refreshResults, cancellationToken);
+    }
+
+    private async Task ApplyPlayerCountRefreshesAsync(
+        IReadOnlyDictionary<Guid, PlayerCountRefreshResult> refreshResults,
+        CancellationToken cancellationToken)
+    {
         if (refreshResults.Count == 0)
         {
             return;
@@ -101,6 +126,60 @@ public sealed class ServerRefreshService(
         }
 
         await serverRepository.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<Dictionary<Guid, PlayerCountRefreshResult>> FetchDirectoryPlayerCountsAsync(
+        IReadOnlyList<Server> servers,
+        CancellationToken cancellationToken)
+    {
+        var summaries = await battleMetricsServerDirectoryClient.GetRustServerSummariesAsync(
+            battleMetricsDirectoryPageSize,
+            battleMetricsDirectoryMaxPages,
+            cancellationToken);
+
+        if (summaries.Count == 0)
+        {
+            return [];
+        }
+
+        var summariesByBattleMetricsId = summaries
+            .GroupBy(summary => summary.BattleMetricsServerId)
+            .ToDictionary(group => group.Key, group => group.First());
+        var summariesByEndpoint = summaries
+            .GroupBy(summary => ServerEndpointKey(summary.Host, summary.QueryPort))
+            .ToDictionary(group => group.Key, group => group.First());
+        var results = new Dictionary<Guid, PlayerCountRefreshResult>();
+
+        foreach (var server in servers)
+        {
+            BattleMetricsServerSummary? summary = null;
+            if (server.BattleMetricsServerId is not null)
+            {
+                summariesByBattleMetricsId.TryGetValue(server.BattleMetricsServerId.Value, out summary);
+            }
+
+            summary ??= summariesByEndpoint.GetValueOrDefault(ServerEndpointKey(server.Host, server.QueryPort));
+            if (summary is null)
+            {
+                continue;
+            }
+
+            results[server.Id] = new PlayerCountRefreshResult(
+                summary.BattleMetricsServerId,
+                new BattleMetricsPlayerCountResult(
+                    summary.BattleMetricsServerId,
+                    summary.Players,
+                    summary.MaxPlayers,
+                    summary.IsOnline,
+                    summary.Country,
+                    summary.Latitude,
+                    summary.Longitude,
+                    summary.LastWipeAtUtc,
+                    summary.NextWipeAtUtc,
+                    summary.CheckedAtUtc));
+        }
+
+        return results;
     }
 
     private async Task<Dictionary<Guid, PlayerCountRefreshResult>> FetchPlayerCountsAsync(
@@ -210,4 +289,9 @@ public sealed class ServerRefreshService(
     private sealed record PlayerCountRefreshResult(
         long BattleMetricsServerId,
         BattleMetricsPlayerCountResult PlayerCount);
+
+    private static string ServerEndpointKey(string host, int queryPort)
+    {
+        return $"{host.Trim().ToLowerInvariant()}:{queryPort}";
+    }
 }

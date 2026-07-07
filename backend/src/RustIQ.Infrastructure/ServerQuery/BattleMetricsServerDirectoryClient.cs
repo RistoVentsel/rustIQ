@@ -14,9 +14,39 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
         int maxPages,
         CancellationToken cancellationToken)
     {
+        var summaries = await GetRustServerSummariesAsync(pageSize, maxPages, cancellationToken);
+
+        return summaries
+            .Select(summary => new ConfiguredRustServer
+            {
+                BattleMetricsServerId = summary.BattleMetricsServerId,
+                Name = summary.Name,
+                Address = summary.Address,
+                Host = summary.Host,
+                GamePort = summary.GamePort,
+                QueryPort = summary.QueryPort,
+                Country = summary.Country,
+                Latitude = summary.Latitude,
+                Longitude = summary.Longitude,
+                LastWipeAtUtc = summary.LastWipeAtUtc,
+                NextWipeAtUtc = summary.NextWipeAtUtc,
+                DiscoverySource = ServerDiscoverySource.BattleMetrics,
+                SummarySource = ServerSummarySource.BattleMetrics,
+                PlayerCountSource = ServerPlayerCountSource.BattleMetrics,
+                PlayerListSource = PlayerListSource.A2S
+            })
+            .ToArray();
+    }
+
+    public async Task<IReadOnlyList<BattleMetricsServerSummary>> GetRustServerSummariesAsync(
+        int pageSize,
+        int maxPages,
+        CancellationToken cancellationToken)
+    {
         var client = httpClientFactory.CreateClient("BattleMetricsApi");
-        var results = new List<ConfiguredRustServer>();
+        var results = new List<BattleMetricsServerSummary>();
         string? requestUri = $"servers?filter[game]=rust&page[size]={pageSize}&sort=rank";
+        var checkedAtUtc = DateTimeOffset.UtcNow;
 
         for (var pageIndex = 0; pageIndex < maxPages && requestUri is not null; pageIndex++)
         {
@@ -38,29 +68,31 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
 
                 var host = GetString(attributes, "ip");
                 var queryPort = GetInt(attributes, "portQuery");
-                if (string.IsNullOrWhiteSpace(host) || queryPort is null)
+                var battleMetricsServerId = GetLong(server, "id");
+                if (battleMetricsServerId is null
+                    || string.IsNullOrWhiteSpace(host)
+                    || queryPort is null)
                 {
                     continue;
                 }
 
-                results.Add(new ConfiguredRustServer
-                {
-                    BattleMetricsServerId = GetLong(server, "id"),
-                    Name = GetString(attributes, "name"),
-                    Address = GetString(attributes, "address"),
-                    Host = host,
-                    GamePort = GetInt(attributes, "port"),
-                    QueryPort = queryPort.Value,
-                    Country = GetString(attributes, "country"),
-                    Latitude = GetLatitude(attributes),
-                    Longitude = GetLongitude(attributes),
-                    LastWipeAtUtc = GetDateTimeOffset(attributes, "details", "rust_last_wipe"),
-                    NextWipeAtUtc = GetDateTimeOffset(attributes, "details", "rust_next_wipe"),
-                    DiscoverySource = ServerDiscoverySource.BattleMetrics,
-                    SummarySource = ServerSummarySource.BattleMetrics,
-                    PlayerCountSource = ServerPlayerCountSource.BattleMetrics,
-                    PlayerListSource = PlayerListSource.A2S
-                });
+                var status = GetString(attributes, "status");
+                results.Add(new BattleMetricsServerSummary(
+                    battleMetricsServerId.Value,
+                    GetString(attributes, "name"),
+                    GetString(attributes, "address"),
+                    host,
+                    GetInt(attributes, "port"),
+                    queryPort.Value,
+                    GetString(attributes, "country"),
+                    GetLatitude(attributes),
+                    GetLongitude(attributes),
+                    GetDateTimeOffset(attributes, "details", "rust_last_wipe"),
+                    GetDateTimeOffset(attributes, "details", "rust_next_wipe"),
+                    GetInt(attributes, "players") ?? 0,
+                    GetInt(attributes, "maxPlayers") ?? 0,
+                    string.Equals(status, "online", StringComparison.OrdinalIgnoreCase),
+                    checkedAtUtc));
             }
 
             requestUri = payload.TryGetProperty("links", out var links)
