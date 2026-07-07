@@ -50,6 +50,7 @@ export async function getJson<T>(path: string, options: RequestOptions = {}): Pr
   const response = await fetch(url, {
     method: 'GET',
     signal: options.signal,
+    cache: 'no-store',
     headers: {
       Accept: 'application/json',
     },

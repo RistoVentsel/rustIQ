@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { ApiError, getServers, serverStatus } from '../api'
@@ -19,7 +19,8 @@ export function ServersPage() {
   const [pageSize, setPageSize] = useState(10)
   const [sortBy, setSortBy] = useState<ServerSortBy>('players')
   const [sortDirection, setSortDirection] = useState<ServerSortDirection>('desc')
-  const refreshOnNextRequestRef = useRef<'all' | null>('all')
+  const [refreshRequestId, setRefreshRequestId] = useState(1)
+  const [lastCompletedRefreshRequestId, setLastCompletedRefreshRequestId] = useState(0)
   const nowMs = useNow()
   const debouncedSearch = useDebouncedValue(searchInput.trim(), 300)
   const statusValue = useMemo(() => {
@@ -34,24 +35,31 @@ export function ServersPage() {
   }, [statusFilter])
 
   const serversQuery = useQuery({
-    queryKey: ['servers', { search: debouncedSearch, status: statusValue, page, pageSize, sortBy, sortDirection }],
-    queryFn: ({ signal }) => {
-      const refresh = refreshOnNextRequestRef.current
-      refreshOnNextRequestRef.current = null
-
-      return getServers(signal, {
+    queryKey: [
+      'servers',
+      { search: debouncedSearch, status: statusValue, page, pageSize, sortBy, sortDirection, refreshRequestId },
+    ],
+    queryFn: ({ signal }) => (
+      getServers(signal, {
         search: debouncedSearch || undefined,
         status: statusValue,
         page,
         pageSize,
         sortBy,
         sortDirection,
-        refresh: refresh ?? undefined,
+        refresh: refreshRequestId === lastCompletedRefreshRequestId ? undefined : 'all',
       })
-    },
+    ),
     staleTime: 0,
     refetchOnMount: 'always',
+    retry: false,
   })
+
+  useEffect(() => {
+    if (serversQuery.isSuccess && !serversQuery.isFetching) {
+      setLastCompletedRefreshRequestId(refreshRequestId)
+    }
+  }, [refreshRequestId, serversQuery.isFetching, serversQuery.isSuccess])
   const serversPageData = serversQuery.data ?? null
   const servers = serversPageData?.items ?? []
   const hasSingleServer = servers.length === 1
@@ -135,10 +143,7 @@ export function ServersPage() {
             <button
               type="button"
               className="button-link button-link--secondary"
-              onClick={() => {
-                refreshOnNextRequestRef.current = 'all'
-                void serversQuery.refetch()
-              }}
+              onClick={() => setRefreshRequestId((current) => current + 1)}
               disabled={serversQuery.isFetching}
             >
               {serversQuery.isFetching ? 'Refreshing...' : 'Refresh'}
