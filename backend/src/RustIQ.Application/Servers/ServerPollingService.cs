@@ -201,16 +201,50 @@ public sealed class ServerPollingService(
     {
         var hasChanges = false;
 
-        hasChanges |= UpdateBattleMetricsServerId(server, configuredServer.BattleMetricsServerId);
-        hasChanges |= UpdateAddress(server, configuredServer.Address);
+        if (configuredServer.BattleMetricsServerId is not null)
+        {
+            hasChanges |= UpdateBattleMetricsServerId(server, configuredServer.BattleMetricsServerId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(configuredServer.Address))
+        {
+            hasChanges |= UpdateAddress(server, configuredServer.Address);
+        }
+
         hasChanges |= UpdateHost(server, configuredServer.Host);
-        hasChanges |= UpdateGamePort(server, configuredServer.GamePort);
+
+        if (configuredServer.GamePort is not null)
+        {
+            hasChanges |= UpdateGamePort(server, configuredServer.GamePort);
+        }
+
         hasChanges |= UpdateQueryPort(server, configuredServer.QueryPort);
-        hasChanges |= UpdateCountry(server, configuredServer.Country);
-        hasChanges |= UpdateLatitude(server, configuredServer.Latitude);
-        hasChanges |= UpdateLongitude(server, configuredServer.Longitude);
-        hasChanges |= UpdateLastWipeAt(server, configuredServer.LastWipeAtUtc);
-        hasChanges |= UpdateNextWipeAt(server, configuredServer.NextWipeAtUtc);
+
+        if (!string.IsNullOrWhiteSpace(configuredServer.Country))
+        {
+            hasChanges |= UpdateCountry(server, configuredServer.Country);
+        }
+
+        if (configuredServer.Latitude is not null)
+        {
+            hasChanges |= UpdateLatitude(server, configuredServer.Latitude);
+        }
+
+        if (configuredServer.Longitude is not null)
+        {
+            hasChanges |= UpdateLongitude(server, configuredServer.Longitude);
+        }
+
+        if (configuredServer.LastWipeAtUtc is not null)
+        {
+            hasChanges |= UpdateLastWipeAt(server, configuredServer.LastWipeAtUtc);
+        }
+
+        if (configuredServer.NextWipeAtUtc is not null)
+        {
+            hasChanges |= UpdateNextWipeAt(server, configuredServer.NextWipeAtUtc);
+        }
+
         hasChanges |= UpdateDiscoverySource(server, configuredServer.DiscoverySource);
         hasChanges |= UpdateSummarySource(server, configuredServer.SummarySource);
         hasChanges |= UpdatePlayerCountSource(server, configuredServer.PlayerCountSource);
@@ -218,6 +252,7 @@ public sealed class ServerPollingService(
         hasChanges |= UpdateLastDiscoveredAt(server, updatedAtUtc);
 
         if (server.LastSeenAtUtc is null
+            && configuredName is not null
             && !string.Equals(server.Name, configuredName, StringComparison.Ordinal))
         {
             server.Name = configuredName;
@@ -420,8 +455,15 @@ public sealed class ServerPollingService(
         return queryResult with
         {
             BattleMetricsServerId = battleMetricsServerId,
+            Country = battleMetricsPlayerCount.Country ?? queryResult.Country,
+            Latitude = battleMetricsPlayerCount.Latitude ?? queryResult.Latitude,
+            Longitude = battleMetricsPlayerCount.Longitude ?? queryResult.Longitude,
+            LastWipeAtUtc = battleMetricsPlayerCount.LastWipeAtUtc ?? queryResult.LastWipeAtUtc,
+            NextWipeAtUtc = battleMetricsPlayerCount.NextWipeAtUtc ?? queryResult.NextWipeAtUtc,
             Players = battleMetricsPlayerCount.Players,
             MaxPlayers = battleMetricsPlayerCount.MaxPlayers,
+            IsOnline = battleMetricsPlayerCount.IsOnline,
+            CheckedAtUtc = battleMetricsPlayerCount.CheckedAtUtc,
             PlayerCountSource = ServerPlayerCountSource.BattleMetrics
         };
     }
@@ -624,6 +666,12 @@ public sealed class ServerPollingService(
 
     private static bool UpdatePlayerCountSource(Server server, ServerPlayerCountSource nextValue)
     {
+        if (server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics
+            && nextValue != ServerPlayerCountSource.BattleMetrics)
+        {
+            return false;
+        }
+
         return UpdateIfDifferent(server.PlayerCountSource, nextValue, value => server.PlayerCountSource = value);
     }
 

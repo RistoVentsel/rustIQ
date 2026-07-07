@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -50,7 +50,6 @@ export function ServersPage() {
     },
     staleTime: 0,
     refetchOnMount: 'always',
-    placeholderData: keepPreviousData,
   })
   const serversPageData = serversQuery.data ?? null
   const servers = serversPageData?.items ?? []
@@ -58,8 +57,9 @@ export function ServersPage() {
   const totalItems = serversPageData?.totalItems ?? 0
   const totalPages = serversPageData ? Math.max(1, Math.ceil(totalItems / serversPageData.pageSize)) : 1
   const hasServersData = Boolean(serversPageData)
-  const isInitialLoading = serversQuery.isLoading && !hasServersData
-  const isBackgroundRefreshing = serversQuery.isFetching && hasServersData
+  const isLoadingServers = serversQuery.isFetching && !hasServersData
+  const isRefreshingServers = serversQuery.isFetching && hasServersData
+  const shouldShowServerData = hasServersData && !serversQuery.isFetching
   const serverListErrorDetail =
     serversQuery.error instanceof ApiError
       ? `${serversQuery.error.message} (${serversQuery.error.url})`
@@ -171,17 +171,17 @@ export function ServersPage() {
           </label>
         </div>
 
-        {isInitialLoading ? (
+        {isLoadingServers ? (
           <StateNotice
-            title="Loading cached server list"
-            description="The homepage is waiting for the backend snapshot from GET /servers."
+            title="Loading server populations"
+            description="Waiting for the backend to return the latest server list."
           />
         ) : null}
 
-        {isBackgroundRefreshing ? (
+        {isRefreshingServers ? (
           <StateNotice
-            title="Refreshing cached server list"
-            description="Showing the current page while the backend snapshot updates in the background."
+            title="Refreshing server populations"
+            description="Reloading every server population and updated timestamp before showing the list again."
           />
         ) : null}
 
@@ -198,7 +198,7 @@ export function ServersPage() {
           />
         ) : null}
 
-        {hasServersData && servers.length > 0 ? (
+        {shouldShowServerData && servers.length > 0 ? (
           (() => {
             const pageData = serversPageData!
 
@@ -227,7 +227,7 @@ export function ServersPage() {
           })()
         ) : null}
 
-        {hasServersData && hasSingleServer ? (
+        {shouldShowServerData && hasSingleServer ? (
           <div className="server-focus">
             <div className="server-focus__content">
               <p className="page-text">
@@ -240,7 +240,7 @@ export function ServersPage() {
           </div>
         ) : null}
 
-        {hasServersData && servers.length > 0 ? (
+        {shouldShowServerData && servers.length > 0 ? (
           <div className="server-list-table" aria-label="Server list">
             <div className="server-list-table__header">
               <span>Name</span>
@@ -274,7 +274,7 @@ export function ServersPage() {
           </div>
         ) : null}
 
-        {hasServersData && servers.length === 0 ? (
+        {shouldShowServerData && servers.length === 0 ? (
           <StateNotice
             title="No servers available"
             description={
@@ -285,7 +285,7 @@ export function ServersPage() {
           />
         ) : null}
 
-        {hasServersData && totalPages > 1 ? (
+        {shouldShowServerData && totalPages > 1 ? (
           <div className="server-list-pagination">
             <button
               type="button"

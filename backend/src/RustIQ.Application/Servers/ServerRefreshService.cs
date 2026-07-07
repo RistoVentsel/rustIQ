@@ -114,8 +114,7 @@ public sealed class ServerRefreshService(
                 try
                 {
                     var battleMetricsServerId = server.BattleMetricsServerId;
-                    if (battleMetricsServerId is null
-                        && server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics)
+                    if (battleMetricsServerId is null)
                     {
                         battleMetricsServerId = await battleMetricsPlayerCountClient.FindServerIdAsync(
                             server.Host,

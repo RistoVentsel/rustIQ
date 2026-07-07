@@ -28,7 +28,7 @@ public sealed class BattleMetricsPlayerCountClient(IHttpClientFactory httpClient
             return null;
         }
 
-        return GetLong(attributes, "id");
+        return GetLong(server, "id");
     }
 
     public async Task<BattleMetricsPlayerCountResult?> GetPlayerCountAsync(

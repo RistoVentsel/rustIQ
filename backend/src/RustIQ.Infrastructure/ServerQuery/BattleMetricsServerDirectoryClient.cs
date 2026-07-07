@@ -45,7 +45,7 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
 
                 results.Add(new ConfiguredRustServer
                 {
-                    BattleMetricsServerId = GetLong(attributes, "id"),
+                    BattleMetricsServerId = GetLong(server, "id"),
                     Name = GetString(attributes, "name"),
                     Address = GetString(attributes, "address"),
                     Host = host,

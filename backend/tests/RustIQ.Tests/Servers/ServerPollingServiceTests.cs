@@ -93,6 +93,51 @@ public sealed class ServerPollingServiceTests
     }
 
     [Fact]
+    public async Task EnsureConfiguredServersExistAsync_DoesNotDowngradeBattleMetricsIdentityFromSteamDiscovery()
+    {
+        var lastWipeAtUtc = DateTimeOffset.Parse("2026-07-07T08:00:00Z");
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = Guid.NewGuid(),
+            BattleMetricsServerId = 42,
+            Host = "one.test",
+            QueryPort = 28015,
+            Country = "GB",
+            LastWipeAtUtc = lastWipeAtUtc,
+            PlayerCountSource = ServerPlayerCountSource.BattleMetrics,
+            Status = ServerStatus.Online,
+            LastSeenAtUtc = DateTimeOffset.UtcNow.AddSeconds(-5),
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
+            UpdatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1)
+        });
+        var service = new ServerPollingService(
+            new FakeRustServerQueryClient(),
+            new FakeBattleMetricsPlayerCountClient(),
+            new FakeRustServerMapMetadataClient(),
+            repository);
+
+        await service.EnsureConfiguredServersExistAsync(
+            [
+                new ConfiguredRustServer
+                {
+                    Host = "one.test",
+                    QueryPort = 28015,
+                    DiscoverySource = ServerDiscoverySource.Steam,
+                    SummarySource = ServerSummarySource.A2S,
+                    PlayerCountSource = ServerPlayerCountSource.A2S
+                }
+            ],
+            CancellationToken.None);
+
+        var server = Assert.Single(repository.Servers);
+        Assert.Equal(42, server.BattleMetricsServerId);
+        Assert.Equal(ServerPlayerCountSource.BattleMetrics, server.PlayerCountSource);
+        Assert.Equal("GB", server.Country);
+        Assert.Equal(lastWipeAtUtc, server.LastWipeAtUtc);
+    }
+
+    [Fact]
     public async Task PollConfiguredServerAsync_StoresLatestStateSnapshotMapMetadataAndCurrentPlayers()
     {
         var configuredServer = new ConfiguredRustServer
