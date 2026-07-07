@@ -1,669 +1,288 @@
 # RustIQ Backend Step-by-Step Plan
 
-This plan focuses only on the backend. The goal is to build the smallest useful backend proof first:
+This plan assumes the original one-server MVP is already done and verified locally.
 
-> Query one Rust server, return its live player count and map metadata through an API, then push updates through SignalR.
+What already works:
 
-Frontend work, branding, domain buying, VPS setup, and UI design are intentionally out of scope for this document.
+- PostgreSQL persistence works
+- Cached REST endpoints exist
+- SignalR live updates exist
+- The frontend can open one server page and watch updates live
 
-## Phase 0: Architecture and Backend Scope
+The backend direction has now changed based on a real product constraint:
 
-Use a clean onion-style backend, not a flat single-project API and not old-school `BLL` / `DAL` folder naming.
+> Raw A2S server summary data is not reliable enough to be the primary source for a large Rust server directory.
 
-For RustIQ, clean onion is the better choice because the backend will quickly have several separate concerns:
+For RustIQ, the backend should now use this model:
 
-- Rust server query protocol code.
-- Database persistence.
-- Background polling.
-- REST API endpoints.
-- SignalR live updates.
-- Rust map metadata enrichment, including seed, size, RustMaps link, and map thumbnail.
-- Business rules for online/offline status and snapshots.
+- BattleMetrics as the upstream source for server discovery and summary population
+- RustIQ PostgreSQL as the product source of truth
+- A2S only where it remains useful
+- RCON later where available, not as a requirement for the public directory
 
-The project should use these layers:
+That means:
 
-```text
-backend/
-  RustIQ.sln
-  src/
-    RustIQ.Api/
-    RustIQ.Application/
-    RustIQ.Domain/
-    RustIQ.Infrastructure/
-  tests/
-    RustIQ.Tests/
-```
+- server list population and cached summary data should come from BattleMetrics-backed ingestion
+- player names can still come from A2S where possible
+- RustIQ should not depend on BattleMetrics page rendering or frontend websocket behavior
+- RustIQ should own its own storage, API, refresh cadence, and user-facing read model
 
-Layer responsibilities:
+The next backend goal is:
 
-- `RustIQ.Domain`: core entities, enums, and domain rules. This is the cleanest part of the app and should not depend on ASP.NET Core, EF Core, PostgreSQL, SignalR, or Steam query packages.
-- `RustIQ.Application`: use cases, service interfaces, DTOs, and business workflow logic. This is the modern equivalent of a `BLL` layer.
-- `RustIQ.Infrastructure`: EF Core database access, repository implementations, PostgreSQL setup, Steam server query implementation, and external service code. This is the modern equivalent of a `DAL` layer.
-- `RustIQ.Api`: ASP.NET Core startup, dependency injection, REST endpoints, SignalR hubs, hosted workers, configuration, and HTTP-facing request/response models.
-- `RustIQ.Tests`: tests for domain rules, application services, and API behavior.
+> Build a scalable Rust server summary backend that can ingest and store large numbers of Rust servers using BattleMetrics as the upstream directory source.
 
-Dependency direction:
+## Phase 0: Lock the New Product/Data Direction
 
-```text
-RustIQ.Api            -> RustIQ.Application, RustIQ.Infrastructure
-RustIQ.Infrastructure -> RustIQ.Application, RustIQ.Domain
-RustIQ.Application    -> RustIQ.Domain
-RustIQ.Domain         -> no RustIQ project dependencies
-```
+The backend should now be explicit about source roles:
 
-Do not put business logic directly in controllers or SignalR hubs. Controllers and hubs should call application services. Do not put EF Core or PostgreSQL code in `Domain` or `Application`; keep that in `Infrastructure`.
+- `BattleMetrics`: discovery and server summary source
+- `A2S`: optional current-player-list source and diagnostic source
+- `RCON`: future premium/high-accuracy source when available
+- `PostgreSQL`: RustIQ’s own source of truth for serving the product
 
-Build the backend in this order:
+Important product rules:
 
-1. Create the clean onion solution structure.
-2. Add a Steam server query service behind an application interface.
-3. Query one hardcoded Rust server.
-4. Expose one test API endpoint.
-5. Add Rust map metadata enrichment for the configured server.
-6. Add PostgreSQL.
-7. Store latest server state, map metadata, and snapshots.
-8. Add background polling.
-9. Add normal REST endpoints.
-10. Add SignalR live updates for one watched server.
-11. Add basic tests and local run instructions.
+- The frontend must still read only from RustIQ APIs
+- RustIQ should cache, store, and serve summary data from its own database
+- RustIQ should not rely on BattleMetrics frontend pages
+- RustIQ should not rely on undocumented BattleMetrics websocket internals
+- RustIQ should not pretend all servers have equally trustworthy player-list data
 
-Keep the architecture clean, but keep the implementation small. The goal is not enterprise complexity; the goal is to avoid mixing database code, Steam query code, business rules, and API endpoints into one messy project.
+Do not build:
 
-## Phase 1: Create the Backend Solution Structure
-
-Work from the repository root:
-
-```powershell
-cd C:\Users\test\rustIQ
-cd backend
-dotnet new sln -n RustIQ
-mkdir src
-mkdir tests
-dotnet new classlib -n RustIQ.Domain -o .\src\RustIQ.Domain
-dotnet new classlib -n RustIQ.Application -o .\src\RustIQ.Application
-dotnet new classlib -n RustIQ.Infrastructure -o .\src\RustIQ.Infrastructure
-dotnet new webapi -n RustIQ.Api -o .\src\RustIQ.Api
-dotnet sln add .\src\RustIQ.Domain\RustIQ.Domain.csproj
-dotnet sln add .\src\RustIQ.Application\RustIQ.Application.csproj
-dotnet sln add .\src\RustIQ.Infrastructure\RustIQ.Infrastructure.csproj
-dotnet sln add .\src\RustIQ.Api\RustIQ.Api.csproj
-dotnet add .\src\RustIQ.Application reference .\src\RustIQ.Domain
-dotnet add .\src\RustIQ.Infrastructure reference .\src\RustIQ.Application
-dotnet add .\src\RustIQ.Infrastructure reference .\src\RustIQ.Domain
-dotnet add .\src\RustIQ.Api reference .\src\RustIQ.Application
-dotnet add .\src\RustIQ.Api reference .\src\RustIQ.Infrastructure
-```
-
-Expected structure after this phase:
-
-```text
-backend/
-  RustIQ.sln
-  src/
-    RustIQ.Api/
-      RustIQ.Api.csproj
-      Program.cs
-      appsettings.json
-      appsettings.Development.json
-    RustIQ.Application/
-      RustIQ.Application.csproj
-    RustIQ.Domain/
-      RustIQ.Domain.csproj
-    RustIQ.Infrastructure/
-      RustIQ.Infrastructure.csproj
-  tests/
-```
-
-Recommended folder layout as the backend grows:
-
-```text
-backend/
-  src/
-    RustIQ.Api/
-      Endpoints/
-      Realtime/
-      Workers/
-      Program.cs
-      appsettings.json
-      appsettings.Development.json
-    RustIQ.Application/
-      Maps/
-      Realtime/
-      ServerQuery/
-      Servers/
-    RustIQ.Domain/
-      Maps/
-      Servers/
-    RustIQ.Infrastructure/
-      Data/
-      DependencyInjection.cs
-      Maps/
-      ServerQuery/
-      Servers/
-  tests/
-    RustIQ.Tests/
-```
-
-Use `Application` instead of a `BLL` directory. Use `Infrastructure` instead of a `DAL` directory. The responsibilities are the same idea, but the names are cleaner and more common in modern .NET projects.
-
-Then run:
-
-```powershell
-dotnet run --project .\src\RustIQ.Api
-```
-
-Confirm the default API starts locally. If HTTPS causes friction during early testing, use the HTTP URL shown by `dotnet run`.
+- Authentication
+- Admin dashboard
+- Billing
+- Content systems
+- Manual one-by-one server overrides as the main scaling strategy
 
 Done when:
 
-- `dotnet build` succeeds.
-- The API starts locally.
-- Swagger or the default OpenAPI endpoint loads.
+- The backend roadmap is centered on scalable ingestion and cached serving, not direct live querying of every server page.
 
-## Phase 2: Decide the First Rust Server to Query
+## Phase 1: Introduce Explicit Source Roles in the Model
 
-Pick one known Rust server and keep it configurable. Do not hardcode it directly inside the query logic.
+Right now the code has server polling behavior, but the data-source model should be made explicit.
 
-Add this to `src/RustIQ.Api/appsettings.Development.json`:
+Add explicit source concepts such as:
 
-```json
-{
-  "RustServerQuery": {
-    "Host": "CHANGE_ME",
-    "QueryPort": 28015,
-    "TimeoutMilliseconds": 3000
-  }
-}
-```
+- `ServerSummarySource`
+- `PlayerListSource`
+- optionally `DataQuality`
+- optionally `LastValidationReason`
+
+Recommended enum values:
+
+- `BattleMetrics`
+- `A2S`
+- `Rcon`
+- `Unknown`
+
+Recommended first use:
+
+- all ingested public directory servers default to `ServerSummarySource = BattleMetrics`
+- `PlayerListSource = A2S` for now
+
+Do not over-model yet:
+
+- no per-field source tracking yet
+- no giant scoring engine yet
+
+Done when:
+
+- The backend can say where a server’s summary data came from.
+
+## Phase 2: Separate Summary Ingestion from Player-List Querying
+
+The current backend logic mixes “server summary” and “player list” behavior too closely.
+
+Refactor the backend into two clearly separate flows:
+
+1. Summary ingestion flow
+   - source: BattleMetrics
+   - purpose: name, host, ports, status, players, max players, map summary, timestamps
+
+2. Optional player-list enrichment flow
+   - source: A2S
+   - purpose: current player names when available
+
+Rules:
+
+- The list page and summary APIs should not depend on A2S
+- If A2S player-list enrichment fails, server summary data should still remain valid
+- Summary ingestion must scale independently from player-list enrichment
+
+Done when:
+
+- RustIQ can continue serving valid server summaries even if A2S player queries are weak or unavailable.
+
+## Phase 3: Build BattleMetrics Discovery Ingestion
+
+Move from a tiny manual server list toward scalable ingestion.
+
+Implement a BattleMetrics-backed discovery/import worker or service that can:
+
+1. Fetch Rust servers from BattleMetrics
+2. Read server summary fields
+3. Upsert them into RustIQ
+4. Store enough identity information to refresh them later
+
+Useful fields to ingest:
+
+- BattleMetrics server id
+- Name
+- Address/hostname if present
+- IP
+- Game port
+- Query port
+- Players
+- Max players
+- Status
+- Country if useful
+- Map name if present
+- Last BattleMetrics update timestamp if present
 
 Important:
 
-- Rust game ports and query ports can differ by server.
-- Start with one server that is known to be online.
-- Keep timeout short. A slow or dead server should not hang the API.
+- RustIQ should store BattleMetrics server id as an upstream identifier
+- Host + query port still matter, but BattleMetrics id should be treated as a stable upstream key when available
 
 Done when:
 
-- The selected server host and query port are stored in configuration.
-- The backend can read these values using the options pattern.
+- RustIQ can import more than a hand-written server list.
 
-## Phase 3: Add Steam Server Query Support
+## Phase 4: Add BattleMetrics Identity Fields to Persistence
 
-The backend needs to speak the Steam server query protocol. Do not write low-level UDP parsing first unless no package works.
+The current database model is still shaped around host/query-port only.
 
-First try a NuGet package that supports A2S server info and player queries. Search for packages around:
+Add persistence support for upstream identity such as:
 
-- `A2S`
-- `SteamQuery`
-- `SteamServerQuery`
-- `SourceQuery`
+- `BattleMetricsServerId`
+- optional `Address`
+- optional `GamePort`
+- optional `Country`
+- optional `SummarySource`
 
-Example install command, using the package that you verify works:
+Keep the existing core fields:
 
-```powershell
-dotnet add .\src\RustIQ.Infrastructure package PACKAGE_NAME
-```
+- Host
+- QueryPort
+- Name
+- Players
+- MaxPlayers
+- Status
+- timestamps
 
-Create these backend types:
+Migration goals:
 
-```text
-RustIQ.Application/
-  ServerQuery/
-    RustServerQueryOptions.cs
-    RustServerQueryResult.cs
-    RustServerPlayerResult.cs
-    IRustServerQueryClient.cs
-RustIQ.Infrastructure/
-  ServerQuery/
-    SteamRustServerQueryClient.cs
-```
-
-`RustServerQueryOptions` should contain:
-
-- `Host`
-- `QueryPort`
-- `TimeoutMilliseconds`
-
-`RustServerQueryResult` should contain:
-
-- `Host`
-- `QueryPort`
-- `Name`
-- `Map`
-- `Players`
-- `MaxPlayers`
-- `IsOnline`
-- `PingMilliseconds`
-- `CheckedAtUtc`
-- `Error`
-
-`RustServerPlayerResult` should contain:
-
-- `Name`
-- `Score`
-- `DurationSeconds`
-
-`IRustServerQueryClient` should expose:
-
-```csharp
-Task<RustServerQueryResult> QueryServerAsync(CancellationToken cancellationToken);
-Task<IReadOnlyList<RustServerPlayerResult>> QueryPlayersAsync(CancellationToken cancellationToken);
-```
-
-Implementation rules:
-
-- Catch query failures and return `IsOnline = false` instead of crashing the API.
-- Include the error message internally for debugging.
-- Use UTC timestamps only.
-- Treat player names as optional because some Rust servers may not return them.
-- Keep the Steam query NuGet package inside `RustIQ.Infrastructure`.
-- Keep `IRustServerQueryClient` inside `RustIQ.Application` so application services depend on an interface, not on a specific Steam query package.
+- existing data should remain usable
+- new ingested servers should be keyed and updated safely
 
 Done when:
 
-- The query client can ask one configured server for name, player count, max players, and map if available.
-- Failed queries return a controlled offline result.
+- RustIQ can persist and re-identify upstream BattleMetrics servers cleanly.
 
-## Phase 4: Add the First Test Endpoint
+## Phase 5: Replace Tiny Manual Multi-Server Polling with Summary Refresh by Upstream Identity
 
-Add a temporary proof endpoint:
+Once BattleMetrics discovery exists, the backend should stop pretending the primary problem is polling a tiny config list forever.
 
-```http
-GET /debug/query-server
-```
+Instead, summary refresh should be:
 
-It should:
+- based on stored RustIQ servers
+- refreshed from BattleMetrics using upstream identity
+- updated on a worker cadence appropriate for a directory product
 
-1. Call `IRustServerQueryClient.QueryServerAsync`.
-2. Return the query result as JSON.
-3. Not use the database yet.
+Recommended behavior:
 
-Example response:
+- recent/high-interest servers can refresh more often later
+- initial version can use a simple batch refresh cadence
 
-```json
-{
-  "host": "example.server.host",
-  "queryPort": 28015,
-  "name": "Rust Server Name",
-  "map": "Procedural Map",
-  "players": 123,
-  "maxPlayers": 250,
-  "isOnline": true,
-  "pingMilliseconds": 42,
-  "checkedAtUtc": "2026-07-06T12:00:00Z",
-  "error": null
-}
-```
+Do not do this yet:
 
-Also add:
-
-```http
-GET /debug/query-players
-```
-
-It should:
-
-1. Call `IRustServerQueryClient.QueryPlayersAsync`.
-2. Return player names if available.
-3. Return an empty list or a clear unavailable state if the query fails.
+- query every server directly via A2S for summary data
+- force full-directory real-time updates for every client
 
 Done when:
 
-- `/debug/query-server` returns live data from one Rust server.
-- `/debug/query-players` either returns current players or fails gracefully.
-- `dotnet build` still succeeds.
+- RustIQ summary freshness is driven by ingestion/refresh jobs, not per-page direct queries.
 
-## Phase 5: Add Rust Map Metadata Support
+## Phase 6: Keep A2S Only for What It Still Does Well Enough
 
-BattleMetrics shows useful map information for Rust servers, including seed, size, map name, a map preview image, and a RustMaps link. RustIQ should support a similar backend data shape, but do not include entity count or monument count in the MVP.
+A2S should now have a narrower role.
 
-The first backend implementation should treat map data as metadata enrichment separate from the Steam A2S query:
+Use A2S for:
 
-- Steam A2S query remains responsible for live server name, map name, player count, max players, and online/offline status.
-- Map metadata enrichment is responsible for Rust-specific map details such as seed, world size, RustMaps URL, thumbnail URL, and source update time.
+- current player list when available
+- optional diagnostics/comparison
+- maybe direct detail enrichment later
 
-Create these backend types:
+Do not use A2S as the primary truth for:
 
-```text
-RustIQ.Application/
-  Maps/
-    RustServerMapMetadata.cs
-    IRustServerMapMetadataClient.cs
-RustIQ.Infrastructure/
-  Maps/
-    BattleMetricsRustServerMapMetadataClient.cs
-```
+- large-scale directory player counts
+- universal server summary population
 
-`RustServerMapMetadata` should contain:
+Important behavior:
 
-- `Host`
-- `QueryPort`
-- `MapName`
-- `Seed`
-- `Size`
-- `RustMapsUrl`
-- `ThumbnailUrl`
-- `MapFileUrl`
-- `Source`
-- `SourceUpdatedAtUtc`
-- `FetchedAtUtc`
-- `Error`
-
-`IRustServerMapMetadataClient` should expose:
-
-```csharp
-Task<RustServerMapMetadata> GetMapMetadataAsync(CancellationToken cancellationToken);
-```
-
-Initial implementation approach:
-
-1. Use the configured server host and query port.
-2. Call the public BattleMetrics API to find the matching Rust server.
-3. Read map values from the Rust server details if available.
-4. Return a controlled result with `Error` populated if map metadata is unavailable.
-
-The useful BattleMetrics/RustMaps fields are:
-
-- `details.map`
-- `details.rust_world_seed`
-- `details.rust_world_size`
-- `details.rust_maps.url`
-- `details.rust_maps.thumbnailUrl`
-- `details.rust_maps.mapUrl`
-- `details.rust_maps.updatedAt`
-
-Do not store or expose these in the MVP:
-
-- Entity count.
-- Monument count.
-- Full monument list.
-
-Also add a temporary proof endpoint:
-
-```http
-GET /debug/query-map
-```
-
-It should:
-
-1. Call `IRustServerMapMetadataClient.GetMapMetadataAsync`.
-2. Return the map metadata as JSON.
-3. Not use the database yet.
-
-Example response:
-
-```json
-{
-  "host": "example.server.host",
-  "queryPort": 28015,
-  "mapName": "Moose Maps",
-  "seed": 1337,
-  "size": 4500,
-  "rustMapsUrl": "https://rustmaps.com/map/9cf336e898d94633920c5ecf2da9afc9",
-  "thumbnailUrl": "https://content.rustmaps.com/maps/286/9cf336e898d94633920c5ecf2da9afc9/thumbnail.webp",
-  "mapFileUrl": "https://maps.rustmaps.com/286/9cf336e898d94633920c5ecf2da9afc9/4500_example.map",
-  "source": "BattleMetrics",
-  "sourceUpdatedAtUtc": "2026-07-06T14:21:07.995Z",
-  "fetchedAtUtc": "2026-07-06T15:00:00Z",
-  "error": null
-}
-```
-
-Frontend note for later:
-
-- Show seed, size, map name, and the map thumbnail.
-- Make the thumbnail and/or a text link open `rustMapsUrl`.
-- Do not show entity count or monument count.
-- If thumbnail is unavailable, show the map name and RustMaps link without a broken image.
+- if A2S player names fail, do not degrade summary correctness
+- if A2S data looks suspicious, keep it out of the main summary model
 
 Done when:
 
-- `/debug/query-map` returns map metadata for the configured server when available.
-- Missing metadata returns a controlled response instead of crashing the API.
-- `dotnet build` still succeeds.
+- A2S is an enrichment source, not the backbone of the public directory.
 
-## Phase 6: Add PostgreSQL Locally
+## Phase 7: Add BattleMetrics Batch Refresh Strategy
 
-Add a `docker-compose.yml` at the repository root, not inside `backend/`, because it will eventually serve both backend and frontend development:
+Once servers are ingested, build a refresh loop for summary data.
 
-```yaml
-services:
-  postgres:
-    image: postgres:16
-    container_name: rustiq-postgres
-    environment:
-      POSTGRES_DB: rustiq
-      POSTGRES_USER: rustiq
-      POSTGRES_PASSWORD: rustiq_dev_password
-    ports:
-      - "5432:5432"
-    volumes:
-      - rustiq-postgres-data:/var/lib/postgresql/data
+The backend should support:
 
-volumes:
-  rustiq-postgres-data:
-```
+- refreshing stored servers in batches
+- protecting against huge refresh bursts
+- pacing requests so RustIQ can scale up
 
-Start it:
+Design goals:
 
-```powershell
-docker compose up -d postgres
-```
+- avoid naively refreshing every stored server every few seconds
+- start with predictable batch windows
+- later prioritize high-population or recently-viewed servers
 
-Add EF Core packages:
+Useful controls:
 
-```powershell
-dotnet add .\backend\src\RustIQ.Infrastructure package Microsoft.EntityFrameworkCore
-dotnet add .\backend\src\RustIQ.Infrastructure package Npgsql.EntityFrameworkCore.PostgreSQL
-dotnet add .\backend\src\RustIQ.Infrastructure package Microsoft.EntityFrameworkCore.Design
-```
-
-Add connection string to `backend/src/RustIQ.Api/appsettings.Development.json`:
-
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Port=5432;Database=rustiq;Username=rustiq;Password=rustiq_dev_password"
-  }
-}
-```
-
-If host port `5432` is already occupied locally, keep the container port as `5432` and use another host port such as `5433`:
-
-```yaml
-ports:
-  - "5433:5432"
-```
-
-Then set the development connection string to:
-
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Port=5433;Database=rustiq;Username=rustiq;Password=rustiq_dev_password"
-  }
-}
-```
+- batch size
+- refresh interval
+- stale threshold
+- optional prioritization rules later
 
 Done when:
 
-- PostgreSQL runs in Docker.
-- The API can connect to PostgreSQL.
-- EF Core is registered through an infrastructure dependency injection method, then called from `RustIQ.Api/Program.cs`.
+- RustIQ can refresh many servers without turning the worker into a constant hammer.
 
-## Phase 7: Create the First Data Model
+## Phase 8: Add Data Quality and Validation Signals
 
-Create:
+Because upstream data sources vary in quality, record simple validation signals.
 
-```text
-RustIQ.Domain/
-  Servers/
-    Server.cs
-    ServerSnapshot.cs
-    ServerStatus.cs
-    ServerPlayerCurrent.cs
-    ServerMapMetadata.cs
-RustIQ.Infrastructure/
-  Data/
-    RustIqDbContext.cs
-    EntityTypeConfigurations if needed later
-```
+Examples:
 
-`Server` fields:
+- `PlayersExceedMaxPlayers`
+- `SummarySourceUnavailable`
+- `PlayerListUnavailable`
+- `IdentityConflict`
+- `A2SDetailMismatch`
 
-- `Id`
-- `Host`
-- `QueryPort`
-- `Name`
-- `Map`
-- `Players`
-- `MaxPlayers`
-- `Status`
-- `LastSeenAtUtc`
-- `LastCheckedAtUtc`
-- `CreatedAtUtc`
-- `UpdatedAtUtc`
+Do not build a giant scoring engine yet.
 
-`ServerSnapshot` fields:
+First pass:
 
-- `Id`
-- `ServerId`
-- `CheckedAtUtc`
-- `Players`
-- `MaxPlayers`
-- `IsOnline`
-- `PingMilliseconds`
-
-`ServerPlayerCurrent` fields:
-
-- `Id`
-- `ServerId`
-- `PlayerName`
-- `Score`
-- `DurationSeconds`
-- `SeenAtUtc`
-
-`ServerMapMetadata` fields:
-
-- `Id`
-- `ServerId`
-- `MapName`
-- `Seed`
-- `Size`
-- `RustMapsUrl`
-- `ThumbnailUrl`
-- `MapFileUrl`
-- `Source`
-- `SourceUpdatedAtUtc`
-- `FetchedAtUtc`
-- `CreatedAtUtc`
-- `UpdatedAtUtc`
-
-`ServerStatus` values:
-
-- `Online`
-- `Offline`
-- `Unknown`
-
-Important database rules:
-
-- Store latest server state in `servers`.
-- Store latest map metadata in `server_map_metadata`.
-- Store time-series rows in `server_snapshots`.
-- Store current player names only as temporary current state.
-- Do not delete a server just because it goes offline.
-- Do not permanently track player history in the MVP.
-- Do not store entity count, monument count, or the full monument list in the MVP.
-
-Create the first migration:
-
-```powershell
-dotnet ef migrations add InitialCreate --project .\backend\src\RustIQ.Infrastructure --startup-project .\backend\src\RustIQ.Api
-dotnet ef database update --project .\backend\src\RustIQ.Infrastructure --startup-project .\backend\src\RustIQ.Api
-```
+- store a small quality/status field or last validation reason
+- use it for debugging and future filtering
 
 Done when:
 
-- Database tables exist.
-- The model can store one server, map metadata, and snapshots.
+- RustIQ can flag suspicious server data instead of silently treating all rows as equal.
 
-## Phase 8: Save Query Results
+## Phase 9: Keep the Cached API Read Model Stable
 
-Create:
-
-```text
-RustIQ.Application/
-  Servers/
-    IServerRepository.cs
-    ServerPollingService.cs
-    ServerDto.cs
-    ServerSnapshotDto.cs
-    CurrentPlayerDto.cs
-    ServerMapMetadataDto.cs
-RustIQ.Infrastructure/
-  Servers/
-    ServerRepository.cs
-```
-
-`ServerPollingService` should:
-
-1. Query the configured Rust server.
-2. Find or create a `Server` row by `Host` and `QueryPort`.
-3. Update the latest server state.
-4. Query and update map metadata when available.
-5. Insert a `ServerSnapshot` row.
-6. If player names are available, replace current players for that server.
-7. Save changes.
-
-Offline behavior:
-
-- If one query fails, update `LastCheckedAtUtc`.
-- Do not immediately erase `LastSeenAtUtc`.
-- Mark offline only after repeated failures or after `LastSeenAtUtc` is older than a chosen threshold, such as 60 seconds for the MVP.
-
-Done when:
-
-- Calling a service method once stores or updates one server.
-- Map metadata is stored or updated for that server when available.
-- A snapshot row is added each time the query runs.
-- Offline query failures do not delete data.
-
-## Phase 9: Add Background Polling
-
-Create a hosted service:
-
-```text
-RustIQ.Api/
-  Workers/
-    ServerPollingWorker.cs
-```
-
-The first worker can poll only the configured server.
-
-Initial polling intervals:
-
-- Server info and player count: every 5 seconds.
-- Current player names: every 30 seconds.
-- Map metadata refresh: every 5-15 minutes, because seed/size/map image changes much less often than player counts.
-
-Implementation notes:
-
-- Use `BackgroundService`.
-- Use `PeriodicTimer`.
-- Create a scoped service provider inside each polling cycle.
-- Log failures without crashing the process.
-- Do not allow overlapping polls. If one poll is still running, skip the next tick.
-
-Done when:
-
-- Starting the API automatically polls the configured server.
-- The database receives snapshots every few seconds.
-- The database refreshes map metadata periodically without querying it every 5 seconds.
-- Logs show successful query checks or controlled failures.
-
-## Phase 10: Add Backend REST Endpoints
-
-Replace temporary debug-only behavior with real read endpoints:
+The frontend contract should still stay simple:
 
 ```http
 GET /servers
@@ -673,148 +292,65 @@ GET /servers/{id}/players
 GET /servers/{id}/map
 ```
 
-`GET /servers` should support:
+The difference is where the data came from internally:
 
-- `search`
-- `status`
-- `page`
-- `pageSize`
-
-For the MVP:
-
-- Sort online servers first.
-- Then sort by players descending.
-- Limit `pageSize` to a reasonable maximum, such as 100.
-
-`GET /servers/{id}` should return:
-
-- Latest known server data.
-- `updatedSecondsAgo`.
-- `lastSeenSecondsAgo`.
-- Summary map metadata if available, including map name, seed, size, RustMaps URL, and thumbnail URL.
-
-`GET /servers/{id}/snapshots` should support:
-
-- `from`
-- `to`
-- `limit`
-
-For the MVP, return the latest 100-500 snapshots if no range is supplied.
-
-`GET /servers/{id}/players` should return:
-
-- Current player names if available.
-- A timestamp showing when they were last refreshed.
-
-`GET /servers/{id}/map` should return:
-
-- Map name.
-- Seed.
-- Size.
-- RustMaps URL.
-- Thumbnail URL.
-- Map file URL if available.
-- Source update timestamp.
-- Fetch timestamp.
-
-Done when:
-
-- The API can serve stored server data without querying the Rust server during each request.
-- Server list requests are database reads only.
-- Detail page requests return cached data quickly.
-- Map metadata requests are database reads only.
-
-## Phase 11: Add SignalR Live Server Updates
-
-ASP.NET Core Web API projects already use the ASP.NET Core shared framework, so a separate SignalR server package is usually not needed. If the compiler cannot resolve SignalR types, then add the package to the API project:
-
-```powershell
-dotnet add .\backend\src\RustIQ.Api package Microsoft.AspNetCore.SignalR
-```
-
-Create:
-
-```text
-RustIQ.Api/
-  Realtime/
-    ServerUpdatesHub.cs
-RustIQ.Application/
-  Realtime/
-    ServerUpdateMessage.cs
-```
-
-Map the hub:
-
-```http
-/hubs/servers
-```
-
-Hub methods:
-
-```csharp
-Task WatchServer(Guid serverId);
-Task UnwatchServer(Guid serverId);
-```
-
-Use SignalR groups:
-
-- Group name: `server:{serverId}`
-- When a client watches a server, add it to that server group.
-- When a client stops watching, remove it from that group.
-
-When `ServerPollingWorker` stores a new result:
-
-1. Build a `ServerUpdateMessage`.
-2. Send it to `server:{serverId}`.
-3. Include player count, max players, status, checked time, and updated seconds ago.
-4. Include map name, seed, size, RustMaps URL, and thumbnail URL when available.
+- `GET /servers` should now serve BattleMetrics-ingested summary data from PostgreSQL
+- `GET /servers/{id}/players` can still serve A2S-derived player lists when available
 
 Important:
 
-- Do not make every client query the Rust server.
-- The worker queries the Rust server once.
-- SignalR broadcasts the result to all clients watching that server.
+- frontend consumers should not need to know whether data came from BattleMetrics or A2S unless you explicitly choose to expose source metadata
 
 Done when:
 
-- A SignalR client can connect to `/hubs/servers`.
-- A client can call `WatchServer(serverId)`.
-- The backend broadcasts updated player counts every few seconds.
-- The backend can include map metadata in update messages without requiring clients to call BattleMetrics or RustMaps directly.
+- RustIQ APIs remain stable while internal source strategy changes.
 
-## Phase 12: Add Basic Tests
+## Phase 10: Define Snapshot Retention and Growth Rules
 
-Create a test project:
+As the number of tracked servers grows, snapshot volume matters much more.
 
-```powershell
-cd C:\Users\test\rustIQ\backend
-dotnet new xunit -n RustIQ.Tests -o .\tests\RustIQ.Tests
-dotnet sln add .\tests\RustIQ.Tests\RustIQ.Tests.csproj
-dotnet add .\tests\RustIQ.Tests reference .\src\RustIQ.Domain\RustIQ.Domain.csproj
-dotnet add .\tests\RustIQ.Tests reference .\src\RustIQ.Application\RustIQ.Application.csproj
-dotnet add .\tests\RustIQ.Tests reference .\src\RustIQ.Infrastructure\RustIQ.Infrastructure.csproj
-dotnet add .\tests\RustIQ.Tests reference .\src\RustIQ.Api\RustIQ.Api.csproj
-```
+Keep:
 
-Test the parts that do not require a real Rust server first:
+- raw snapshots for a limited window
+- scheduled cleanup
 
-- Mapping query results into `Server`.
-- Snapshot creation.
-- Map metadata mapping and fallback behavior.
-- Offline threshold behavior.
-- Page size clamping for `GET /servers`.
-- SignalR message shape.
+Do not build yet:
 
-Avoid tests that depend on a real public Rust server being online. For query behavior, use a fake `IRustServerQueryClient`.
+- hourly/daily rollups
+- archival pipelines
+- warehouse-style analytics
 
 Done when:
 
-- `dotnet test` passes.
-- The important offline, snapshot, and map metadata rules are covered.
+- directory growth does not imply unlimited snapshot growth.
 
-## Phase 13: Backend Verification Checklist
+## Phase 11: Controlled Expansion Path to Large Coverage
 
-Before starting frontend work, the backend should prove this flow:
+After BattleMetrics ingestion works, scale in stages:
+
+1. 10 servers
+2. 100 servers
+3. 500 servers
+4. 1000+ servers
+
+At each stage verify:
+
+- ingestion duration
+- DB write volume
+- refresh loop health
+- API read latency
+- duplicate/upsert correctness
+- snapshot growth
+
+Do not jump from tiny test set to “every Rust server” blindly.
+
+Done when:
+
+- RustIQ has a real staged path to a large Rust directory.
+
+## Phase 12: Verification Checklist
+
+Before moving beyond this plan, verify:
 
 1. Start PostgreSQL:
 
@@ -825,67 +361,47 @@ docker compose up -d postgres
 2. Start the API:
 
 ```powershell
-dotnet run --project .\backend\src\RustIQ.Api
+dotnet run --project .\backend\src\RustIQ.Api --launch-profile http
 ```
 
-3. Confirm the debug query endpoint works:
+3. Confirm discovery/import works:
 
-```http
-GET /debug/query-server
-GET /debug/query-map
-```
+- RustIQ ingests Rust servers from BattleMetrics
+- stored rows appear in PostgreSQL
 
-4. Confirm the database contains:
-
-- One server row.
-- One map metadata row when metadata is available.
-- Repeated snapshot rows.
-
-5. Confirm REST endpoints work:
+4. Confirm cached APIs work:
 
 ```http
 GET /servers
 GET /servers/{id}
-GET /servers/{id}/snapshots
 GET /servers/{id}/players
 GET /servers/{id}/map
+GET /servers/{id}/snapshots
 ```
 
-6. Confirm SignalR broadcasts:
+5. Confirm summary data is coming from stored ingested data, not page-request live querying.
 
-- Connect to `/hubs/servers`.
-- Call `WatchServer(serverId)`.
-- Watch messages arrive every few seconds.
+6. Confirm A2S player-list enrichment failure does not break server summary correctness.
 
-Backend MVP is done when:
+7. Confirm SignalR still works for watched server pages using RustIQ’s cached/live update model.
 
-- One Rust server is polled repeatedly.
-- Player count and max players are stored.
-- Map name, seed, size, RustMaps URL, and thumbnail URL are stored when available.
-- Snapshots are saved.
-- REST endpoints return cached data.
-- SignalR pushes live updates for that one server.
-- Failed Rust server queries are handled without crashing the API.
-- Missing map metadata is handled without crashing the API.
+This phase is done when:
 
-## Phase 14: What Not To Build Yet
+- RustIQ can ingest, store, refresh, and serve Rust server summaries at scale.
 
-Do not build these until the backend proof works:
+## Phase 13: What Not To Build Yet
 
-- Full Rust server discovery.
-- Huge server list crawling.
-- Authentication.
-- Admin dashboard.
-- Paid hosting.
-- Cloudflare deployment.
-- Domain setup.
-- Long-term player tracking.
-- Complex analytics.
-- Data compression jobs.
-- Kubernetes or serverless infrastructure.
-- Full monument analytics or monument search.
-- Entity count tracking.
+Still do not build these yet:
 
-The backend should first answer one question:
+- Public accounts
+- Admin dashboard UI
+- Billing
+- Full RCON fleet management
+- Analytics warehouse
+- Kubernetes/serverless rewrite
+- Content systems
+- Manual hand-curated per-server override workflows as the main scaling solution
 
-> Can RustIQ reliably query one Rust server, store the result, and push live player-count updates?
+The backend should now answer this question:
+
+> Can RustIQ ingest and serve a large Rust server directory using BattleMetrics as the upstream summary source while keeping RustIQ’s own database and API as the product source of truth?

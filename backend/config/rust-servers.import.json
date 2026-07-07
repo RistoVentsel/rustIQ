@@ -1,0 +1,9 @@
+{
+  "servers": [
+    {
+      "name": "Example Imported Server",
+      "host": "203.0.113.10",
+      "queryPort": 28015
+    }
+  ]
+}

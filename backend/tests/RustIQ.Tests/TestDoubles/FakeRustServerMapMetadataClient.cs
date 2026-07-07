@@ -1,16 +1,41 @@
 using RustIQ.Application.Maps;
+using RustIQ.Application.ServerQuery;
 
 namespace RustIQ.Tests.TestDoubles;
 
-internal sealed class FakeRustServerMapMetadataClient(
-    RustServerMapMetadata? metadata = null)
-    : IRustServerMapMetadataClient
+internal sealed class FakeRustServerMapMetadataClient : IRustServerMapMetadataClient
 {
-    public Task<RustServerMapMetadata> GetMapMetadataAsync(CancellationToken cancellationToken)
+    private readonly Dictionary<(string Host, int QueryPort), RustServerMapMetadata> _metadataByServer;
+
+    public FakeRustServerMapMetadataClient(
+        RustServerMapMetadata? metadata = null)
+        : this(metadata is null
+            ? []
+            : new Dictionary<(string Host, int QueryPort), RustServerMapMetadata>
+            {
+                [(metadata.Host, metadata.QueryPort)] = metadata
+            })
     {
-        return Task.FromResult(metadata ?? new RustServerMapMetadata(
-            "example.test",
-            28015,
+    }
+
+    public FakeRustServerMapMetadataClient(
+        IReadOnlyDictionary<(string Host, int QueryPort), RustServerMapMetadata> metadataByServer)
+    {
+        _metadataByServer = new Dictionary<(string Host, int QueryPort), RustServerMapMetadata>(metadataByServer);
+    }
+
+    public Task<RustServerMapMetadata> GetMapMetadataAsync(
+        ConfiguredRustServer configuredServer,
+        CancellationToken cancellationToken)
+    {
+        if (_metadataByServer.TryGetValue((configuredServer.Host, configuredServer.QueryPort), out var metadata))
+        {
+            return Task.FromResult(metadata);
+        }
+
+        return Task.FromResult(new RustServerMapMetadata(
+            configuredServer.Host,
+            configuredServer.QueryPort,
             null,
             null,
             null,

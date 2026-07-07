@@ -15,6 +15,7 @@ public static class ServerEndpoints
             ServerStatus? status,
             int? page,
             int? pageSize,
+            string? refresh,
             ServerReadService serverReadService,
             CancellationToken cancellationToken) =>
         {
@@ -23,6 +24,7 @@ public static class ServerEndpoints
                 status,
                 page,
                 pageSize,
+                refresh,
                 cancellationToken);
 
             return Results.Ok(result);
@@ -31,10 +33,11 @@ public static class ServerEndpoints
 
         servers.MapGet("/{id:guid}", async (
             Guid id,
+            string? refresh,
             ServerReadService serverReadService,
             CancellationToken cancellationToken) =>
         {
-            var server = await serverReadService.GetServerAsync(id, cancellationToken);
+            var server = await serverReadService.GetServerAsync(id, refresh, cancellationToken);
 
             return server is null ? Results.NotFound() : Results.Ok(server);
         })

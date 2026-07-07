@@ -16,7 +16,9 @@ public sealed class BattleMetricsRustServerMapMetadataClient(
 
     private readonly RustServerQueryOptions _options = options.Value;
 
-    public async Task<RustServerMapMetadata> GetMapMetadataAsync(CancellationToken cancellationToken)
+    public async Task<RustServerMapMetadata> GetMapMetadataAsync(
+        ConfiguredRustServer configuredServer,
+        CancellationToken cancellationToken)
     {
         var fetchedAtUtc = DateTimeOffset.UtcNow;
 
@@ -25,12 +27,13 @@ public sealed class BattleMetricsRustServerMapMetadataClient(
 
         try
         {
-            var requestUri = BuildRequestUri();
+            var requestUri = BuildRequestUri(configuredServer);
             using var response = await httpClient.GetAsync(requestUri, timeoutCancellation.Token);
 
             if (!response.IsSuccessStatusCode)
             {
                 return Unavailable(
+                    configuredServer,
                     fetchedAtUtc,
                     $"BattleMetrics returned {(int)response.StatusCode} {response.ReasonPhrase}.");
             }
@@ -38,19 +41,19 @@ public sealed class BattleMetricsRustServerMapMetadataClient(
             var payload = await response.Content.ReadFromJsonAsync<JsonElement>(
                 cancellationToken: timeoutCancellation.Token);
 
-            if (!TryFindConfiguredServer(payload, out var server))
+            if (!TryFindConfiguredServer(payload, configuredServer, out var server))
             {
-                return Unavailable(fetchedAtUtc, "BattleMetrics did not return metadata for the configured server.");
+                return Unavailable(configuredServer, fetchedAtUtc, "BattleMetrics did not return metadata for the configured server.");
             }
 
             if (!server.TryGetProperty("attributes", out var attributes))
             {
-                return Unavailable(fetchedAtUtc, "BattleMetrics server response did not include attributes.");
+                return Unavailable(configuredServer, fetchedAtUtc, "BattleMetrics server response did not include attributes.");
             }
 
             if (!attributes.TryGetProperty("details", out var details))
             {
-                return Unavailable(fetchedAtUtc, "BattleMetrics server response did not include Rust details.");
+                return Unavailable(configuredServer, fetchedAtUtc, "BattleMetrics server response did not include Rust details.");
             }
 
             var rustMaps = details.TryGetProperty("rust_maps", out var rustMapsElement)
@@ -70,8 +73,8 @@ public sealed class BattleMetricsRustServerMapMetadataClient(
                 : null;
 
             return new RustServerMapMetadata(
-                _options.Host,
-                _options.QueryPort,
+                configuredServer.Host,
+                configuredServer.QueryPort,
                 mapName,
                 seed,
                 size,
@@ -89,20 +92,35 @@ public sealed class BattleMetricsRustServerMapMetadataClient(
         }
         catch (Exception exception)
         {
-            return Unavailable(DateTimeOffset.UtcNow, exception.Message);
+            return Unavailable(configuredServer, DateTimeOffset.UtcNow, exception.Message);
         }
     }
 
-    private string BuildRequestUri()
+    private static string BuildRequestUri(ConfiguredRustServer configuredServer)
     {
-        var encodedHost = Uri.EscapeDataString(_options.Host);
+        if (configuredServer.BattleMetricsServerId is not null)
+        {
+            return $"servers/{configuredServer.BattleMetricsServerId}";
+        }
+
+        var encodedHost = Uri.EscapeDataString(configuredServer.Host);
 
         return $"servers?filter[game]=rust&filter[search]={encodedHost}&page[size]=10";
     }
 
-    private bool TryFindConfiguredServer(JsonElement payload, out JsonElement server)
+    private static bool TryFindConfiguredServer(
+        JsonElement payload,
+        ConfiguredRustServer configuredServer,
+        out JsonElement server)
     {
         server = default;
+
+        if (payload.TryGetProperty("data", out var singleData)
+            && singleData.ValueKind == JsonValueKind.Object)
+        {
+            server = singleData;
+            return true;
+        }
 
         if (!payload.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
         {
@@ -119,8 +137,8 @@ public sealed class BattleMetricsRustServerMapMetadataClient(
             var ip = GetString(attributes, "ip");
             var queryPort = GetInt(attributes, "portQuery");
 
-            if (string.Equals(ip, _options.Host, StringComparison.OrdinalIgnoreCase)
-                && queryPort == _options.QueryPort)
+            if (string.Equals(ip, configuredServer.Host, StringComparison.OrdinalIgnoreCase)
+                && queryPort == configuredServer.QueryPort)
             {
                 server = candidate;
                 return true;
@@ -130,11 +148,14 @@ public sealed class BattleMetricsRustServerMapMetadataClient(
         return false;
     }
 
-    private RustServerMapMetadata Unavailable(DateTimeOffset fetchedAtUtc, string error)
+    private static RustServerMapMetadata Unavailable(
+        ConfiguredRustServer configuredServer,
+        DateTimeOffset fetchedAtUtc,
+        string error)
     {
         return new RustServerMapMetadata(
-            _options.Host,
-            _options.QueryPort,
+            configuredServer.Host,
+            configuredServer.QueryPort,
             MapName: null,
             Seed: null,
             Size: null,

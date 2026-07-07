@@ -14,6 +14,7 @@ export type GetServersParams = {
   status?: ServerStatus
   page?: number
   pageSize?: number
+  refresh?: 'page' | 'all'
 }
 
 export type GetServerSnapshotsParams = {
@@ -29,8 +30,11 @@ export function getServers(signal?: AbortSignal, params: GetServersParams = {}) 
   })
 }
 
-export function getServerById(serverId: string, signal?: AbortSignal) {
-  return getJson<ServerDetails>(`servers/${serverId}`, { signal })
+export function getServerById(serverId: string, signal?: AbortSignal, refresh?: 'page') {
+  return getJson<ServerDetails>(`servers/${serverId}`, {
+    signal,
+    query: refresh ? { refresh } : undefined,
+  })
 }
 
 export function getServerSnapshots(

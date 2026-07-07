@@ -6,29 +6,79 @@ namespace RustIQ.Application.Servers;
 
 public sealed class ServerPollingService(
     IRustServerQueryClient queryClient,
+    IBattleMetricsPlayerCountClient battleMetricsPlayerCountClient,
     IRustServerMapMetadataClient mapMetadataClient,
     IServerRepository serverRepository)
 {
-    private static readonly TimeSpan OfflineThreshold = TimeSpan.FromSeconds(60);
+    public async Task EnsureConfiguredServersExistAsync(
+        IReadOnlyList<ConfiguredRustServer> configuredServers,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var hasChanges = false;
 
-    public Task<ServerDto> PollConfiguredServerAsync(CancellationToken cancellationToken)
+        foreach (var configuredServer in configuredServers)
+        {
+            var configuredName = NormalizeConfiguredName(configuredServer.Name);
+            var server = await FindTrackedServerAsync(configuredServer, cancellationToken);
+
+            if (server is null)
+            {
+                serverRepository.Add(new Server
+                {
+                    Id = Guid.NewGuid(),
+                    BattleMetricsServerId = configuredServer.BattleMetricsServerId,
+                    Address = configuredServer.Address,
+                    Host = configuredServer.Host,
+                    GamePort = configuredServer.GamePort,
+                    QueryPort = configuredServer.QueryPort,
+                    Country = configuredServer.Country,
+                    Name = configuredName,
+                    Status = ServerStatus.Unknown,
+                    DiscoverySource = configuredServer.DiscoverySource,
+                    SummarySource = configuredServer.SummarySource,
+                    PlayerCountSource = configuredServer.PlayerCountSource,
+                    PlayerListSource = configuredServer.PlayerListSource,
+                    DataQuality = ServerDataQuality.Unknown,
+                    LastDiscoveredAtUtc = now,
+                    CreatedAtUtc = now,
+                    UpdatedAtUtc = now
+                });
+                hasChanges = true;
+                continue;
+            }
+
+            hasChanges |= ApplyConfiguredIdentity(server, configuredServer, configuredName, now);
+        }
+
+        if (hasChanges)
+        {
+            await serverRepository.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    public Task<ServerDto> PollConfiguredServerAsync(
+        ConfiguredRustServer configuredServer,
+        TimeSpan offlineThreshold,
+        CancellationToken cancellationToken)
     {
         return PollConfiguredServerAsync(
+            configuredServer,
+            offlineThreshold,
             refreshCurrentPlayers: true,
             refreshMapMetadata: true,
             cancellationToken);
     }
 
     public async Task<ServerDto> PollConfiguredServerAsync(
+        ConfiguredRustServer configuredServer,
+        TimeSpan offlineThreshold,
         bool refreshCurrentPlayers,
         bool refreshMapMetadata,
         CancellationToken cancellationToken)
     {
-        var queryResult = await queryClient.QueryServerAsync(cancellationToken);
-        var server = await serverRepository.GetByHostAndQueryPortAsync(
-            queryResult.Host,
-            queryResult.QueryPort,
-            cancellationToken);
+        var queryResult = await queryClient.QueryServerAsync(configuredServer, cancellationToken);
+        var server = await FindTrackedServerAsync(configuredServer, queryResult, cancellationToken);
 
         var now = DateTimeOffset.UtcNow;
 
@@ -37,29 +87,50 @@ public sealed class ServerPollingService(
             server = new Server
             {
                 Id = Guid.NewGuid(),
-                Host = queryResult.Host,
-                QueryPort = queryResult.QueryPort,
-                CreatedAtUtc = now
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
             };
 
             serverRepository.Add(server);
         }
 
-        ApplyLatestServerState(server, queryResult, now);
+        var enrichedQueryResult = await EnrichPlayerCountAsync(configuredServer, server, queryResult, cancellationToken);
+        var normalizedQueryResult = NormalizeQueryResult(enrichedQueryResult);
 
-        var snapshot = CreateSnapshot(server.Id, queryResult);
+        ApplySummaryIdentity(server, configuredServer, normalizedQueryResult, now);
+        ApplyLatestServerState(server, normalizedQueryResult, now, offlineThreshold);
+
+        var snapshot = CreateSnapshot(server.Id, normalizedQueryResult);
         serverRepository.AddSnapshot(snapshot);
 
-        if (refreshMapMetadata)
+        var effectiveConfiguredServer = new ConfiguredRustServer
         {
-            var mapMetadata = await mapMetadataClient.GetMapMetadataAsync(cancellationToken);
+            BattleMetricsServerId = server.BattleMetricsServerId,
+            Name = server.Name,
+            Address = server.Address,
+            Host = server.Host,
+            GamePort = server.GamePort,
+            QueryPort = server.QueryPort,
+            Country = server.Country,
+            DiscoverySource = server.DiscoverySource,
+            SummarySource = server.SummarySource,
+            PlayerCountSource = server.PlayerCountSource,
+            PlayerListSource = server.PlayerListSource
+        };
+
+        var shouldRefreshMapMetadata = refreshMapMetadata
+            || (server.MapMetadata is null && server.BattleMetricsServerId is not null);
+
+        if (shouldRefreshMapMetadata)
+        {
+            var mapMetadata = await mapMetadataClient.GetMapMetadataAsync(effectiveConfiguredServer, cancellationToken);
             ApplyMapMetadata(server, mapMetadata, now);
         }
 
         IReadOnlyList<ServerPlayerCurrent> currentPlayers = [];
-        if (refreshCurrentPlayers)
+        if (refreshCurrentPlayers && effectiveConfiguredServer.PlayerListSource == PlayerListSource.A2S)
         {
-            currentPlayers = await QueryCurrentPlayersAsync(server.Id, now, cancellationToken);
+            currentPlayers = await QueryCurrentPlayersAsync(effectiveConfiguredServer, server.Id, now, cancellationToken);
             if (currentPlayers.Count > 0)
             {
                 await serverRepository.ReplaceCurrentPlayersAsync(server.Id, currentPlayers, cancellationToken);
@@ -72,32 +143,140 @@ public sealed class ServerPollingService(
         return ToDto(server, snapshot, currentPlayers);
     }
 
+    private async Task<Server?> FindTrackedServerAsync(
+        ConfiguredRustServer configuredServer,
+        CancellationToken cancellationToken)
+    {
+        if (configuredServer.BattleMetricsServerId is not null)
+        {
+            var byBattleMetricsId = await serverRepository.GetByBattleMetricsServerIdAsync(
+                configuredServer.BattleMetricsServerId.Value,
+                cancellationToken);
+
+            if (byBattleMetricsId is not null)
+            {
+                return byBattleMetricsId;
+            }
+        }
+
+        return await serverRepository.GetByHostAndQueryPortAsync(
+            configuredServer.Host,
+            configuredServer.QueryPort,
+            cancellationToken);
+    }
+
+    private async Task<Server?> FindTrackedServerAsync(
+        ConfiguredRustServer configuredServer,
+        RustServerQueryResult queryResult,
+        CancellationToken cancellationToken)
+    {
+        if (queryResult.BattleMetricsServerId is not null)
+        {
+            var byBattleMetricsId = await serverRepository.GetByBattleMetricsServerIdAsync(
+                queryResult.BattleMetricsServerId.Value,
+                cancellationToken);
+
+            if (byBattleMetricsId is not null)
+            {
+                return byBattleMetricsId;
+            }
+        }
+
+        return await FindTrackedServerAsync(configuredServer, cancellationToken);
+    }
+
+    private static bool ApplyConfiguredIdentity(
+        Server server,
+        ConfiguredRustServer configuredServer,
+        string? configuredName,
+        DateTimeOffset updatedAtUtc)
+    {
+        var hasChanges = false;
+
+        hasChanges |= UpdateBattleMetricsServerId(server, configuredServer.BattleMetricsServerId);
+        hasChanges |= UpdateAddress(server, configuredServer.Address);
+        hasChanges |= UpdateHost(server, configuredServer.Host);
+        hasChanges |= UpdateGamePort(server, configuredServer.GamePort);
+        hasChanges |= UpdateQueryPort(server, configuredServer.QueryPort);
+        hasChanges |= UpdateCountry(server, configuredServer.Country);
+        hasChanges |= UpdateDiscoverySource(server, configuredServer.DiscoverySource);
+        hasChanges |= UpdateSummarySource(server, configuredServer.SummarySource);
+        hasChanges |= UpdatePlayerCountSource(server, configuredServer.PlayerCountSource);
+        hasChanges |= UpdatePlayerListSource(server, configuredServer.PlayerListSource);
+        hasChanges |= UpdateLastDiscoveredAt(server, updatedAtUtc);
+
+        if (server.LastSeenAtUtc is null
+            && !string.Equals(server.Name, configuredName, StringComparison.Ordinal))
+        {
+            server.Name = configuredName;
+            hasChanges = true;
+        }
+
+        if (hasChanges)
+        {
+            server.UpdatedAtUtc = updatedAtUtc;
+        }
+
+        return hasChanges;
+    }
+
+    private static void ApplySummaryIdentity(
+        Server server,
+        ConfiguredRustServer configuredServer,
+        RustServerQueryResult queryResult,
+        DateTimeOffset updatedAtUtc)
+    {
+        server.BattleMetricsServerId = queryResult.BattleMetricsServerId
+            ?? configuredServer.BattleMetricsServerId
+            ?? server.BattleMetricsServerId;
+        server.Address = Coalesce(queryResult.Address, configuredServer.Address, server.Address);
+        server.Host = Coalesce(queryResult.Host, configuredServer.Host, server.Host) ?? server.Host;
+        server.GamePort = queryResult.GamePort ?? configuredServer.GamePort ?? server.GamePort;
+        server.QueryPort = queryResult.QueryPort;
+        server.Country = Coalesce(queryResult.Country, configuredServer.Country, server.Country);
+        server.DiscoverySource = configuredServer.DiscoverySource;
+        server.SummarySource = queryResult.SummarySource;
+        server.PlayerCountSource = queryResult.PlayerCountSource;
+        server.PlayerListSource = configuredServer.PlayerListSource;
+        server.LastDiscoveredAtUtc = configuredServer.DiscoverySource == ServerDiscoverySource.Manual
+            ? server.LastDiscoveredAtUtc
+            : updatedAtUtc;
+        server.UpdatedAtUtc = updatedAtUtc;
+    }
+
     private static void ApplyLatestServerState(
         Server server,
         RustServerQueryResult queryResult,
-        DateTimeOffset updatedAtUtc)
+        DateTimeOffset updatedAtUtc,
+        TimeSpan offlineThreshold)
     {
         server.LastCheckedAtUtc = queryResult.CheckedAtUtc;
         server.UpdatedAtUtc = updatedAtUtc;
 
         if (queryResult.IsOnline)
         {
-            server.Name = queryResult.Name;
-            server.Map = queryResult.Map;
+            server.Name = string.IsNullOrWhiteSpace(queryResult.Name) ? server.Name : queryResult.Name;
+            server.Map = string.IsNullOrWhiteSpace(queryResult.Map) ? server.Map : queryResult.Map;
             server.Players = queryResult.Players;
             server.MaxPlayers = queryResult.MaxPlayers;
             server.Status = ServerStatus.Online;
             server.LastSeenAtUtc = queryResult.CheckedAtUtc;
+            server.LastPlayerCountUpdatedAtUtc = queryResult.CheckedAtUtc;
+            server.DataQuality = GetDataQuality(queryResult);
+            server.LastValidationReason = GetLastValidationReason(queryResult);
 
             return;
         }
 
         if (server.LastSeenAtUtc is null
-            || queryResult.CheckedAtUtc - server.LastSeenAtUtc > OfflineThreshold)
+            || queryResult.CheckedAtUtc - server.LastSeenAtUtc > offlineThreshold)
         {
             server.Status = ServerStatus.Offline;
             server.Players = 0;
         }
+
+        server.DataQuality = ServerDataQuality.Degraded;
+        server.LastValidationReason = queryResult.Error;
     }
 
     private static ServerSnapshot CreateSnapshot(Guid serverId, RustServerQueryResult queryResult)
@@ -144,11 +323,12 @@ public sealed class ServerPollingService(
     }
 
     private async Task<IReadOnlyList<ServerPlayerCurrent>> QueryCurrentPlayersAsync(
+        ConfiguredRustServer configuredServer,
         Guid serverId,
         DateTimeOffset seenAtUtc,
         CancellationToken cancellationToken)
     {
-        var playerResults = await queryClient.QueryPlayersAsync(cancellationToken);
+        var playerResults = await queryClient.QueryPlayersAsync(configuredServer, cancellationToken);
         var namedPlayers = playerResults
             .Where(player => !string.IsNullOrWhiteSpace(player.Name))
             .Select(player => new ServerPlayerCurrent
@@ -163,6 +343,113 @@ public sealed class ServerPollingService(
             .ToArray();
 
         return namedPlayers;
+    }
+
+    private async Task<RustServerQueryResult> EnrichPlayerCountAsync(
+        ConfiguredRustServer configuredServer,
+        Server server,
+        RustServerQueryResult queryResult,
+        CancellationToken cancellationToken)
+    {
+        var shouldUseBattleMetricsPlayerCount =
+            configuredServer.PlayerCountSource == ServerPlayerCountSource.BattleMetrics
+            || server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics
+            || configuredServer.BattleMetricsServerId is not null
+            || server.BattleMetricsServerId is not null;
+
+        if (!shouldUseBattleMetricsPlayerCount)
+        {
+            return queryResult;
+        }
+
+        var battleMetricsServerId = queryResult.BattleMetricsServerId
+            ?? configuredServer.BattleMetricsServerId
+            ?? server.BattleMetricsServerId;
+
+        if (battleMetricsServerId is null)
+        {
+            battleMetricsServerId = await battleMetricsPlayerCountClient.FindServerIdAsync(
+                configuredServer.Host,
+                configuredServer.QueryPort,
+                cancellationToken);
+        }
+
+        if (battleMetricsServerId is null)
+        {
+            return queryResult;
+        }
+
+        var battleMetricsPlayerCount = await battleMetricsPlayerCountClient.GetPlayerCountAsync(
+            battleMetricsServerId.Value,
+            cancellationToken);
+
+        if (battleMetricsPlayerCount is null)
+        {
+            var lastKnownBattleMetricsPlayers = server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics
+                ? server.Players
+                : queryResult.Players;
+            var lastKnownBattleMetricsMaxPlayers = server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics
+                ? server.MaxPlayers
+                : queryResult.MaxPlayers;
+
+            return queryResult with
+            {
+                BattleMetricsServerId = battleMetricsServerId,
+                Players = lastKnownBattleMetricsPlayers,
+                MaxPlayers = lastKnownBattleMetricsMaxPlayers,
+                PlayerCountSource = ServerPlayerCountSource.BattleMetrics
+            };
+        }
+
+        return queryResult with
+        {
+            BattleMetricsServerId = battleMetricsServerId,
+            Players = battleMetricsPlayerCount.Players,
+            MaxPlayers = battleMetricsPlayerCount.MaxPlayers,
+            PlayerCountSource = ServerPlayerCountSource.BattleMetrics
+        };
+    }
+
+    private static RustServerQueryResult NormalizeQueryResult(RustServerQueryResult queryResult)
+    {
+        var normalizedPlayers = Math.Max(0, queryResult.Players);
+        var normalizedMaxPlayers = Math.Max(0, queryResult.MaxPlayers);
+        string? validationReason = null;
+
+        if (queryResult.IsOnline && normalizedPlayers > normalizedMaxPlayers)
+        {
+            normalizedMaxPlayers = normalizedPlayers;
+            validationReason = "PlayersExceedMaxPlayers";
+        }
+
+        var mergedError = queryResult.Error;
+        if (validationReason is not null)
+        {
+            mergedError = string.IsNullOrWhiteSpace(mergedError)
+                ? validationReason
+                : $"{validationReason}; {mergedError}";
+        }
+
+        return queryResult with
+        {
+            Players = normalizedPlayers,
+            MaxPlayers = normalizedMaxPlayers,
+            Error = mergedError
+        };
+    }
+
+    private static ServerDataQuality GetDataQuality(RustServerQueryResult queryResult)
+    {
+        return string.IsNullOrWhiteSpace(queryResult.Error)
+            ? ServerDataQuality.Normal
+            : ServerDataQuality.Suspicious;
+    }
+
+    private static string? GetLastValidationReason(RustServerQueryResult queryResult)
+    {
+        return string.IsNullOrWhiteSpace(queryResult.Error)
+            ? null
+            : queryResult.Error;
     }
 
     private static bool HasUsableMapMetadata(RustServerMapMetadata metadata)
@@ -182,15 +469,27 @@ public sealed class ServerPollingService(
     {
         return new ServerDto(
             server.Id,
+            server.BattleMetricsServerId,
+            server.Address,
             server.Host,
+            server.GamePort,
             server.QueryPort,
+            server.Country,
             server.Name,
             server.Map,
             server.Players,
             server.MaxPlayers,
             server.Status,
+            server.DiscoverySource,
+            server.SummarySource,
+            server.PlayerCountSource,
+            server.PlayerListSource,
+            server.DataQuality,
+            server.LastValidationReason,
             server.LastSeenAtUtc,
             server.LastCheckedAtUtc,
+            server.LastDiscoveredAtUtc,
+            server.LastPlayerCountUpdatedAtUtc,
             server.CreatedAtUtc,
             server.UpdatedAtUtc,
             ToMapMetadataDto(server.MapMetadata),
@@ -231,5 +530,81 @@ public sealed class ServerPollingService(
             player.Score,
             player.DurationSeconds,
             player.SeenAtUtc);
+    }
+
+    private static string? NormalizeConfiguredName(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? Coalesce(params string?[] values)
+    {
+        return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+    }
+
+    private static bool UpdateBattleMetricsServerId(Server server, long? nextValue)
+    {
+        return UpdateIfDifferent(server.BattleMetricsServerId, nextValue, value => server.BattleMetricsServerId = value);
+    }
+
+    private static bool UpdateAddress(Server server, string? nextValue)
+    {
+        return UpdateIfDifferent(server.Address, nextValue, value => server.Address = value);
+    }
+
+    private static bool UpdateHost(Server server, string nextValue)
+    {
+        return UpdateIfDifferent(server.Host, nextValue, value => server.Host = value);
+    }
+
+    private static bool UpdateGamePort(Server server, int? nextValue)
+    {
+        return UpdateIfDifferent(server.GamePort, nextValue, value => server.GamePort = value);
+    }
+
+    private static bool UpdateQueryPort(Server server, int nextValue)
+    {
+        return UpdateIfDifferent(server.QueryPort, nextValue, value => server.QueryPort = value);
+    }
+
+    private static bool UpdateCountry(Server server, string? nextValue)
+    {
+        return UpdateIfDifferent(server.Country, nextValue, value => server.Country = value);
+    }
+
+    private static bool UpdateDiscoverySource(Server server, ServerDiscoverySource nextValue)
+    {
+        return UpdateIfDifferent(server.DiscoverySource, nextValue, value => server.DiscoverySource = value);
+    }
+
+    private static bool UpdateSummarySource(Server server, ServerSummarySource nextValue)
+    {
+        return UpdateIfDifferent(server.SummarySource, nextValue, value => server.SummarySource = value);
+    }
+
+    private static bool UpdatePlayerCountSource(Server server, ServerPlayerCountSource nextValue)
+    {
+        return UpdateIfDifferent(server.PlayerCountSource, nextValue, value => server.PlayerCountSource = value);
+    }
+
+    private static bool UpdatePlayerListSource(Server server, PlayerListSource nextValue)
+    {
+        return UpdateIfDifferent(server.PlayerListSource, nextValue, value => server.PlayerListSource = value);
+    }
+
+    private static bool UpdateLastDiscoveredAt(Server server, DateTimeOffset nextValue)
+    {
+        return UpdateIfDifferent(server.LastDiscoveredAtUtc, nextValue, value => server.LastDiscoveredAtUtc = value);
+    }
+
+    private static bool UpdateIfDifferent<T>(T currentValue, T nextValue, Action<T> setter)
+    {
+        if (EqualityComparer<T>.Default.Equals(currentValue, nextValue))
+        {
+            return false;
+        }
+
+        setter(nextValue);
+        return true;
     }
 }

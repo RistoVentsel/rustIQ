@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: rustiq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rustiq
+      POSTGRES_USER: rustiq
+      POSTGRES_PASSWORD: ${RUSTIQ_POSTGRES_PASSWORD:?Set RUSTIQ_POSTGRES_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rustiq -d rustiq"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - rustiq-postgres-data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/src/RustIQ.Api/Dockerfile
+    container_name: rustiq-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=rustiq;Username=rustiq;Password=${RUSTIQ_POSTGRES_PASSWORD:?Set RUSTIQ_POSTGRES_PASSWORD in .env}
+      RustServerQuery__TimeoutMilliseconds: 3000
+      RustServerQuery__OfflineThresholdSeconds: 60
+      SteamDiscovery__Enabled: "true"
+      SteamDiscovery__MaxServersPerRefresh: 1000
+      SteamDiscovery__RefreshIntervalMinutes: 10
+      SteamDiscovery__AllowBattleMetricsFallback: "true"
+      BattleMetricsDiscovery__Enabled: "true"
+      BattleMetricsDiscovery__PageSize: 100
+      BattleMetricsDiscovery__MaxPages: 20
+      BattleMetricsDiscovery__RefreshIntervalMinutes: 10
+      BattleMetricsSummaryRefresh__Enabled: "true"
+      BattleMetricsSummaryRefresh__BatchSize: 100
+      BattleMetricsSummaryRefresh__RefreshIntervalSeconds: 30
+      BattleMetricsSummaryRefresh__StaleAfterSeconds: 90
+      BattleMetricsSummaryRefresh__RefreshCurrentPlayers: "false"
+      BattleMetricsSummaryRefresh__RefreshMapMetadata: "false"
+      SnapshotRetention__Enabled: "true"
+      SnapshotRetention__RetentionDays: 14
+      SnapshotRetention__CleanupIntervalHours: 12
+    ports:
+      - "${RUSTIQ_HTTP_PORT:-5009}:8080"
+
+volumes:
+  rustiq-postgres-data:

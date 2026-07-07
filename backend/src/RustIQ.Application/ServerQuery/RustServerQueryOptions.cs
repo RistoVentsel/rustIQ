@@ -4,9 +4,9 @@ public sealed class RustServerQueryOptions
 {
     public const string SectionName = "RustServerQuery";
 
-    public string Host { get; init; } = string.Empty;
+    public int TimeoutMilliseconds { get; init; } = 3000;
 
-    public int QueryPort { get; init; }
+    public int OfflineThresholdSeconds { get; init; } = 60;
 
-    public int TimeoutMilliseconds { get; init; }
+    public List<ConfiguredRustServer> Servers { get; init; } = [];
 }

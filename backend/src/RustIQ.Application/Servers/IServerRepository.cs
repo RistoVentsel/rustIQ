@@ -16,6 +16,13 @@ public interface IServerRepository
         int take,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<Server>> GetAllAsync(
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Server>> GetTrackedByIdsAsync(
+        IReadOnlyList<Guid> serverIds,
+        CancellationToken cancellationToken);
+
     Task<Server?> GetByIdWithMapMetadataAsync(
         Guid serverId,
         CancellationToken cancellationToken);
@@ -23,6 +30,21 @@ public interface IServerRepository
     Task<Server?> GetByHostAndQueryPortAsync(
         string host,
         int queryPort,
+        CancellationToken cancellationToken);
+
+    Task<Server?> GetByBattleMetricsServerIdAsync(
+        long battleMetricsServerId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Server>> GetServersByPlayerCountSourceAsync(
+        ServerPlayerCountSource playerCountSource,
+        int take,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Server>> GetServersForPlayerCountRefreshAsync(
+        ServerPlayerCountSource playerCountSource,
+        DateTimeOffset staleBeforeUtc,
+        int take,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(
@@ -38,6 +60,10 @@ public interface IServerRepository
 
     Task<ServerMapMetadata?> GetMapMetadataAsync(
         Guid serverId,
+        CancellationToken cancellationToken);
+
+    Task<int> DeleteSnapshotsOlderThanAsync(
+        DateTimeOffset cutoffUtc,
         CancellationToken cancellationToken);
 
     void Add(Server server);

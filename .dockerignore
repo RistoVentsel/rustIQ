@@ -1,0 +1,9 @@
+.git
+.idea
+.logs
+**/bin
+**/obj
+backend/api-run.err.log
+backend/api-run.out.log
+frontend/dist
+frontend/node_modules

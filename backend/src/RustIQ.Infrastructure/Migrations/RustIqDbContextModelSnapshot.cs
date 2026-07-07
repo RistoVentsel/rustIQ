@@ -27,8 +27,32 @@ namespace RustIQ.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Address")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<long?>("BattleMetricsServerId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Country")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DataQuality")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("DiscoverySource")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int?>("GamePort")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Host")
                         .IsRequired()
@@ -38,8 +62,18 @@ namespace RustIQ.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("LastCheckedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("LastDiscoveredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastPlayerCountUpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset?>("LastSeenAtUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastValidationReason")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<string>("Map")
                         .HasMaxLength(255)
@@ -52,6 +86,16 @@ namespace RustIQ.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<string>("PlayerCountSource")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("PlayerListSource")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<int>("Players")
                         .HasColumnType("integer");
 
@@ -63,10 +107,18 @@ namespace RustIQ.Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("SummarySource")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BattleMetricsServerId")
+                        .IsUnique();
 
                     b.HasIndex("Host", "QueryPort")
                         .IsUnique();

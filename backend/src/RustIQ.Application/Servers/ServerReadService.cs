@@ -2,8 +2,13 @@ using RustIQ.Domain.Servers;
 
 namespace RustIQ.Application.Servers;
 
-public sealed class ServerReadService(IServerRepository serverRepository)
+public sealed class ServerReadService(
+    IServerRepository serverRepository,
+    IServerRefreshService? serverRefreshService = null)
 {
+    public const string RefreshNoneMode = "none";
+    public const string RefreshPageMode = "page";
+    public const string RefreshAllMode = "all";
     private const int DefaultPage = 1;
     private const int DefaultPageSize = 25;
     private const int MaxPageSize = 100;
@@ -15,19 +20,47 @@ public sealed class ServerReadService(IServerRepository serverRepository)
         ServerStatus? status,
         int? page,
         int? pageSize,
+        string? refreshMode,
         CancellationToken cancellationToken)
     {
         var normalizedPage = Math.Max(page ?? DefaultPage, 1);
         var normalizedPageSize = Math.Clamp(pageSize ?? DefaultPageSize, 1, MaxPageSize);
         var skip = (normalizedPage - 1) * normalizedPageSize;
 
-        var totalItems = await serverRepository.CountAsync(search, status, cancellationToken);
         var servers = await serverRepository.GetPagedAsync(
             search,
             status,
             skip,
             normalizedPageSize,
             cancellationToken);
+
+        if (serverRefreshService is not null)
+        {
+            var normalizedRefreshMode = NormalizeRefreshMode(refreshMode);
+
+            if (normalizedRefreshMode == RefreshAllMode)
+            {
+                await serverRefreshService.RefreshAllServersAsync(cancellationToken);
+                servers = await serverRepository.GetPagedAsync(
+                    search,
+                    status,
+                    skip,
+                    normalizedPageSize,
+                    cancellationToken);
+            }
+            else if (normalizedRefreshMode == RefreshPageMode && servers.Count > 0)
+            {
+                await serverRefreshService.RefreshServersAsync(servers, cancellationToken);
+                servers = await serverRepository.GetPagedAsync(
+                    search,
+                    status,
+                    skip,
+                    normalizedPageSize,
+                    cancellationToken);
+            }
+        }
+
+        var totalItems = await serverRepository.CountAsync(search, status, cancellationToken);
 
         var now = DateTimeOffset.UtcNow;
         var items = servers.Select(server => ToListItemDto(server, now)).ToArray();
@@ -41,9 +74,18 @@ public sealed class ServerReadService(IServerRepository serverRepository)
 
     public async Task<ServerDetailsDto?> GetServerAsync(
         Guid serverId,
+        string? refreshMode,
         CancellationToken cancellationToken)
     {
         var server = await serverRepository.GetByIdWithMapMetadataAsync(serverId, cancellationToken);
+
+        if (NormalizeRefreshMode(refreshMode) != RefreshNoneMode
+            && server is not null
+            && serverRefreshService is not null)
+        {
+            await serverRefreshService.RefreshServerAsync(server, cancellationToken);
+            server = await serverRepository.GetByIdWithMapMetadataAsync(serverId, cancellationToken);
+        }
 
         return server is null ? null : ToDetailsDto(server, DateTimeOffset.UtcNow);
     }
@@ -114,15 +156,26 @@ public sealed class ServerReadService(IServerRepository serverRepository)
     {
         return new ServerListItemDto(
             server.Id,
+            server.BattleMetricsServerId,
+            server.Address,
             server.Host,
+            server.GamePort,
             server.QueryPort,
+            server.Country,
             server.Name,
             server.Map,
             server.Players,
             server.MaxPlayers,
             server.Status,
+            server.DiscoverySource,
+            server.SummarySource,
+            server.PlayerCountSource,
+            server.DataQuality,
+            server.LastValidationReason,
             server.LastSeenAtUtc,
             server.LastCheckedAtUtc,
+            server.LastDiscoveredAtUtc,
+            server.LastPlayerCountUpdatedAtUtc,
             server.UpdatedAtUtc,
             SecondsAgo(server.UpdatedAtUtc, now));
     }
@@ -131,15 +184,27 @@ public sealed class ServerReadService(IServerRepository serverRepository)
     {
         return new ServerDetailsDto(
             server.Id,
+            server.BattleMetricsServerId,
+            server.Address,
             server.Host,
+            server.GamePort,
             server.QueryPort,
+            server.Country,
             server.Name,
             server.Map,
             server.Players,
             server.MaxPlayers,
             server.Status,
+            server.DiscoverySource,
+            server.SummarySource,
+            server.PlayerCountSource,
+            server.PlayerListSource,
+            server.DataQuality,
+            server.LastValidationReason,
             server.LastSeenAtUtc,
             server.LastCheckedAtUtc,
+            server.LastDiscoveredAtUtc,
+            server.LastPlayerCountUpdatedAtUtc,
             server.CreatedAtUtc,
             server.UpdatedAtUtc,
             SecondsAgo(server.UpdatedAtUtc, now),
@@ -197,5 +262,15 @@ public sealed class ServerReadService(IServerRepository serverRepository)
     private static int SecondsAgo(DateTimeOffset value, DateTimeOffset now)
     {
         return Math.Max(0, (int)(now - value).TotalSeconds);
+    }
+
+    private static string NormalizeRefreshMode(string? refreshMode)
+    {
+        return refreshMode?.Trim().ToLowerInvariant() switch
+        {
+            RefreshPageMode => RefreshPageMode,
+            RefreshAllMode => RefreshAllMode,
+            _ => RefreshNoneMode
+        };
     }
 }

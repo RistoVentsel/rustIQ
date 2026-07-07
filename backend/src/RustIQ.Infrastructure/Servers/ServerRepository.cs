@@ -12,8 +12,26 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         ServerStatus? status,
         CancellationToken cancellationToken)
     {
-        return ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status)
-            .CountAsync(cancellationToken);
+        return CountDeduplicatedAsync(search, status, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Server>> GetAllAsync(
+        CancellationToken cancellationToken)
+    {
+        var servers = await dbContext.Servers
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        return DeduplicateServers(servers);
+    }
+
+    public async Task<IReadOnlyList<Server>> GetTrackedByIdsAsync(
+        IReadOnlyList<Guid> serverIds,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.Servers
+            .Where(server => serverIds.Contains(server.Id))
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<Server>> GetPagedAsync(
@@ -23,14 +41,17 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         int take,
         CancellationToken cancellationToken)
     {
-        return await ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status)
+        var servers = await ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status)
+            .ToListAsync(cancellationToken);
+
+        return DeduplicateServers(servers)
             .OrderByDescending(server => server.Status == ServerStatus.Online)
             .ThenByDescending(server => server.Players)
             .ThenBy(server => server.Name)
             .ThenBy(server => server.Host)
             .Skip(skip)
             .Take(take)
-            .ToListAsync(cancellationToken);
+            .ToArray();
     }
 
     public Task<Server?> GetByIdWithMapMetadataAsync(
@@ -53,6 +74,48 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             .FirstOrDefaultAsync(
                 server => server.Host == host && server.QueryPort == queryPort,
                 cancellationToken);
+    }
+
+    public Task<Server?> GetByBattleMetricsServerIdAsync(
+        long battleMetricsServerId,
+        CancellationToken cancellationToken)
+    {
+        return dbContext.Servers
+            .Include(server => server.MapMetadata)
+            .FirstOrDefaultAsync(
+                server => server.BattleMetricsServerId == battleMetricsServerId,
+                cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Server>> GetServersByPlayerCountSourceAsync(
+        ServerPlayerCountSource playerCountSource,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.Servers
+            .AsNoTracking()
+            .Where(server => server.PlayerCountSource == playerCountSource)
+            .OrderByDescending(server => server.UpdatedAtUtc)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Server>> GetServersForPlayerCountRefreshAsync(
+        ServerPlayerCountSource playerCountSource,
+        DateTimeOffset staleBeforeUtc,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.Servers
+            .AsNoTracking()
+            .Where(server =>
+                server.PlayerCountSource == playerCountSource
+                && server.BattleMetricsServerId != null
+                && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= staleBeforeUtc))
+            .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+            .ThenByDescending(server => server.Players)
+            .Take(take)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(
@@ -100,6 +163,15 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         return dbContext.ServerMapMetadata
             .AsNoTracking()
             .FirstOrDefaultAsync(metadata => metadata.ServerId == serverId, cancellationToken);
+    }
+
+    public async Task<int> DeleteSnapshotsOlderThanAsync(
+        DateTimeOffset cutoffUtc,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.ServerSnapshots
+            .Where(snapshot => snapshot.CheckedAtUtc < cutoffUtc)
+            .ExecuteDeleteAsync(cancellationToken);
     }
 
     public void Add(Server server)
@@ -154,5 +226,28 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         }
 
         return query;
+    }
+
+    private async Task<int> CountDeduplicatedAsync(
+        string? search,
+        ServerStatus? status,
+        CancellationToken cancellationToken)
+    {
+        var servers = await ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status)
+            .ToListAsync(cancellationToken);
+
+        return DeduplicateServers(servers).Count();
+    }
+
+    private static IReadOnlyList<Server> DeduplicateServers(IEnumerable<Server> servers)
+    {
+        return servers
+            .GroupBy(server => $"{server.Host.Trim().ToLowerInvariant()}:{server.QueryPort}")
+            .Select(group => group
+                .OrderByDescending(server => server.BattleMetricsServerId.HasValue)
+                .ThenByDescending(server => server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics)
+                .ThenByDescending(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+                .First())
+            .ToArray();
     }
 }

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { ApiError, getServerById, getServerMap, getServerPlayers, getServerSnapshots } from '../api'
@@ -56,29 +57,38 @@ export function ServerDetailPage() {
   const { serverId } = useParams<{ serverId: string }>()
   const liveStatus = useServerLiveUpdates(serverId)
   const nowMs = useNow()
+  const refreshOnInitialLoadRef = useRef<'page' | null>('page')
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
     enabled: Boolean(serverId),
-    queryFn: ({ signal }) => getServerById(serverId!, signal),
-    staleTime: 30_000,
+    queryFn: ({ signal }) => {
+      const refresh = refreshOnInitialLoadRef.current
+      refreshOnInitialLoadRef.current = null
+      return getServerById(serverId!, signal, refresh ?? undefined)
+    },
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
   const playersQuery = useQuery({
     queryKey: ['server', serverId, 'players'],
     enabled: Boolean(serverId),
     queryFn: ({ signal }) => getServerPlayers(serverId!, signal),
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
   const mapQuery = useQuery({
     queryKey: ['server', serverId, 'map'],
     enabled: Boolean(serverId),
     queryFn: ({ signal }) => getServerMap(serverId!, signal),
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
   const snapshotsQuery = useQuery({
     queryKey: ['server', serverId, 'snapshots', { limit: 20 }],
     enabled: Boolean(serverId),
     queryFn: ({ signal }) => getServerSnapshots(serverId!, signal, { limit: 20 }),
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
   const players = playersQuery.data?.players ?? []
   const snapshots = snapshotsQuery.data ?? []

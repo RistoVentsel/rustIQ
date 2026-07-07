@@ -33,11 +33,65 @@ public sealed class ServerReadServiceTests
             status: null,
             page: 1,
             pageSize: 1_000,
+            refreshMode: ServerReadService.RefreshNoneMode,
             CancellationToken.None);
 
         Assert.Equal(100, result.PageSize);
         Assert.Equal(100, result.Items.Count);
         Assert.Equal(100, repository.LastPagedTake);
+    }
+
+    [Fact]
+    public async Task GetServersAsync_SortsOnlineFirstThenPlayersDescending()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.AddRange(
+        [
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "offline-high.test",
+                QueryPort = 28015,
+                Name = "Offline High",
+                Players = 90,
+                MaxPlayers = 100,
+                Status = ServerStatus.Offline,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            },
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "online-low.test",
+                QueryPort = 28015,
+                Name = "Online Low",
+                Players = 5,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            },
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "online-high.test",
+                QueryPort = 28015,
+                Name = "Online High",
+                Players = 50,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            }
+        ]);
+
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(null, null, 1, 25, ServerReadService.RefreshNoneMode, CancellationToken.None);
+
+        Assert.Equal("online-high.test", result.Items[0].Host);
+        Assert.Equal("online-low.test", result.Items[1].Host);
+        Assert.Equal("offline-high.test", result.Items[2].Host);
     }
 
     [Fact]
@@ -118,7 +172,7 @@ public sealed class ServerReadServiceTests
 
         var service = new ServerReadService(repository);
 
-        var result = await service.GetServerAsync(serverId, CancellationToken.None);
+        var result = await service.GetServerAsync(serverId, ServerReadService.RefreshNoneMode, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.InRange(result.UpdatedSecondsAgo, 0, 30);
@@ -128,5 +182,82 @@ public sealed class ServerReadServiceTests
         Assert.Equal(4500, result.MapMetadata?.Size);
         Assert.Equal("https://rustmaps.com/map/test", result.MapMetadata?.RustMapsUrl);
         Assert.Equal("https://content.rustmaps.com/thumbnail.webp", result.MapMetadata?.ThumbnailUrl);
+    }
+
+    [Fact]
+    public async Task GetServersAsync_RefreshesVisiblePageBeforeMappingWhenRefreshModeIsPage()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = Guid.NewGuid(),
+            Host = "server.test",
+            QueryPort = 28015,
+            Name = "Server",
+            Players = 10,
+            MaxPlayers = 100,
+            Status = ServerStatus.Online,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        });
+        var refreshService = new RecordingServerRefreshService();
+        var service = new ServerReadService(repository, refreshService);
+
+        await service.GetServersAsync(null, null, 1, 25, ServerReadService.RefreshPageMode, CancellationToken.None);
+
+        var refreshBatch = Assert.Single(refreshService.RefreshBatches);
+        var refreshedServer = Assert.Single(refreshBatch);
+        Assert.Equal("server.test", refreshedServer.Host);
+        Assert.Equal(0, refreshService.RefreshAllCallCount);
+    }
+
+    [Fact]
+    public async Task GetServersAsync_RefreshesAllServersBeforeMappingWhenRefreshModeIsAll()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = Guid.NewGuid(),
+            Host = "server.test",
+            QueryPort = 28015,
+            Name = "Server",
+            Players = 10,
+            MaxPlayers = 100,
+            Status = ServerStatus.Online,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        });
+        var refreshService = new RecordingServerRefreshService();
+        var service = new ServerReadService(repository, refreshService);
+
+        await service.GetServersAsync(null, null, 1, 25, ServerReadService.RefreshAllMode, CancellationToken.None);
+
+        Assert.Equal(1, refreshService.RefreshAllCallCount);
+    }
+
+    [Fact]
+    public async Task GetServerAsync_RefreshesRequestedServerBeforeMapping()
+    {
+        var serverId = Guid.NewGuid();
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = serverId,
+            Host = "server.test",
+            QueryPort = 28015,
+            Name = "Server",
+            Players = 10,
+            MaxPlayers = 100,
+            Status = ServerStatus.Online,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        });
+        var refreshService = new RecordingServerRefreshService();
+        var service = new ServerReadService(repository, refreshService);
+
+        await service.GetServerAsync(serverId, ServerReadService.RefreshPageMode, CancellationToken.None);
+
+        var refreshedServer = Assert.Single(refreshService.RefreshedServers);
+        Assert.Equal(serverId, refreshedServer.Id);
     }
 }

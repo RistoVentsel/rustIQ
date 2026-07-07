@@ -20,7 +20,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
         ServerStatus? status,
         CancellationToken cancellationToken)
     {
-        return Task.FromResult(ApplyServerFilters(search, status).Count());
+        return Task.FromResult(DeduplicateServers(ApplyServerFilters(search, status)).Count());
     }
 
     public Task<IReadOnlyList<Server>> GetPagedAsync(
@@ -31,7 +31,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
         CancellationToken cancellationToken)
     {
         LastPagedTake = take;
-        var servers = ApplyServerFilters(search, status)
+        var servers = DeduplicateServers(ApplyServerFilters(search, status))
             .OrderByDescending(server => server.Status == ServerStatus.Online)
             .ThenByDescending(server => server.Players)
             .ThenBy(server => server.Name)
@@ -41,6 +41,20 @@ internal sealed class InMemoryServerRepository : IServerRepository
             .ToArray();
 
         return Task.FromResult<IReadOnlyList<Server>>(servers);
+    }
+
+    public Task<IReadOnlyList<Server>> GetAllAsync(
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult<IReadOnlyList<Server>>(DeduplicateServers(Servers).ToArray());
+    }
+
+    public Task<IReadOnlyList<Server>> GetTrackedByIdsAsync(
+        IReadOnlyList<Guid> serverIds,
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult<IReadOnlyList<Server>>(
+            Servers.Where(server => serverIds.Contains(server.Id)).ToArray());
     }
 
     public Task<Server?> GetByIdWithMapMetadataAsync(
@@ -57,6 +71,44 @@ internal sealed class InMemoryServerRepository : IServerRepository
     {
         return Task.FromResult(Servers.FirstOrDefault(server =>
             server.Host == host && server.QueryPort == queryPort));
+    }
+
+    public Task<Server?> GetByBattleMetricsServerIdAsync(
+        long battleMetricsServerId,
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult(Servers.FirstOrDefault(server =>
+            server.BattleMetricsServerId == battleMetricsServerId));
+    }
+
+    public Task<IReadOnlyList<Server>> GetServersByPlayerCountSourceAsync(
+        ServerPlayerCountSource playerCountSource,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult<IReadOnlyList<Server>>(
+            Servers
+                .Where(server => server.PlayerCountSource == playerCountSource)
+                .OrderByDescending(server => server.UpdatedAtUtc)
+            .Take(take)
+            .ToArray());
+    }
+
+    public Task<IReadOnlyList<Server>> GetServersForPlayerCountRefreshAsync(
+        ServerPlayerCountSource playerCountSource,
+        DateTimeOffset staleBeforeUtc,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult<IReadOnlyList<Server>>(Servers
+            .Where(server =>
+                server.PlayerCountSource == playerCountSource
+                && server.BattleMetricsServerId != null
+                && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= staleBeforeUtc))
+            .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+            .ThenByDescending(server => server.Players)
+            .Take(take)
+            .ToArray());
     }
 
     public Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(
@@ -97,6 +149,14 @@ internal sealed class InMemoryServerRepository : IServerRepository
         return Task.FromResult(Servers
             .FirstOrDefault(server => server.Id == serverId)
             ?.MapMetadata);
+    }
+
+    public Task<int> DeleteSnapshotsOlderThanAsync(
+        DateTimeOffset cutoffUtc,
+        CancellationToken cancellationToken)
+    {
+        var deletedCount = Snapshots.RemoveAll(snapshot => snapshot.CheckedAtUtc < cutoffUtc);
+        return Task.FromResult(deletedCount);
     }
 
     public void Add(Server server)
@@ -151,5 +211,17 @@ internal sealed class InMemoryServerRepository : IServerRepository
         }
 
         return query;
+    }
+
+    private static IReadOnlyList<Server> DeduplicateServers(IEnumerable<Server> servers)
+    {
+        return servers
+            .GroupBy(server => $"{server.Host.Trim().ToLowerInvariant()}:{server.QueryPort}")
+            .Select(group => group
+                .OrderByDescending(server => server.BattleMetricsServerId.HasValue)
+                .ThenByDescending(server => server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics)
+                .ThenByDescending(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+                .First())
+            .ToArray();
     }
 }

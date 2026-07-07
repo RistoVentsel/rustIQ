@@ -29,18 +29,55 @@ public sealed class RustIqDbContext(DbContextOptions<RustIqDbContext> options)
                 .HasMaxLength(255)
                 .IsRequired();
 
+            entity.Property(server => server.Address)
+                .HasMaxLength(255);
+
             entity.Property(server => server.Name)
                 .HasMaxLength(500);
 
             entity.Property(server => server.Map)
                 .HasMaxLength(255);
 
+            entity.Property(server => server.Country)
+                .HasMaxLength(8);
+
             entity.Property(server => server.Status)
                 .HasConversion<string>()
                 .HasMaxLength(32)
                 .IsRequired();
 
+            entity.Property(server => server.DiscoverySource)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .IsRequired();
+
+            entity.Property(server => server.SummarySource)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .IsRequired();
+
+            entity.Property(server => server.PlayerCountSource)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .IsRequired();
+
+            entity.Property(server => server.PlayerListSource)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .IsRequired();
+
+            entity.Property(server => server.DataQuality)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .IsRequired();
+
+            entity.Property(server => server.LastValidationReason)
+                .HasMaxLength(255);
+
             entity.HasIndex(server => new { server.Host, server.QueryPort })
+                .IsUnique();
+
+            entity.HasIndex(server => server.BattleMetricsServerId)
                 .IsUnique();
 
             entity.HasMany(server => server.Snapshots)

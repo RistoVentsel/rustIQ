@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { ApiError, getServers, serverStatus } from '../api'
@@ -15,6 +15,7 @@ export function ServersPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const refreshOnNextRequestRef = useRef<'all' | null>('all')
   const debouncedSearch = useDebouncedValue(searchInput.trim(), 300)
   const statusValue = useMemo(() => {
     switch (statusFilter) {
@@ -29,14 +30,20 @@ export function ServersPage() {
 
   const serversQuery = useQuery({
     queryKey: ['servers', { search: debouncedSearch, status: statusValue, page, pageSize }],
-    queryFn: ({ signal }) =>
-      getServers(signal, {
+    queryFn: ({ signal }) => {
+      const refresh = refreshOnNextRequestRef.current
+      refreshOnNextRequestRef.current = null
+
+      return getServers(signal, {
         search: debouncedSearch || undefined,
         status: statusValue,
         page,
         pageSize,
-      }),
-    staleTime: 30_000,
+        refresh: refresh ?? undefined,
+      })
+    },
+    staleTime: 0,
+    refetchOnMount: 'always',
     placeholderData: keepPreviousData,
   })
   const serversPageData = serversQuery.data ?? null
@@ -102,6 +109,7 @@ export function ServersPage() {
               type="button"
               className="button-link button-link--secondary"
               onClick={() => {
+                refreshOnNextRequestRef.current = 'all'
                 void serversQuery.refetch()
               }}
               disabled={serversQuery.isFetching}
