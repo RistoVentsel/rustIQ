@@ -14,7 +14,7 @@ export type GetServersParams = {
   status?: ServerStatus
   page?: number
   pageSize?: number
-  sortBy?: 'players' | 'lastWipe' | 'location'
+  sortBy?: 'players' | 'lastWipe' | 'nextWipe' | 'location'
   sortDirection?: 'asc' | 'desc'
   refresh?: 'page' | 'all'
 }

@@ -233,6 +233,9 @@ internal sealed class InMemoryServerRepository : IServerRepository
             ServerReadService.SortByLastWipe => sortDescending
                 ? servers.OrderByDescending(server => server.LastWipeAtUtc ?? DateTimeOffset.MinValue)
                 : servers.OrderBy(server => server.LastWipeAtUtc ?? DateTimeOffset.MaxValue),
+            ServerReadService.SortByNextWipe => sortDescending
+                ? servers.OrderByDescending(server => server.NextWipeAtUtc ?? DateTimeOffset.MinValue)
+                : servers.OrderBy(server => server.NextWipeAtUtc ?? DateTimeOffset.MaxValue),
             ServerReadService.SortByLocation => sortDescending
                 ? servers.OrderByDescending(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 : servers.OrderBy(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase),

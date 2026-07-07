@@ -16,6 +16,7 @@ public sealed class ServerReadService(
     private const int MaxSnapshotLimit = 500;
     public const string SortByPlayers = "players";
     public const string SortByLastWipe = "lastWipe";
+    public const string SortByNextWipe = "nextWipe";
     public const string SortByLocation = "location";
     public const string SortAscending = "asc";
     public const string SortDescending = "desc";
@@ -302,6 +303,7 @@ public sealed class ServerReadService(
         return sortBy?.Trim() switch
         {
             SortByLastWipe => SortByLastWipe,
+            SortByNextWipe => SortByNextWipe,
             SortByLocation => SortByLocation,
             _ => SortByPlayers
         };

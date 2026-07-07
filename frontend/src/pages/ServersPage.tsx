@@ -9,12 +9,16 @@ import { ServerListCard } from '../features/servers/ServerListCard'
 import { useDebouncedValue } from '../hooks'
 
 const pageSizeOptions = [10, 25, 50]
+type ServerSortBy = 'players' | 'lastWipe' | 'nextWipe'
+type ServerSortDirection = 'asc' | 'desc'
 
 export function ServersPage() {
   const [searchInput, setSearchInput] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [sortBy, setSortBy] = useState<ServerSortBy>('players')
+  const [sortDirection, setSortDirection] = useState<ServerSortDirection>('desc')
   const refreshOnNextRequestRef = useRef<'all' | null>('all')
   const debouncedSearch = useDebouncedValue(searchInput.trim(), 300)
   const statusValue = useMemo(() => {
@@ -29,7 +33,7 @@ export function ServersPage() {
   }, [statusFilter])
 
   const serversQuery = useQuery({
-    queryKey: ['servers', { search: debouncedSearch, status: statusValue, page, pageSize }],
+    queryKey: ['servers', { search: debouncedSearch, status: statusValue, page, pageSize, sortBy, sortDirection }],
     queryFn: ({ signal }) => {
       const refresh = refreshOnNextRequestRef.current
       refreshOnNextRequestRef.current = null
@@ -39,6 +43,8 @@ export function ServersPage() {
         status: statusValue,
         page,
         pageSize,
+        sortBy,
+        sortDirection,
         refresh: refresh ?? undefined,
       })
     },
@@ -72,6 +78,26 @@ export function ServersPage() {
   function updatePageSize(value: number) {
     setPageSize(value)
     setPage(1)
+  }
+
+  function updateSort(nextSortBy: ServerSortBy) {
+    const defaultDirection = nextSortBy === 'nextWipe' ? 'asc' : 'desc'
+    setSortDirection((currentDirection) => (
+      sortBy === nextSortBy
+        ? currentDirection === 'desc' ? 'asc' : 'desc'
+        : defaultDirection
+    ))
+    setSortBy(nextSortBy)
+
+    setPage(1)
+  }
+
+  function getSortIndicator(column: ServerSortBy) {
+    if (sortBy !== column) {
+      return null
+    }
+
+    return <span aria-hidden="true">{sortDirection === 'desc' ? '↓' : '↑'}</span>
   }
 
   return (
@@ -215,7 +241,33 @@ export function ServersPage() {
         ) : null}
 
         {hasServersData && servers.length > 0 ? (
-          <div className="server-list-grid" aria-label="Server list">
+          <div className="server-list-table" aria-label="Server list">
+            <div className="server-list-table__header">
+              <span>Name</span>
+              <button
+                type="button"
+                className="server-list-table__sort"
+                onClick={() => updateSort('players')}
+              >
+                Players{getSortIndicator('players')}
+              </button>
+              <button
+                type="button"
+                className="server-list-table__sort"
+                onClick={() => updateSort('lastWipe')}
+              >
+                Last Wipe{getSortIndicator('lastWipe')}
+              </button>
+              <button
+                type="button"
+                className="server-list-table__sort"
+                onClick={() => updateSort('nextWipe')}
+              >
+                Next Wipe{getSortIndicator('nextWipe')}
+              </button>
+              <span>Location</span>
+              <span>Updated</span>
+            </div>
             {servers.map((server) => (
               <ServerListCard key={server.id} server={server} />
             ))}
