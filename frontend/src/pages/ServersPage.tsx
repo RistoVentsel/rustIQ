@@ -246,52 +246,54 @@ export function ServersPage() {
           </div>
         }
       >
-        <form className="server-list-filters" onSubmit={submitSearch}>
-          <label className="server-list-control server-list-control--search">
-            <span>Search</span>
-            <input
-              type="search"
-              value={searchInput}
-              onChange={(event) => updateSearch(event.target.value)}
-              placeholder="Search by name, host, or map"
-              className="server-list-input"
-            />
-          </label>
+        <div className="server-list-toolbar">
+          <form className="server-list-filters" onSubmit={submitSearch}>
+            <label className="server-list-control server-list-control--search">
+              <span>Search</span>
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(event) => updateSearch(event.target.value)}
+                placeholder="Search by name, host, or map"
+                className="server-list-input"
+              />
+            </label>
 
-          <button type="submit" className="button-link">
-            Search
-          </button>
+            <button type="submit" className="button-link">
+              Search
+            </button>
 
-          <label className="server-list-control">
-            <span>Status</span>
-            <select
-              value={statusFilter}
-              onChange={(event) => updateStatus(event.target.value as 'all' | 'online' | 'offline')}
-              className="server-list-select"
-            >
-              <option value="all">All</option>
-              <option value="online">Online</option>
-              <option value="offline">Offline</option>
-            </select>
-          </label>
-        </form>
-
-        <div className="server-type-filters" aria-label="Server type filters">
-          {serverTypeFilterOptions.map((serverType) => {
-            const isActive = serverTypeFilters.includes(serverType)
-
-            return (
-              <button
-                key={serverType}
-                type="button"
-                className={isActive ? 'server-type-filter server-type-filter--active' : 'server-type-filter'}
-                onClick={() => toggleServerTypeFilter(serverType)}
-                aria-pressed={isActive}
+            <label className="server-list-control">
+              <span>Status</span>
+              <select
+                value={statusFilter}
+                onChange={(event) => updateStatus(event.target.value as 'all' | 'online' | 'offline')}
+                className="server-list-select"
               >
-                {getRustServerTypeLabel(serverType)}
-              </button>
-            )
-          })}
+                <option value="all">All</option>
+                <option value="online">Online</option>
+                <option value="offline">Offline</option>
+              </select>
+            </label>
+          </form>
+
+          <div className="server-type-filters" aria-label="Server type filters">
+            {serverTypeFilterOptions.map((serverType) => {
+              const isActive = serverTypeFilters.includes(serverType)
+
+              return (
+                <button
+                  key={serverType}
+                  type="button"
+                  className={isActive ? 'server-type-filter server-type-filter--active' : 'server-type-filter'}
+                  onClick={() => toggleServerTypeFilter(serverType)}
+                  aria-pressed={isActive}
+                >
+                  {getRustServerTypeLabel(serverType)}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         {isLoadingServers ? (

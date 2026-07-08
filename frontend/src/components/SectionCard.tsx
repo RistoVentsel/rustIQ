@@ -22,7 +22,7 @@ export function SectionCard({
         {actions ? <div>{actions}</div> : null}
       </div>
 
-      <div>{children}</div>
+      <div className="section-card__body">{children}</div>
     </section>
   )
 }

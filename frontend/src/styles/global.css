@@ -322,6 +322,11 @@ select {
   padding: 24px;
 }
 
+.section-card__body {
+  display: grid;
+  gap: 22px;
+}
+
 .section-card__header,
 .server-preview__header {
   display: flex;
@@ -353,6 +358,7 @@ select {
   display: grid;
   gap: 8px;
   width: 100%;
+  padding-top: 2px;
 }
 
 .server-list-table__header,
@@ -616,8 +622,8 @@ select {
 .server-list-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin: 12px 0 18px;
+  gap: 12px;
+  margin: 0;
 }
 
 .server-list-actions,
@@ -632,11 +638,17 @@ select {
   flex-wrap: wrap;
 }
 
+.server-list-toolbar {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 2px;
+}
+
 .server-type-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: -12px;
+  margin: 0;
 }
 
 .server-type-filter {
@@ -663,8 +675,8 @@ select {
 .server-list-pagination {
   justify-content: space-between;
   align-items: center;
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 0;
+  padding-top: 4px;
 }
 
 .server-list-pagination__pages {
@@ -1046,6 +1058,24 @@ select {
   .server-focus {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .server-list-actions,
+  .server-list-filters,
+  .server-list-pagination {
+    width: 100%;
+  }
+
+  .server-list-control--search,
+  .server-list-actions .server-list-control,
+  .server-list-filters .server-list-control,
+  .server-list-actions .server-list-select,
+  .server-list-filters .server-list-input,
+  .server-list-filters .server-list-select,
+  .server-list-actions .button-link,
+  .server-list-filters .button-link,
+  .server-list-pagination .button-link {
+    width: 100%;
   }
 
   .server-map-layout,
