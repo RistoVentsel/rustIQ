@@ -382,4 +382,72 @@ public sealed class ServerReadServiceTests
         Assert.Equal("cached.test", result.Host);
         Assert.Empty(refreshService.RefreshedServers);
     }
+
+    [Fact]
+    public async Task GetCurrentPlayersAsync_RefreshesRequestedServerBeforeReadingPlayers()
+    {
+        var serverId = Guid.NewGuid();
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = serverId,
+            Host = "server.test",
+            QueryPort = 28015,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        });
+        repository.CurrentPlayers.Add(new ServerPlayerCurrent
+        {
+            Id = Guid.NewGuid(),
+            ServerId = serverId,
+            PlayerName = "Alice",
+            Score = 10,
+            DurationSeconds = 120,
+            SeenAtUtc = DateTimeOffset.Parse("2026-07-08T12:00:00Z")
+        });
+        var refreshService = new RecordingServerRefreshService();
+        var service = new ServerReadService(repository, refreshService);
+
+        var result = await service.GetCurrentPlayersAsync(serverId, CancellationToken.None);
+
+        Assert.NotNull(result);
+        var refreshedServer = Assert.Single(refreshService.CurrentPlayersRefreshedServers);
+        Assert.Equal(serverId, refreshedServer.Id);
+        var player = Assert.Single(result.Players);
+        Assert.Equal("Alice", player.PlayerName);
+        Assert.Equal(DateTimeOffset.Parse("2026-07-08T12:00:00Z"), result.RefreshedAtUtc);
+    }
+
+    [Fact]
+    public async Task GetCurrentPlayersAsync_ReturnsCachedPlayersWhenRefreshFails()
+    {
+        var serverId = Guid.NewGuid();
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = serverId,
+            Host = "server.test",
+            QueryPort = 28015,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        });
+        repository.CurrentPlayers.Add(new ServerPlayerCurrent
+        {
+            Id = Guid.NewGuid(),
+            ServerId = serverId,
+            PlayerName = "Alice",
+            Score = 10,
+            DurationSeconds = 120,
+            SeenAtUtc = DateTimeOffset.Parse("2026-07-08T12:00:00Z")
+        });
+        var refreshService = new RecordingServerRefreshService { ThrowOnRefreshCurrentPlayers = true };
+        var service = new ServerReadService(repository, refreshService);
+
+        var result = await service.GetCurrentPlayersAsync(serverId, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Empty(refreshService.CurrentPlayersRefreshedServers);
+        var player = Assert.Single(result.Players);
+        Assert.Equal("Alice", player.PlayerName);
+    }
 }

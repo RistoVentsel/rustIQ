@@ -1,11 +1,14 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
-import { ApiError, getServerById, getServerMap, getServerPlayers, getServerSnapshots } from '../api'
+import { ApiError, getServerById, getServerMap, getServerPlayers } from '../api'
 import { SectionCard } from '../components/SectionCard'
 import { StateNotice } from '../components/StateNotice'
 import { ServerLayoutPreview } from '../features/servers/ServerLayoutPreview'
 import {
+  formatAddress,
+  formatCountry,
   formatServerLocation,
   formatPlayerCount,
   formatServerSubtitle,
@@ -55,10 +58,34 @@ function getQueryErrorDetail(error: unknown) {
     : 'Unexpected error while loading backend data.'
 }
 
+function ServerDetailLocation({
+  server,
+}: {
+  server: Parameters<typeof formatServerLocation>[0]
+}) {
+  const country = formatCountry(server.country)
+  const countryCode = server.country?.trim().toLowerCase()
+  const flagSrc = countryCode && /^[a-z]{2}$/.test(countryCode)
+    ? `https://flagcdn.com/w40/${countryCode}.png`
+    : null
+
+  return (
+    <span className="server-detail-location" aria-label={`Location ${formatCountry(server.country)}`}>
+      <span className="server-location__initials">{country}</span>
+      {flagSrc ? (
+        <img className="server-location__flag" src={flagSrc} alt="" loading="lazy" />
+      ) : (
+        <span className="server-location__flag server-location__flag--empty" aria-hidden="true" />
+      )}
+    </span>
+  )
+}
+
 export function ServerDetailPage() {
   const { serverId } = useParams<{ serverId: string }>()
   const liveStatus = useServerLiveUpdates(serverId)
   const nowMs = useNow()
+  const [copiedAddress, setCopiedAddress] = useState(false)
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
     enabled: Boolean(serverId),
@@ -83,15 +110,7 @@ export function ServerDetailPage() {
     staleTime: 0,
     refetchOnMount: 'always',
   })
-  const snapshotsQuery = useQuery({
-    queryKey: ['server', serverId, 'snapshots', { limit: 20 }],
-    enabled: Boolean(serverId),
-    queryFn: ({ signal }) => getServerSnapshots(serverId!, signal, { limit: 20 }),
-    staleTime: 0,
-    refetchOnMount: 'always',
-  })
   const players = playersQuery.data?.players ?? []
-  const snapshots = snapshotsQuery.data ?? []
   const hasPlayerSnapshot = Boolean(playersQuery.data?.refreshedAtUtc)
   const hasServerData = Boolean(serverQuery.data)
   const updatedSecondsAgo = serverQuery.data
@@ -100,6 +119,13 @@ export function ServerDetailPage() {
   const lastSeenSecondsAgo = serverQuery.data?.lastSeenAtUtc
     ? getSecondsAgo(serverQuery.data.lastSeenAtUtc, nowMs)
     : null
+  const serverAddress = serverQuery.data ? formatAddress(serverQuery.data) : ''
+
+  async function copyAddressToClipboard(address: string) {
+    await navigator.clipboard.writeText(address)
+    setCopiedAddress(true)
+    window.setTimeout(() => setCopiedAddress(false), 1600)
+  }
 
   return (
     <div className="page-stack">
@@ -108,8 +134,7 @@ export function ServerDetailPage() {
         <h2 className="page-heading">Server detail route</h2>
         <p className="page-text">
           This screen loads one specific server from the backend, along with current players
-          and map metadata. It also subscribes to live updates and shows recent snapshot
-          history from cached data.
+          and map metadata. It also subscribes to live updates for the selected server.
         </p>
       </div>
 
@@ -189,32 +214,26 @@ export function ServerDetailPage() {
                 },
                 { label: 'Last wiped', value: formatServerTimestamp(serverQuery.data.lastWipeAtUtc) },
                 { label: 'Next wipe', value: formatServerTimestamp(serverQuery.data.nextWipeAtUtc) },
-                { label: 'Location', value: formatServerLocation(serverQuery.data) },
+                { label: 'Location', value: <ServerDetailLocation server={serverQuery.data} /> },
               ]}
             />
 
             <dl className="server-detail-meta">
               <div className="server-detail-meta__item">
-                <dt>Server id</dt>
-                <dd>{serverQuery.data.id}</dd>
-              </div>
-              <div className="server-detail-meta__item">
-                <dt>Address</dt>
-                <dd>
-                  {serverQuery.data.host}:{serverQuery.data.queryPort}
+                <dt>IP address</dt>
+                <dd className="server-detail-address">
+                  <span>{serverAddress}</span>
+                  <button
+                    type="button"
+                    className="copy-button"
+                    onClick={() => {
+                      void copyAddressToClipboard(serverAddress)
+                    }}
+                    aria-label={`Copy IP address ${serverAddress}`}
+                  >
+                    {copiedAddress ? 'Copied' : 'Copy'}
+                  </button>
                 </dd>
-              </div>
-              <div className="server-detail-meta__item">
-                <dt>Created</dt>
-                <dd>{serverQuery.data.createdAtUtc}</dd>
-              </div>
-              <div className="server-detail-meta__item">
-                <dt>Updated</dt>
-                <dd>{formatSecondsAgo(updatedSecondsAgo)}</dd>
-              </div>
-              <div className="server-detail-meta__item">
-                <dt>Last checked</dt>
-                <dd>{serverQuery.data.lastCheckedAtUtc ?? 'Unavailable'}</dd>
               </div>
               <div className="server-detail-meta__item">
                 <dt>Last wiped</dt>
@@ -225,16 +244,8 @@ export function ServerDetailPage() {
                 <dd>{formatServerTimestamp(serverQuery.data.nextWipeAtUtc)}</dd>
               </div>
               <div className="server-detail-meta__item">
-                <dt>Location</dt>
-                <dd>{formatServerLocation(serverQuery.data)}</dd>
-              </div>
-              <div className="server-detail-meta__item">
                 <dt>Map summary</dt>
                 <dd>{serverQuery.data.mapMetadata?.mapName ?? serverQuery.data.map ?? 'Unavailable'}</dd>
-              </div>
-              <div className="server-detail-meta__item">
-                <dt>Live connection</dt>
-                <dd>{getLiveStatusLabel(liveStatus)}</dd>
               </div>
             </dl>
           </div>
@@ -318,8 +329,8 @@ export function ServerDetailPage() {
                 <dd>{mapQuery.data.size ?? 'Unavailable'}</dd>
               </div>
               <div className="server-detail-meta__item">
-                <dt>Source</dt>
-                <dd>{mapQuery.data.source}</dd>
+                <dt>Fetched</dt>
+                <dd>{formatServerTimestamp(mapQuery.data.fetchedAtUtc)}</dd>
               </div>
               <div className="server-detail-meta__item">
                 <dt>RustMaps</dt>
@@ -329,7 +340,7 @@ export function ServerDetailPage() {
                       href={mapQuery.data.rustMapsUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-link"
+                      className="map-action-link"
                     >
                       Open RustMaps
                     </a>
@@ -346,9 +357,9 @@ export function ServerDetailPage() {
                       href={mapQuery.data.mapFileUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-link"
+                      className="map-action-link"
                     >
-                      Open map file
+                      Download map file
                     </a>
                   ) : (
                     'Unavailable'
@@ -433,80 +444,6 @@ export function ServerDetailPage() {
                 </div>
               ))}
             </div>
-          </div>
-        ) : null}
-      </SectionCard>
-
-      <SectionCard
-        title="Snapshot history"
-        description="Recent cached player-count history from GET /servers/{id}/snapshots."
-      >
-        {snapshotsQuery.isLoading && snapshotsQuery.data === undefined ? (
-          <StateNotice
-            title="Loading snapshot history"
-            description="The page is waiting for GET /servers/{id}/snapshots."
-          />
-        ) : null}
-
-        {snapshotsQuery.isFetching && snapshotsQuery.data !== undefined ? (
-          <StateNotice
-            title="Refreshing snapshot history"
-            description="Showing the current history table while the backend refreshes recent snapshots."
-          />
-        ) : null}
-
-        {snapshotsQuery.isError ? (
-          <StateNotice
-            title={
-              snapshotsQuery.data !== undefined
-                ? 'Snapshot refresh failed, showing cached history'
-                : 'Snapshot history request failed'
-            }
-            description={
-              snapshotsQuery.data !== undefined
-                ? 'The newest snapshot history could not be loaded, so the table is still showing the last successful response.'
-                : undefined
-            }
-            detail={getQueryErrorDetail(snapshotsQuery.error)}
-            tone="error"
-          />
-        ) : null}
-
-        {!snapshotsQuery.isLoading && !snapshotsQuery.isError && snapshots.length === 0 ? (
-          <StateNotice
-            title="No snapshot history available"
-            description="The backend has not stored recent player-count snapshots for this server yet."
-          />
-        ) : null}
-
-        {!snapshotsQuery.isLoading && !snapshotsQuery.isError && snapshots.length > 0 ? (
-          <div className="snapshot-table-wrap">
-            <table className="snapshot-table">
-              <thead>
-                <tr>
-                  <th scope="col">Checked</th>
-                  <th scope="col">Players</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Ping</th>
-                </tr>
-              </thead>
-              <tbody>
-                {snapshots.map((snapshot, index) => (
-                  <tr key={`${snapshot.checkedAtUtc}-${index}`}>
-                    <td>{snapshot.checkedAtUtc}</td>
-                    <td>
-                      {snapshot.players} / {snapshot.maxPlayers}
-                    </td>
-                    <td>{snapshot.isOnline ? 'Online' : 'Offline'}</td>
-                    <td>
-                      {snapshot.pingMilliseconds === null
-                        ? 'Unavailable'
-                        : `${snapshot.pingMilliseconds} ms`}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         ) : null}
       </SectionCard>

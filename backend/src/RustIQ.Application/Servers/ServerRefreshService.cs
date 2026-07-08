@@ -66,6 +66,30 @@ public sealed class ServerRefreshService(
         Server server,
         CancellationToken cancellationToken)
     {
+        await PollServerAsync(
+            server,
+            refreshCurrentPlayers: false,
+            refreshMapMetadata: false,
+            cancellationToken);
+    }
+
+    public async Task RefreshCurrentPlayersAsync(
+        Server server,
+        CancellationToken cancellationToken)
+    {
+        await PollServerAsync(
+            server,
+            refreshCurrentPlayers: true,
+            refreshMapMetadata: false,
+            cancellationToken);
+    }
+
+    private async Task PollServerAsync(
+        Server server,
+        bool refreshCurrentPlayers,
+        bool refreshMapMetadata,
+        CancellationToken cancellationToken)
+    {
         var configuredServer = new ConfiguredRustServer
         {
             BattleMetricsServerId = server.BattleMetricsServerId,
@@ -89,8 +113,8 @@ public sealed class ServerRefreshService(
         await serverPollingService.PollConfiguredServerAsync(
             configuredServer,
             offlineThreshold,
-            refreshCurrentPlayers: false,
-            refreshMapMetadata: false,
+            refreshCurrentPlayers,
+            refreshMapMetadata,
             cancellationToken);
     }
 

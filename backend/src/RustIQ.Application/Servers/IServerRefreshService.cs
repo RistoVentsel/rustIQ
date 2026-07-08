@@ -17,4 +17,8 @@ public interface IServerRefreshService
     Task RefreshServerAsync(
         Server server,
         CancellationToken cancellationToken);
+
+    Task RefreshCurrentPlayersAsync(
+        Server server,
+        CancellationToken cancellationToken);
 }

@@ -214,6 +214,64 @@ public sealed class ServerPollingServiceTests
     }
 
     [Fact]
+    public async Task PollConfiguredServerAsync_ClearsCurrentPlayersWhenPlayerQueryReturnsNoNames()
+    {
+        var serverId = Guid.NewGuid();
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = serverId,
+            Host = "example.test",
+            QueryPort = 28015,
+            Name = "Existing Server",
+            PlayerListSource = PlayerListSource.A2S,
+            Status = ServerStatus.Online,
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
+            UpdatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1)
+        });
+        repository.CurrentPlayers.Add(new ServerPlayerCurrent
+        {
+            Id = Guid.NewGuid(),
+            ServerId = serverId,
+            PlayerName = "StalePlayer",
+            Score = 1,
+            DurationSeconds = 30,
+            SeenAtUtc = DateTimeOffset.Parse("2026-07-06T11:59:00Z")
+        });
+        var queryClient = new FakeRustServerQueryClient(
+            QueryResult(
+                "example.test",
+                28015,
+                "Existing Server",
+                "Procedural Map",
+                0,
+                100,
+                true,
+                10,
+                DateTimeOffset.Parse("2026-07-06T12:00:00Z"),
+                null),
+            [
+                new RustServerPlayerResult(null, 0, 1),
+                new RustServerPlayerResult(" ", 0, 1)
+            ]);
+        var service = new ServerPollingService(
+            queryClient,
+            new FakeBattleMetricsPlayerCountClient(),
+            new FakeRustServerMapMetadataClient(),
+            repository);
+
+        var result = await service.PollConfiguredServerAsync(
+            new ConfiguredRustServer { Host = "example.test", QueryPort = 28015 },
+            DefaultOfflineThreshold,
+            refreshCurrentPlayers: true,
+            refreshMapMetadata: false,
+            CancellationToken.None);
+
+        Assert.Empty(repository.CurrentPlayers);
+        Assert.Empty(result.CurrentPlayers);
+    }
+
+    [Fact]
     public async Task PollConfiguredServerAsync_CanPollMultipleConfiguredServersIndependently()
     {
         var firstConfiguredServer = new ConfiguredRustServer { Name = "Alpha", Host = "alpha.test", QueryPort = 28015 };

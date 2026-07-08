@@ -1,6 +1,8 @@
+import type { ReactNode } from 'react'
+
 type StatItem = {
   label: string
-  value: string
+  value: ReactNode
 }
 
 type ServerLayoutPreviewProps = {

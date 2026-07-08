@@ -141,11 +141,8 @@ public sealed class ServerPollingService(
         if (refreshCurrentPlayers && effectiveConfiguredServer.PlayerListSource == PlayerListSource.A2S)
         {
             currentPlayers = await QueryCurrentPlayersAsync(effectiveConfiguredServer, server.Id, now, cancellationToken);
-            if (currentPlayers.Count > 0)
-            {
-                await serverRepository.ReplaceCurrentPlayersAsync(server.Id, currentPlayers, cancellationToken);
-                server.CurrentPlayers = currentPlayers.ToList();
-            }
+            await serverRepository.ReplaceCurrentPlayersAsync(server.Id, currentPlayers, cancellationToken);
+            server.CurrentPlayers = currentPlayers.ToList();
         }
 
         await serverRepository.SaveChangesAsync(cancellationToken);

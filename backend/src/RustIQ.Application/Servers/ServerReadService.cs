@@ -151,9 +151,21 @@ public sealed class ServerReadService(
         Guid serverId,
         CancellationToken cancellationToken)
     {
-        if (!await ServerExistsAsync(serverId, cancellationToken))
+        var server = await serverRepository.GetByIdWithMapMetadataAsync(serverId, cancellationToken);
+        if (server is null)
         {
             return null;
+        }
+
+        if (serverRefreshService is not null)
+        {
+            try
+            {
+                await serverRefreshService.RefreshCurrentPlayersAsync(server, cancellationToken);
+            }
+            catch (Exception exception) when (!IsRequestCancellation(exception, cancellationToken))
+            {
+            }
         }
 
         var players = await serverRepository.GetCurrentPlayersAsync(serverId, cancellationToken);

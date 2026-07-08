@@ -714,6 +714,45 @@ select {
   color: var(--text);
 }
 
+.server-detail-address,
+.server-detail-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.server-detail-address {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.server-detail-address span {
+  overflow-wrap: anywhere;
+}
+
+.copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--button-border);
+  border-radius: 8px;
+  background: var(--button-bg);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.copy-button:hover {
+  border-color: var(--hover-border);
+}
+
+.server-detail-location {
+  flex-wrap: wrap;
+}
+
 .server-focus {
   display: flex;
   align-items: center;
@@ -774,6 +813,27 @@ select {
   color: var(--text);
 }
 
+.map-action-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--button-border);
+  border-radius: 8px;
+  background: var(--button-bg);
+  color: var(--accent-strong);
+  font-size: 0.94rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.map-action-link:hover {
+  border-color: var(--hover-border);
+  background: var(--focus-bg);
+  color: var(--text);
+}
+
 .player-list {
   display: grid;
   gap: 12px;
@@ -815,39 +875,6 @@ select {
   margin: 0;
   color: var(--text);
   font-weight: 600;
-}
-
-.snapshot-table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel-muted-bg);
-}
-
-.snapshot-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 560px;
-}
-
-.snapshot-table th,
-.snapshot-table td {
-  padding: 14px 16px;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-}
-
-.snapshot-table th {
-  color: var(--text-muted);
-  font-weight: 600;
-}
-
-.snapshot-table td {
-  color: var(--text);
-}
-
-.snapshot-table tbody tr:last-child td {
-  border-bottom: 0;
 }
 
 .config-summary {

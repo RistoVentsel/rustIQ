@@ -15,9 +15,13 @@ internal sealed class RecordingServerRefreshService : IServerRefreshService
 
     public bool ThrowOnRefreshServer { get; set; }
 
+    public bool ThrowOnRefreshCurrentPlayers { get; set; }
+
     public List<IReadOnlyList<Server>> RefreshBatches { get; } = [];
 
     public List<Server> RefreshedServers { get; } = [];
+
+    public List<Server> CurrentPlayersRefreshedServers { get; } = [];
 
     public Task RefreshServersAsync(
         IReadOnlyList<Server> servers,
@@ -61,6 +65,19 @@ internal sealed class RecordingServerRefreshService : IServerRefreshService
         }
 
         RefreshedServers.Add(server);
+        return Task.CompletedTask;
+    }
+
+    public Task RefreshCurrentPlayersAsync(
+        Server server,
+        CancellationToken cancellationToken)
+    {
+        if (ThrowOnRefreshCurrentPlayers)
+        {
+            throw new InvalidOperationException("Refresh current players failed.");
+        }
+
+        CurrentPlayersRefreshedServers.Add(server);
         return Task.CompletedTask;
     }
 }
