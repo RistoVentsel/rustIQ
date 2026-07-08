@@ -117,6 +117,11 @@ namespace RustIQ.Infrastructure.Migrations
                     b.Property<int?>("QueuePlayers")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ServerType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)

@@ -2,20 +2,35 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { Fragment, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { ApiError, getServerRefreshStatus, getServers, queueServerRefresh, serverStatus } from '../api'
+import {
+  ApiError,
+  getServerRefreshStatus,
+  getServers,
+  queueServerRefresh,
+  rustServerType,
+  serverStatus,
+  type RustServerType,
+} from '../api'
 import { SectionCard } from '../components/SectionCard'
 import { StateNotice } from '../components/StateNotice'
 import { ServerListCard } from '../features/servers/ServerListCard'
+import { getRustServerTypeLabel } from '../features/servers/serverPresentation'
 import { useNow } from '../hooks'
 
 const pageSizeOptions = [10, 25, 50]
-type ServerSortBy = 'players' | 'lastWipe' | 'nextWipe'
+type ServerSortBy = 'players' | 'lastWipe' | 'nextWipe' | 'serverType'
 type ServerSortDirection = 'asc' | 'desc'
+const serverTypeFilterOptions = [
+  rustServerType.Official,
+  rustServerType.Community,
+  rustServerType.Modded,
+] as const
 
 export function ServersPage() {
   const [searchInput, setSearchInput] = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all')
+  const [serverTypeFilters, setServerTypeFilters] = useState<RustServerType[]>([])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [sortBy, setSortBy] = useState<ServerSortBy>('players')
@@ -37,6 +52,7 @@ export function ServersPage() {
   const serverQueryParams = {
     search: appliedSearch || undefined,
     status: statusValue,
+    serverTypes: serverTypeFilters,
     page,
     pageSize,
     sortBy,
@@ -134,13 +150,22 @@ export function ServersPage() {
     setPage(1)
   }
 
+  function toggleServerTypeFilter(serverType: RustServerType) {
+    setServerTypeFilters((currentFilters) => (
+      currentFilters.includes(serverType)
+        ? currentFilters.filter((currentFilter) => currentFilter !== serverType)
+        : [...currentFilters, serverType]
+    ))
+    setPage(1)
+  }
+
   function updatePageSize(value: number) {
     setPageSize(value)
     setPage(1)
   }
 
   function updateSort(nextSortBy: ServerSortBy) {
-    const defaultDirection = nextSortBy === 'nextWipe' ? 'asc' : 'desc'
+    const defaultDirection = nextSortBy === 'nextWipe' || nextSortBy === 'serverType' ? 'asc' : 'desc'
     setSortDirection((currentDirection) => (
       sortBy === nextSortBy
         ? currentDirection === 'desc' ? 'asc' : 'desc'
@@ -192,7 +217,7 @@ export function ServersPage() {
 
       <SectionCard
         title="Servers"
-        description="This page is cached and readable by design. It does not open a live SignalR connection."
+        description="Find active Rust servers, compare player counts, and open a server for live details."
         actions={
           <div className="server-list-actions">
             <label className="server-list-control">
@@ -250,6 +275,24 @@ export function ServersPage() {
             </select>
           </label>
         </form>
+
+        <div className="server-type-filters" aria-label="Server type filters">
+          {serverTypeFilterOptions.map((serverType) => {
+            const isActive = serverTypeFilters.includes(serverType)
+
+            return (
+              <button
+                key={serverType}
+                type="button"
+                className={isActive ? 'server-type-filter server-type-filter--active' : 'server-type-filter'}
+                onClick={() => toggleServerTypeFilter(serverType)}
+                aria-pressed={isActive}
+              >
+                {getRustServerTypeLabel(serverType)}
+              </button>
+            )
+          })}
+        </div>
 
         {isLoadingServers ? (
           <StateNotice
@@ -329,6 +372,13 @@ export function ServersPage() {
           <div className="server-list-table" aria-label="Server list">
             <div className="server-list-table__header">
               <span>Name</span>
+              <button
+                type="button"
+                className="server-list-table__sort"
+                onClick={() => updateSort('serverType')}
+              >
+                Server Type{getSortIndicator('serverType')}
+              </button>
               <button
                 type="button"
                 className="server-list-table__sort"

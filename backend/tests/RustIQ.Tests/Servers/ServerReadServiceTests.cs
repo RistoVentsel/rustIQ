@@ -35,6 +35,7 @@ public sealed class ServerReadServiceTests
             pageSize: 1_000,
             sortBy: ServerReadService.SortByPlayers,
             sortDirection: ServerReadService.SortDescending,
+            serverTypes: null,
             refreshMode: ServerReadService.RefreshNoneMode,
             CancellationToken.None);
 
@@ -96,6 +97,7 @@ public sealed class ServerReadServiceTests
             25,
             null,
             null,
+            null,
             ServerReadService.RefreshNoneMode,
             CancellationToken.None);
 
@@ -145,11 +147,72 @@ public sealed class ServerReadServiceTests
             25,
             ServerReadService.SortByLocation,
             ServerReadService.SortAscending,
+            null,
             ServerReadService.RefreshNoneMode,
             CancellationToken.None);
 
         Assert.Equal("canada.test", result.Items[0].Host);
         Assert.Equal("estonia.test", result.Items[1].Host);
+    }
+
+    [Fact]
+    public async Task GetServersAsync_FiltersByServerTypes()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.AddRange(
+        [
+            CreateTypedServer("official.test", RustServerType.Official),
+            CreateTypedServer("community.test", RustServerType.Community),
+            CreateTypedServer("modded.test", RustServerType.Modded)
+        ]);
+
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(
+            null,
+            null,
+            1,
+            25,
+            null,
+            null,
+            "official,modded",
+            ServerReadService.RefreshNoneMode,
+            CancellationToken.None);
+
+        Assert.Equal(2, result.TotalItems);
+        Assert.Contains(result.Items, server => server.Host == "official.test");
+        Assert.Contains(result.Items, server => server.Host == "modded.test");
+        Assert.DoesNotContain(result.Items, server => server.Host == "community.test");
+    }
+
+    [Fact]
+    public async Task GetServersAsync_SortsServerTypeAscending()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.AddRange(
+        [
+            CreateTypedServer("unknown.test", RustServerType.Unknown),
+            CreateTypedServer("modded.test", RustServerType.Modded),
+            CreateTypedServer("community.test", RustServerType.Community),
+            CreateTypedServer("official.test", RustServerType.Official)
+        ]);
+
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(
+            null,
+            null,
+            1,
+            25,
+            ServerReadService.SortByServerType,
+            ServerReadService.SortAscending,
+            null,
+            ServerReadService.RefreshNoneMode,
+            CancellationToken.None);
+
+        Assert.Equal(
+            ["official.test", "community.test", "modded.test", "unknown.test"],
+            result.Items.Select(server => server.Host));
     }
 
     [Fact]
@@ -261,7 +324,7 @@ public sealed class ServerReadServiceTests
         var refreshService = new RecordingServerRefreshService();
         var service = new ServerReadService(repository, refreshService);
 
-        await service.GetServersAsync(null, null, 1, 25, null, null, ServerReadService.RefreshPageMode, CancellationToken.None);
+        await service.GetServersAsync(null, null, 1, 25, null, null, null, ServerReadService.RefreshPageMode, CancellationToken.None);
 
         var refreshBatch = Assert.Single(refreshService.RefreshBatches);
         var refreshedServer = Assert.Single(refreshBatch);
@@ -288,7 +351,7 @@ public sealed class ServerReadServiceTests
         var refreshService = new RecordingServerRefreshService();
         var service = new ServerReadService(repository, refreshService);
 
-        await service.GetServersAsync(null, null, 1, 25, null, null, ServerReadService.RefreshAllMode, CancellationToken.None);
+        await service.GetServersAsync(null, null, 1, 25, null, null, null, ServerReadService.RefreshAllMode, CancellationToken.None);
 
         Assert.Equal(1, refreshService.RefreshAllCallCount);
     }
@@ -317,6 +380,7 @@ public sealed class ServerReadServiceTests
             null,
             1,
             25,
+            null,
             null,
             null,
             ServerReadService.RefreshAllMode,
@@ -449,5 +513,21 @@ public sealed class ServerReadServiceTests
         Assert.Empty(refreshService.CurrentPlayersRefreshedServers);
         var player = Assert.Single(result.Players);
         Assert.Equal("Alice", player.PlayerName);
+    }
+
+    private static Server CreateTypedServer(string host, RustServerType serverType)
+    {
+        return new Server
+        {
+            Id = Guid.NewGuid(),
+            Host = host,
+            QueryPort = 28015,
+            ServerType = serverType,
+            Players = 10,
+            MaxPlayers = 100,
+            Status = ServerStatus.Online,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        };
     }
 }

@@ -18,6 +18,7 @@ public sealed class ServerReadService(
     public const string SortByLastWipe = "lastWipe";
     public const string SortByNextWipe = "nextWipe";
     public const string SortByLocation = "location";
+    public const string SortByServerType = "serverType";
     public const string SortAscending = "asc";
     public const string SortDescending = "desc";
 
@@ -28,6 +29,7 @@ public sealed class ServerReadService(
         int? pageSize,
         string? sortBy,
         string? sortDirection,
+        string? serverTypes,
         string? refreshMode,
         CancellationToken cancellationToken)
     {
@@ -35,11 +37,13 @@ public sealed class ServerReadService(
         var normalizedPageSize = Math.Clamp(pageSize ?? DefaultPageSize, 1, MaxPageSize);
         var normalizedSortBy = NormalizeSortBy(sortBy);
         var sortDescending = NormalizeSortDirection(sortDirection);
+        var normalizedServerTypes = NormalizeServerTypes(serverTypes);
         var skip = (normalizedPage - 1) * normalizedPageSize;
 
         var servers = await serverRepository.GetPagedAsync(
             search,
             status,
+            normalizedServerTypes,
             normalizedSortBy,
             sortDescending,
             skip,
@@ -58,6 +62,7 @@ public sealed class ServerReadService(
                     servers = await serverRepository.GetPagedAsync(
                         search,
                         status,
+                        normalizedServerTypes,
                         normalizedSortBy,
                         sortDescending,
                         skip,
@@ -76,6 +81,7 @@ public sealed class ServerReadService(
                     servers = await serverRepository.GetPagedAsync(
                         search,
                         status,
+                        normalizedServerTypes,
                         normalizedSortBy,
                         sortDescending,
                         skip,
@@ -88,7 +94,7 @@ public sealed class ServerReadService(
             }
         }
 
-        var totalItems = await serverRepository.CountAsync(search, status, cancellationToken);
+        var totalItems = await serverRepository.CountAsync(search, status, normalizedServerTypes, cancellationToken);
 
         var now = DateTimeOffset.UtcNow;
         var items = servers.Select(server => ToListItemDto(server, now)).ToArray();
@@ -217,6 +223,7 @@ public sealed class ServerReadService(
             server.Players,
             server.MaxPlayers,
             server.QueuePlayers,
+            server.ServerType,
             server.Status,
             server.DiscoverySource,
             server.SummarySource,
@@ -250,6 +257,7 @@ public sealed class ServerReadService(
             server.Players,
             server.MaxPlayers,
             server.QueuePlayers,
+            server.ServerType,
             server.Status,
             server.DiscoverySource,
             server.SummarySource,
@@ -342,6 +350,7 @@ public sealed class ServerReadService(
             SortByLastWipe => SortByLastWipe,
             SortByNextWipe => SortByNextWipe,
             SortByLocation => SortByLocation,
+            SortByServerType => SortByServerType,
             _ => SortByPlayers
         };
     }
@@ -349,5 +358,43 @@ public sealed class ServerReadService(
     private static bool NormalizeSortDirection(string? sortDirection)
     {
         return sortDirection?.Trim().ToLowerInvariant() != SortAscending;
+    }
+
+    private static IReadOnlySet<RustServerType> NormalizeServerTypes(string? serverTypes)
+    {
+        if (string.IsNullOrWhiteSpace(serverTypes))
+        {
+            return new HashSet<RustServerType>();
+        }
+
+        var parsedTypes = new HashSet<RustServerType>();
+        foreach (var value in serverTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (TryParseServerType(value, out var serverType)
+                && serverType != RustServerType.Unknown)
+            {
+                parsedTypes.Add(serverType);
+            }
+        }
+
+        return parsedTypes;
+    }
+
+    private static bool TryParseServerType(string value, out RustServerType serverType)
+    {
+        if (Enum.TryParse(value, ignoreCase: true, out serverType))
+        {
+            return true;
+        }
+
+        serverType = value.Trim().ToLowerInvariant() switch
+        {
+            "1" => RustServerType.Official,
+            "2" => RustServerType.Community,
+            "3" => RustServerType.Modded,
+            _ => RustServerType.Unknown
+        };
+
+        return serverType != RustServerType.Unknown;
     }
 }

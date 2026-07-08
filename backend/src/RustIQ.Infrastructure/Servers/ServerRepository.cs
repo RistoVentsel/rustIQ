@@ -10,9 +10,10 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
     public Task<int> CountAsync(
         string? search,
         ServerStatus? status,
+        IReadOnlySet<RustServerType> serverTypes,
         CancellationToken cancellationToken)
     {
-        return CountDeduplicatedAsync(search, status, cancellationToken);
+        return CountDeduplicatedAsync(search, status, serverTypes, cancellationToken);
     }
 
     public async Task<IReadOnlyList<Server>> GetAllAsync(
@@ -37,13 +38,14 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
     public async Task<IReadOnlyList<Server>> GetPagedAsync(
         string? search,
         ServerStatus? status,
+        IReadOnlySet<RustServerType> serverTypes,
         string sortBy,
         bool sortDescending,
         int skip,
         int take,
         CancellationToken cancellationToken)
     {
-        var servers = await ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status)
+        var servers = await ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status, serverTypes)
             .ToListAsync(cancellationToken);
 
         return ApplyServerSort(DeduplicateServers(servers), sortBy, sortDescending)
@@ -207,11 +209,17 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
     private static IQueryable<Server> ApplyServerFilters(
         IQueryable<Server> query,
         string? search,
-        ServerStatus? status)
+        ServerStatus? status,
+        IReadOnlySet<RustServerType> serverTypes)
     {
         if (status is not null)
         {
             query = query.Where(server => server.Status == status);
+        }
+
+        if (serverTypes.Count > 0)
+        {
+            query = query.Where(server => serverTypes.Contains(server.ServerType));
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -229,9 +237,10 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
     private async Task<int> CountDeduplicatedAsync(
         string? search,
         ServerStatus? status,
+        IReadOnlySet<RustServerType> serverTypes,
         CancellationToken cancellationToken)
     {
-        var servers = await ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status)
+        var servers = await ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status, serverTypes)
             .ToListAsync(cancellationToken);
 
         return DeduplicateServers(servers).Count();
@@ -265,6 +274,9 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             ServerReadService.SortByLocation => sortDescending
                 ? servers.OrderByDescending(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 : servers.OrderBy(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            ServerReadService.SortByServerType => sortDescending
+                ? servers.OrderByDescending(server => ServerTypeSortRank(server.ServerType))
+                : servers.OrderBy(server => ServerTypeSortRank(server.ServerType)),
             _ => sortDescending
                 ? servers.OrderByDescending(server => server.Players)
                 : servers.OrderBy(server => server.Players)
@@ -274,5 +286,16 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             .ThenByDescending(server => server.Status == ServerStatus.Online)
             .ThenBy(server => server.Name)
             .ThenBy(server => server.Host);
+    }
+
+    private static int ServerTypeSortRank(RustServerType serverType)
+    {
+        return serverType switch
+        {
+            RustServerType.Official => 0,
+            RustServerType.Community => 1,
+            RustServerType.Modded => 2,
+            _ => 3
+        };
     }
 }

@@ -1,3 +1,5 @@
+using RustIQ.Domain.Servers;
+
 namespace RustIQ.Application.ServerQuery;
 
 public sealed record BattleMetricsPlayerCountResult(
@@ -5,6 +7,7 @@ public sealed record BattleMetricsPlayerCountResult(
     int Players,
     int MaxPlayers,
     int? QueuePlayers,
+    RustServerType ServerType,
     bool IsOnline,
     string? Country,
     double? Latitude,

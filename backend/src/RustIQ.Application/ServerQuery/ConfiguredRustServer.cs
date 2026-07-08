@@ -28,6 +28,8 @@ public sealed class ConfiguredRustServer
 
     public int? QueuePlayers { get; init; }
 
+    public RustServerType ServerType { get; init; } = RustServerType.Unknown;
+
     public ServerDiscoverySource DiscoverySource { get; init; } = ServerDiscoverySource.Manual;
 
     public ServerSummarySource SummarySource { get; init; } = ServerSummarySource.A2S;

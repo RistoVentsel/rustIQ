@@ -18,14 +18,16 @@ internal sealed class InMemoryServerRepository : IServerRepository
     public Task<int> CountAsync(
         string? search,
         ServerStatus? status,
+        IReadOnlySet<RustServerType> serverTypes,
         CancellationToken cancellationToken)
     {
-        return Task.FromResult(DeduplicateServers(ApplyServerFilters(search, status)).Count());
+        return Task.FromResult(DeduplicateServers(ApplyServerFilters(search, status, serverTypes)).Count());
     }
 
     public Task<IReadOnlyList<Server>> GetPagedAsync(
         string? search,
         ServerStatus? status,
+        IReadOnlySet<RustServerType> serverTypes,
         string sortBy,
         bool sortDescending,
         int skip,
@@ -33,7 +35,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
         CancellationToken cancellationToken)
     {
         LastPagedTake = take;
-        var servers = ApplyServerSort(DeduplicateServers(ApplyServerFilters(search, status)), sortBy, sortDescending)
+        var servers = ApplyServerSort(DeduplicateServers(ApplyServerFilters(search, status, serverTypes)), sortBy, sortDescending)
             .Skip(skip)
             .Take(take)
             .ToArray();
@@ -191,13 +193,19 @@ internal sealed class InMemoryServerRepository : IServerRepository
 
     private IEnumerable<Server> ApplyServerFilters(
         string? search,
-        ServerStatus? status)
+        ServerStatus? status,
+        IReadOnlySet<RustServerType> serverTypes)
     {
         var query = Servers.AsEnumerable();
 
         if (status is not null)
         {
             query = query.Where(server => server.Status == status);
+        }
+
+        if (serverTypes.Count > 0)
+        {
+            query = query.Where(server => serverTypes.Contains(server.ServerType));
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -239,6 +247,9 @@ internal sealed class InMemoryServerRepository : IServerRepository
             ServerReadService.SortByLocation => sortDescending
                 ? servers.OrderByDescending(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 : servers.OrderBy(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            ServerReadService.SortByServerType => sortDescending
+                ? servers.OrderByDescending(server => ServerTypeSortRank(server.ServerType))
+                : servers.OrderBy(server => ServerTypeSortRank(server.ServerType)),
             _ => sortDescending
                 ? servers.OrderByDescending(server => server.Players)
                 : servers.OrderBy(server => server.Players)
@@ -248,5 +259,16 @@ internal sealed class InMemoryServerRepository : IServerRepository
             .ThenByDescending(server => server.Status == ServerStatus.Online)
             .ThenBy(server => server.Name)
             .ThenBy(server => server.Host);
+    }
+
+    private static int ServerTypeSortRank(RustServerType serverType)
+    {
+        return serverType switch
+        {
+            RustServerType.Official => 0,
+            RustServerType.Community => 1,
+            RustServerType.Modded => 2,
+            _ => 3
+        };
     }
 }

@@ -50,6 +50,7 @@ public sealed class BattleMetricsClientTests
                     "country": "GB",
                     "location": [-0.12, 51.5],
                     "details": {
+                      "rust_type": "official",
                       "rust_last_wipe": "2026-07-07T08:00:00Z",
                       "rust_next_wipe": "2026-07-14T08:00:00Z"
                     }
@@ -69,7 +70,37 @@ public sealed class BattleMetricsClientTests
         Assert.Equal("203.0.113.10", server.Host);
         Assert.Equal(28015, server.QueryPort);
         Assert.Equal("GB", server.Country);
+        Assert.Equal(RustServerType.Official, server.ServerType);
         Assert.Equal(ServerPlayerCountSource.BattleMetrics, server.PlayerCountSource);
+    }
+
+    [Fact]
+    public async Task GetPlayerCountAsync_ReadsServerType()
+    {
+        using var handler = new StubHttpMessageHandler(_ => JsonResponse("""
+            {
+              "data": {
+                "type": "server",
+                "id": "42",
+                "attributes": {
+                  "players": 77,
+                  "maxPlayers": 200,
+                  "status": "online",
+                  "details": {
+                    "rust_type": "modded",
+                    "rust_queued_players": 6
+                  }
+                }
+              }
+            }
+            """));
+        var client = new BattleMetricsPlayerCountClient(new StubHttpClientFactory(handler));
+
+        var result = await client.GetPlayerCountAsync(42, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(RustServerType.Modded, result.ServerType);
+        Assert.Equal(6, result.QueuePlayers);
     }
 
     [Fact]

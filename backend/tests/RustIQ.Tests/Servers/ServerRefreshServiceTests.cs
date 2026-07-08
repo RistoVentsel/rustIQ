@@ -35,6 +35,7 @@ public sealed class ServerRefreshServiceTests
                     77,
                     200,
                     6,
+                    RustServerType.Official,
                     true,
                     "GB",
                     51.5,
@@ -67,6 +68,7 @@ public sealed class ServerRefreshServiceTests
         Assert.Equal(ServerPlayerCountSource.BattleMetrics, server.PlayerCountSource);
         Assert.Equal(77, server.Players);
         Assert.Equal(200, server.MaxPlayers);
+        Assert.Equal(RustServerType.Official, server.ServerType);
         Assert.Equal("GB", server.Country);
         Assert.Equal(checkedAtUtc, server.LastCheckedAtUtc);
         Assert.InRange(server.LastPlayerCountUpdatedAtUtc!.Value, beforeRefreshUtc, afterRefreshUtc);
@@ -115,6 +117,7 @@ public sealed class ServerRefreshServiceTests
                     10,
                     100,
                     QueuePlayers: null,
+                    ServerType: RustServerType.Unknown,
                     true,
                     Country: null,
                     Latitude: null,
@@ -127,6 +130,7 @@ public sealed class ServerRefreshServiceTests
                     20,
                     100,
                     QueuePlayers: null,
+                    ServerType: RustServerType.Unknown,
                     true,
                     Country: null,
                     Latitude: null,
@@ -194,6 +198,7 @@ public sealed class ServerRefreshServiceTests
                 77,
                 200,
                 6,
+                RustServerType.Official,
                 true,
                 checkedAtUtc)
         ]);
@@ -221,6 +226,7 @@ public sealed class ServerRefreshServiceTests
         Assert.Equal(77, server.Players);
         Assert.Equal(200, server.MaxPlayers);
         Assert.Equal(6, server.QueuePlayers);
+        Assert.Equal(RustServerType.Official, server.ServerType);
         Assert.Equal(ServerPlayerCountSource.BattleMetrics, server.PlayerCountSource);
         Assert.Equal(checkedAtUtc, server.LastCheckedAtUtc);
         Assert.InRange(server.UpdatedAtUtc, beforeRefreshUtc, afterRefreshUtc);
@@ -269,6 +275,7 @@ public sealed class ServerRefreshServiceTests
                     88,
                     250,
                     null,
+                    RustServerType.Modded,
                     true,
                     null,
                     null,
@@ -294,6 +301,7 @@ public sealed class ServerRefreshServiceTests
                 77,
                 200,
                 null,
+                RustServerType.Community,
                 true,
                 checkedAtUtc)
         ]);
@@ -315,7 +323,9 @@ public sealed class ServerRefreshServiceTests
         var refreshedServers = await service.RefreshBattleMetricsDirectoryServersAsync(CancellationToken.None);
 
         Assert.Equal(1, refreshedServers);
-        Assert.Equal(77, repository.Servers.Single(server => server.BattleMetricsServerId == 42).Players);
+        var refreshedServer = repository.Servers.Single(server => server.BattleMetricsServerId == 42);
+        Assert.Equal(77, refreshedServer.Players);
+        Assert.Equal(RustServerType.Community, refreshedServer.ServerType);
         Assert.Equal(20, repository.Servers.Single(server => server.BattleMetricsServerId == 43).Players);
         Assert.Equal(0, battleMetricsClient.GetPlayerCountCallCount);
         Assert.Equal(0, battleMetricsClient.FindServerIdCallCount);
@@ -372,6 +382,7 @@ public sealed class ServerRefreshServiceTests
                 77,
                 200,
                 null,
+                RustServerType.Modded,
                 true,
                 checkedAtUtc)
         };
@@ -386,6 +397,7 @@ public sealed class ServerRefreshServiceTests
                     88,
                     250,
                     null,
+                    RustServerType.Unknown,
                     true,
                     null,
                     null,

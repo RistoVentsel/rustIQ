@@ -1,3 +1,5 @@
+using RustIQ.Domain.Servers;
+
 namespace RustIQ.Application.ServerQuery;
 
 public sealed record BattleMetricsServerSummary(
@@ -15,5 +17,6 @@ public sealed record BattleMetricsServerSummary(
     int Players,
     int MaxPlayers,
     int? QueuePlayers,
+    RustServerType ServerType,
     bool IsOnline,
     DateTimeOffset CheckedAtUtc);

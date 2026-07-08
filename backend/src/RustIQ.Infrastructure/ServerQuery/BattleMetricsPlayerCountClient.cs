@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using RustIQ.Application.ServerQuery;
+using RustIQ.Domain.Servers;
 
 namespace RustIQ.Infrastructure.ServerQuery;
 
@@ -54,6 +55,7 @@ public sealed class BattleMetricsPlayerCountClient(IHttpClientFactory httpClient
             GetInt(attributes, "players") ?? 0,
             GetInt(attributes, "maxPlayers") ?? 0,
             GetInt(attributes, "details", "rust_queued_players"),
+            GetServerType(attributes),
             string.Equals(status, "online", StringComparison.OrdinalIgnoreCase),
             GetString(attributes, "country"),
             GetLatitude(attributes),
@@ -152,6 +154,20 @@ public sealed class BattleMetricsPlayerCountClient(IHttpClientFactory httpClient
         return GetInt(nestedElement, propertyName);
     }
 
+    private static string? GetString(
+        JsonElement element,
+        string objectPropertyName,
+        string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty(objectPropertyName, out var nestedElement))
+        {
+            return null;
+        }
+
+        return GetString(nestedElement, propertyName);
+    }
+
     private static long? GetLong(JsonElement element, string propertyName)
     {
         if (element.ValueKind != JsonValueKind.Object
@@ -226,6 +242,19 @@ public sealed class BattleMetricsPlayerCountClient(IHttpClientFactory httpClient
             out var parsed)
             ? parsed
             : null;
+    }
+
+    private static RustServerType GetServerType(JsonElement attributes)
+    {
+        var rustType = GetString(attributes, "details", "rust_type");
+
+        return rustType?.Trim().ToLowerInvariant() switch
+        {
+            "official" => RustServerType.Official,
+            "community" => RustServerType.Community,
+            "modded" => RustServerType.Modded,
+            _ => RustServerType.Unknown
+        };
     }
 
     private static string? NullIfWhiteSpace(string? value)

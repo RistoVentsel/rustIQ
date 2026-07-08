@@ -107,7 +107,8 @@ public sealed class ServerRefreshService(
             DiscoverySource = server.DiscoverySource,
             SummarySource = server.SummarySource,
             PlayerCountSource = server.PlayerCountSource,
-            PlayerListSource = server.PlayerListSource
+            PlayerListSource = server.PlayerListSource,
+            ServerType = server.ServerType
         };
 
         await serverPollingService.PollConfiguredServerAsync(
@@ -238,11 +239,13 @@ public sealed class ServerRefreshService(
 
             results[server.Id] = new PlayerCountRefreshResult(
                 summary.BattleMetricsServerId,
+                summary.ServerType,
                 new BattleMetricsPlayerCountResult(
                     summary.BattleMetricsServerId,
                     summary.Players,
                     summary.MaxPlayers,
                     summary.QueuePlayers,
+                    summary.ServerType,
                     summary.IsOnline,
                     summary.Country,
                     summary.Latitude,
@@ -297,6 +300,9 @@ public sealed class ServerRefreshService(
                     {
                         results[server.Id] = new PlayerCountRefreshResult(
                             battleMetricsServerId.Value,
+                            playerCount.ServerType == RustServerType.Unknown
+                                ? server.ServerType
+                                : playerCount.ServerType,
                             playerCount);
                     }
                 }
@@ -326,6 +332,11 @@ public sealed class ServerRefreshService(
         var queuePlayers = NormalizeQueuePlayers(refreshResult.PlayerCount.QueuePlayers);
 
         server.BattleMetricsServerId = refreshResult.BattleMetricsServerId;
+        if (refreshResult.ServerType != RustServerType.Unknown)
+        {
+            server.ServerType = refreshResult.ServerType;
+        }
+
         server.PlayerCountSource = ServerPlayerCountSource.BattleMetrics;
         server.LastCheckedAtUtc = checkedAtUtc;
         server.LastPlayerCountUpdatedAtUtc = refreshCompletedAtUtc;
@@ -363,6 +374,7 @@ public sealed class ServerRefreshService(
 
     private sealed record PlayerCountRefreshResult(
         long BattleMetricsServerId,
+        RustServerType ServerType,
         BattleMetricsPlayerCountResult PlayerCount);
 
     private static int? NormalizeQueuePlayers(int? queuePlayers)

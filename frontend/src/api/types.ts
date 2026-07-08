@@ -6,6 +6,15 @@ export const serverStatus = {
 
 export type ServerStatus = (typeof serverStatus)[keyof typeof serverStatus]
 
+export const rustServerType = {
+  Unknown: 0,
+  Official: 1,
+  Community: 2,
+  Modded: 3,
+} as const
+
+export type RustServerType = (typeof rustServerType)[keyof typeof rustServerType]
+
 export type PagedResult<T> = {
   items: T[]
   page: number
@@ -82,6 +91,7 @@ export type ServerListItem = {
   players: number
   maxPlayers: number
   queuePlayers: number | null
+  serverType: RustServerType
   status: ServerStatus
   lastValidationReason: string | null
   lastSeenAtUtc: string | null
@@ -109,6 +119,7 @@ export type ServerDetails = {
   players: number
   maxPlayers: number
   queuePlayers: number | null
+  serverType: RustServerType
   status: ServerStatus
   lastSeenAtUtc: string | null
   lastCheckedAtUtc: string | null

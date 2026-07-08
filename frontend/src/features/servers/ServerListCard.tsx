@@ -6,6 +6,8 @@ import {
   formatRelativeTimestamp,
   formatCountry,
   formatPlayerCount,
+  getRustServerTypeClassName,
+  getRustServerTypeLabel,
   getServerDisplayName,
 } from './serverPresentation'
 
@@ -16,6 +18,7 @@ type ServerListCardProps = {
 
 export function ServerListCard({ server, nowMs }: ServerListCardProps) {
   const country = formatCountry(server.country)
+  const serverTypeLabel = getRustServerTypeLabel(server.serverType)
   const countryCode = server.country?.trim().toLowerCase()
   const flagSrc = countryCode && /^[a-z]{2}$/.test(countryCode)
     ? `https://flagcdn.com/w40/${countryCode}.png`
@@ -26,10 +29,13 @@ export function ServerListCard({ server, nowMs }: ServerListCardProps) {
       <div className="server-list-card__identity">
         <h3 className="server-list-card__name">{getServerDisplayName(server)}</h3>
         <p className="server-list-card__address">
-          Map: {server.map ?? 'Unavailable'} <span>PVE: False</span> <span>{formatAddress(server)}</span>
+          Map: {server.map ?? 'Unavailable'} <span>Type: {serverTypeLabel}</span> <span>PVE: False</span> <span>{formatAddress(server)}</span>
         </p>
       </div>
 
+      <div className="server-list-card__cell">
+        <span className={getRustServerTypeClassName(server.serverType)}>{serverTypeLabel}</span>
+      </div>
       <div className="server-list-card__cell">{formatPlayerCount(server)}</div>
       <div className="server-list-card__cell">{formatRelativeTimestamp(server.lastWipeAtUtc, nowMs)}</div>
       <div className="server-list-card__cell">{formatRelativeTimestamp(server.nextWipeAtUtc, nowMs)}</div>

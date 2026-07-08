@@ -13,6 +13,8 @@ import {
   formatPlayerCount,
   formatServerSubtitle,
   formatServerTimestamp,
+  getRustServerTypeClassName,
+  getRustServerTypeLabel,
   getServerDisplayName,
   getServerStatusLabel,
 } from '../features/servers/serverPresentation'
@@ -55,7 +57,7 @@ function getLiveStatusClassName(status: ReturnType<typeof useServerLiveUpdates>)
 function getQueryErrorDetail(error: unknown) {
   return error instanceof ApiError
     ? `${error.message} (${error.url})`
-    : 'Unexpected error while loading backend data.'
+    : 'Unexpected error while loading server data.'
 }
 
 function ServerDetailLocation({
@@ -120,6 +122,9 @@ export function ServerDetailPage() {
     ? getSecondsAgo(serverQuery.data.lastSeenAtUtc, nowMs)
     : null
   const serverAddress = serverQuery.data ? formatAddress(serverQuery.data) : ''
+  const serverTypeLabel = serverQuery.data
+    ? getRustServerTypeLabel(serverQuery.data.serverType)
+    : 'Unknown'
 
   async function copyAddressToClipboard(address: string) {
     await navigator.clipboard.writeText(address)
@@ -131,16 +136,15 @@ export function ServerDetailPage() {
     <div className="page-stack">
       <div className="page-copy">
         <p className="page-eyebrow">Server Detail</p>
-        <h2 className="page-heading">Server detail route</h2>
+        <h2 className="page-heading">Server details</h2>
         <p className="page-text">
-          This screen loads one specific server from the backend, along with current players
-          and map metadata. It also subscribes to live updates for the selected server.
+          View the latest population, map, wipe schedule, and live player details for this server.
         </p>
       </div>
 
       <SectionCard
         title="Server overview"
-        description="Route-specific backend data for the selected server."
+        description="Current status, location, wipe timing, and connection details."
         actions={
           <div className="server-detail-actions">
             <span className={getLiveStatusClassName(liveStatus)}>{getLiveStatusLabel(liveStatus)}</span>
@@ -152,7 +156,7 @@ export function ServerDetailPage() {
         }
       >
         {!serverId ? (
-          <StateNotice title="Server id is missing from the route" tone="error" />
+          <StateNotice title="Server details could not be found" tone="error" />
         ) : null}
 
         {liveStatus === 'connecting' ? (
@@ -182,7 +186,7 @@ export function ServerDetailPage() {
         {serverQuery.isLoading && !hasServerData ? (
           <StateNotice
             title="Loading server details"
-            description="The detail page is waiting for GET /servers/{id}."
+            description="Loading the latest saved details for this server."
           />
         ) : null}
 
@@ -207,6 +211,14 @@ export function ServerDetailPage() {
               badgeLabel={getServerStatusLabel(serverQuery.data.status)}
               stats={[
                 { label: 'Players', value: formatPlayerCount(serverQuery.data) },
+                {
+                  label: 'Server type',
+                  value: (
+                    <span className={getRustServerTypeClassName(serverQuery.data.serverType)}>
+                      {serverTypeLabel}
+                    </span>
+                  ),
+                },
                 { label: 'Updated', value: formatSecondsAgo(updatedSecondsAgo) },
                 {
                   label: 'Last seen',
@@ -236,6 +248,14 @@ export function ServerDetailPage() {
                 </dd>
               </div>
               <div className="server-detail-meta__item">
+                <dt>Server type</dt>
+                <dd>
+                  <span className={getRustServerTypeClassName(serverQuery.data.serverType)}>
+                    {serverTypeLabel}
+                  </span>
+                </dd>
+              </div>
+              <div className="server-detail-meta__item">
                 <dt>Last wiped</dt>
                 <dd>{formatServerTimestamp(serverQuery.data.lastWipeAtUtc)}</dd>
               </div>
@@ -254,28 +274,28 @@ export function ServerDetailPage() {
 
       <SectionCard
         title="Map"
-        description="Map metadata from GET /servers/{id}/map."
+        description="Map preview, seed, size, and RustMaps links when available."
       >
         {mapQuery.isLoading && mapQuery.data === undefined ? (
           <StateNotice
-            title="Loading map metadata"
-            description="The page is waiting for GET /servers/{id}/map."
+            title="Loading map details"
+            description="Checking whether this server has a saved map preview."
           />
         ) : null}
 
         {mapQuery.isFetching && mapQuery.data !== undefined ? (
           <StateNotice
-            title="Refreshing map metadata"
-            description="Showing the current map section while the backend metadata refreshes."
+            title="Refreshing map details"
+            description="Showing the current map while newer details load."
           />
         ) : null}
 
         {mapQuery.isError ? (
           <StateNotice
-            title={mapQuery.data !== undefined ? 'Map refresh failed, showing cached metadata' : 'Map metadata request failed'}
+            title={mapQuery.data !== undefined ? 'Map refresh failed, showing saved details' : 'Map details unavailable'}
             description={
               mapQuery.data !== undefined
-                ? 'The newest map metadata could not be loaded, so the section is still showing the last successful response.'
+                ? 'The newest map details could not be loaded, so this section is still showing the last saved version.'
                 : undefined
             }
             detail={getQueryErrorDetail(mapQuery.error)}
@@ -285,8 +305,8 @@ export function ServerDetailPage() {
 
         {!mapQuery.isLoading && !mapQuery.isError && mapQuery.data === null ? (
           <StateNotice
-            title="Map metadata unavailable"
-            description="The server exists, but the backend has no stored map metadata yet."
+            title="Map details unavailable"
+            description="No map preview or RustMaps details have been saved for this server yet."
           />
         ) : null}
 
@@ -295,7 +315,7 @@ export function ServerDetailPage() {
             {!mapQuery.data.thumbnailUrl ? (
               <StateNotice
                 title="Map thumbnail unavailable"
-                description="Showing text-only map metadata because no thumbnail image has been stored for this server."
+                description="Showing text-only map details because no thumbnail image is available for this server."
               />
             ) : null}
 
@@ -374,19 +394,19 @@ export function ServerDetailPage() {
 
       <SectionCard
         title="Current players"
-        description="Player data from GET /servers/{id}/players."
+        description="Players currently visible through the server query."
       >
         {playersQuery.isLoading && playersQuery.data === undefined ? (
           <StateNotice
             title="Loading current players"
-            description="The page is waiting for GET /servers/{id}/players."
+            description="Checking whether the server is sharing its current player list."
           />
         ) : null}
 
         {playersQuery.isFetching && playersQuery.data !== undefined ? (
           <StateNotice
             title="Refreshing current players"
-            description="Showing the latest stored player list while the backend refreshes this section."
+            description="Showing the latest player list while newer details load."
           />
         ) : null}
 
@@ -412,8 +432,8 @@ export function ServerDetailPage() {
             title={hasPlayerSnapshot ? 'No players currently listed' : 'Current player list unavailable'}
             description={
               hasPlayerSnapshot
-                ? 'The backend returned an empty player list for this server.'
-                : 'The backend has not stored a current player list for this server yet.'
+                ? 'This server is not currently sharing any named players.'
+                : 'This server has not shared a current player list yet.'
             }
           />
         ) : null}

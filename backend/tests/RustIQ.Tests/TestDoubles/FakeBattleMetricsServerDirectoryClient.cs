@@ -33,7 +33,8 @@ internal sealed class FakeBattleMetricsServerDirectoryClient : IBattleMetricsSer
                 Latitude = summary.Latitude,
                 Longitude = summary.Longitude,
                 LastWipeAtUtc = summary.LastWipeAtUtc,
-                NextWipeAtUtc = summary.NextWipeAtUtc
+                NextWipeAtUtc = summary.NextWipeAtUtc,
+                ServerType = summary.ServerType
             })
             .ToArray();
 

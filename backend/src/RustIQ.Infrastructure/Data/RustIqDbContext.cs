@@ -45,6 +45,11 @@ public sealed class RustIqDbContext(DbContextOptions<RustIqDbContext> options)
 
             entity.Property(server => server.Longitude);
 
+            entity.Property(server => server.ServerType)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .IsRequired();
+
             entity.Property(server => server.Status)
                 .HasConversion<string>()
                 .HasMaxLength(32)

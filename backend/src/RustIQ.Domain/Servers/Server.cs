@@ -30,6 +30,8 @@ public sealed class Server
 
     public int? QueuePlayers { get; set; }
 
+    public RustServerType ServerType { get; set; } = RustServerType.Unknown;
+
     public ServerStatus Status { get; set; } = ServerStatus.Unknown;
 
     public ServerDiscoverySource DiscoverySource { get; set; } = ServerDiscoverySource.Unknown;

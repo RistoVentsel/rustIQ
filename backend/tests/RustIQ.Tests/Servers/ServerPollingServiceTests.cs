@@ -589,6 +589,7 @@ public sealed class ServerPollingServiceTests
                     77,
                     200,
                     4,
+                    RustServerType.Community,
                     true,
                     Country: null,
                     Latitude: null,

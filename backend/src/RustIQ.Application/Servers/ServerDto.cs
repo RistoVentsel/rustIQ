@@ -19,6 +19,7 @@ public sealed record ServerDto(
     int Players,
     int MaxPlayers,
     int? QueuePlayers,
+    RustServerType ServerType,
     ServerStatus Status,
     ServerDiscoverySource DiscoverySource,
     ServerSummarySource SummarySource,

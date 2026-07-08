@@ -1,4 +1,11 @@
-import { serverStatus, type ServerDetails, type ServerListItem, type ServerStatus } from '../../api'
+import {
+  rustServerType,
+  serverStatus,
+  type RustServerType,
+  type ServerDetails,
+  type ServerListItem,
+  type ServerStatus,
+} from '../../api'
 
 export function getServerDisplayName(server: Pick<ServerListItem, 'name' | 'host' | 'queryPort'>) {
   return server.name ?? `${server.host}:${server.queryPort}`
@@ -113,6 +120,32 @@ export function getServerStatusClassName(status: ServerStatus) {
       return 'status-pill status-pill--offline'
     default:
       return 'status-pill status-pill--unknown'
+  }
+}
+
+export function getRustServerTypeLabel(serverType: RustServerType | null | undefined) {
+  switch (serverType) {
+    case rustServerType.Official:
+      return 'Official'
+    case rustServerType.Community:
+      return 'Community'
+    case rustServerType.Modded:
+      return 'Modded'
+    default:
+      return 'Unknown'
+  }
+}
+
+export function getRustServerTypeClassName(serverType: RustServerType | null | undefined) {
+  switch (serverType) {
+    case rustServerType.Official:
+      return 'server-type-badge server-type-badge--official'
+    case rustServerType.Community:
+      return 'server-type-badge server-type-badge--community'
+    case rustServerType.Modded:
+      return 'server-type-badge server-type-badge--modded'
+    default:
+      return 'server-type-badge server-type-badge--unknown'
   }
 }
 

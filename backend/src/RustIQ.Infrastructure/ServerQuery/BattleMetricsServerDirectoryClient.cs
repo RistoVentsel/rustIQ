@@ -90,6 +90,7 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
                     GetInt(attributes, "players") ?? 0,
                     GetInt(attributes, "maxPlayers") ?? 0,
                     GetInt(attributes, "details", "rust_queued_players"),
+                    GetServerType(attributes),
                     string.Equals(status, "online", StringComparison.OrdinalIgnoreCase),
                     checkedAtUtc));
             }
@@ -154,6 +155,20 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
         }
 
         return GetInt(nestedElement, propertyName);
+    }
+
+    private static string? GetString(
+        JsonElement element,
+        string objectPropertyName,
+        string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty(objectPropertyName, out var nestedElement))
+        {
+            return null;
+        }
+
+        return GetString(nestedElement, propertyName);
     }
 
     private static long? GetLong(JsonElement element, string propertyName)
@@ -232,6 +247,19 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
             : null;
     }
 
+    private static RustServerType GetServerType(JsonElement attributes)
+    {
+        var rustType = GetString(attributes, "details", "rust_type");
+
+        return rustType?.Trim().ToLowerInvariant() switch
+        {
+            "official" => RustServerType.Official,
+            "community" => RustServerType.Community,
+            "modded" => RustServerType.Modded,
+            _ => RustServerType.Unknown
+        };
+    }
+
     private static string? NullIfWhiteSpace(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value;
@@ -253,6 +281,7 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
             LastWipeAtUtc = summary.LastWipeAtUtc,
             NextWipeAtUtc = summary.NextWipeAtUtc,
             QueuePlayers = summary.QueuePlayers,
+            ServerType = summary.ServerType,
             DiscoverySource = ServerDiscoverySource.BattleMetrics,
             SummarySource = ServerSummarySource.BattleMetrics,
             PlayerCountSource = ServerPlayerCountSource.BattleMetrics,

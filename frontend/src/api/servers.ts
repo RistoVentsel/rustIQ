@@ -2,6 +2,7 @@ import { getJson, postJson } from './http'
 import type {
   CurrentPlayersResponse,
   PagedResult,
+  RustServerType,
   ServerDetails,
   ServerListItem,
   ServerMapMetadataResponse,
@@ -9,13 +10,15 @@ import type {
   ServerSnapshot,
   ServerStatus,
 } from './types'
+import { rustServerType } from './types'
 
 export type GetServersParams = {
   search?: string
   status?: ServerStatus
+  serverTypes?: RustServerType[]
   page?: number
   pageSize?: number
-  sortBy?: 'players' | 'lastWipe' | 'nextWipe' | 'location'
+  sortBy?: 'players' | 'lastWipe' | 'nextWipe' | 'location' | 'serverType'
   sortDirection?: 'asc' | 'desc'
   refresh?: 'page' | 'all'
 }
@@ -29,8 +32,32 @@ export type GetServerSnapshotsParams = {
 export function getServers(signal?: AbortSignal, params: GetServersParams = {}) {
   return getJson<PagedResult<ServerListItem>>('servers', {
     signal,
-    query: params,
+    query: {
+      ...params,
+      serverTypes: formatServerTypes(params.serverTypes),
+    },
   })
+}
+
+function formatServerTypes(serverTypes: RustServerType[] | undefined) {
+  if (!serverTypes || serverTypes.length === 0) {
+    return undefined
+  }
+
+  return serverTypes
+    .flatMap((serverType) => {
+      switch (serverType) {
+        case rustServerType.Official:
+          return ['official']
+        case rustServerType.Community:
+          return ['community']
+        case rustServerType.Modded:
+          return ['modded']
+        default:
+          return []
+      }
+    })
+    .join(',')
 }
 
 export function queueServerRefresh(signal?: AbortSignal) {

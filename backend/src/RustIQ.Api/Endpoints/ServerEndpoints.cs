@@ -18,6 +18,7 @@ public static class ServerEndpoints
             int? pageSize,
             string? sortBy,
             string? sortDirection,
+            string? serverTypes,
             string? refresh,
             IServerRefreshJobQueue refreshJobQueue,
             ServerReadService serverReadService,
@@ -36,6 +37,7 @@ public static class ServerEndpoints
                 pageSize,
                 sortBy,
                 sortDirection,
+                serverTypes,
                 refresh,
                 cancellationToken);
 

@@ -38,6 +38,7 @@ public sealed class ServerPollingService(
                     LastWipeAtUtc = configuredServer.LastWipeAtUtc,
                     NextWipeAtUtc = configuredServer.NextWipeAtUtc,
                     QueuePlayers = configuredServer.QueuePlayers,
+                    ServerType = configuredServer.ServerType,
                     Name = configuredName,
                     Status = ServerStatus.Unknown,
                     DiscoverySource = configuredServer.DiscoverySource,
@@ -122,6 +123,7 @@ public sealed class ServerPollingService(
             LastWipeAtUtc = server.LastWipeAtUtc,
             NextWipeAtUtc = server.NextWipeAtUtc,
             QueuePlayers = server.QueuePlayers,
+            ServerType = server.ServerType,
             DiscoverySource = server.DiscoverySource,
             SummarySource = server.SummarySource,
             PlayerCountSource = server.PlayerCountSource,
@@ -248,6 +250,7 @@ public sealed class ServerPollingService(
         hasChanges |= UpdateSummarySource(server, configuredServer.SummarySource);
         hasChanges |= UpdatePlayerCountSource(server, configuredServer.PlayerCountSource);
         hasChanges |= UpdatePlayerListSource(server, configuredServer.PlayerListSource);
+        hasChanges |= UpdateServerType(server, configuredServer.ServerType);
         hasChanges |= UpdateLastDiscoveredAt(server, updatedAtUtc);
 
         if (server.LastSeenAtUtc is null
@@ -285,6 +288,9 @@ public sealed class ServerPollingService(
         server.LastWipeAtUtc = queryResult.LastWipeAtUtc ?? configuredServer.LastWipeAtUtc ?? server.LastWipeAtUtc;
         server.NextWipeAtUtc = queryResult.NextWipeAtUtc ?? configuredServer.NextWipeAtUtc ?? server.NextWipeAtUtc;
         server.QueuePlayers = NormalizeQueuePlayers(queryResult.QueuePlayers ?? configuredServer.QueuePlayers ?? server.QueuePlayers);
+        server.ServerType = configuredServer.ServerType == RustServerType.Unknown
+            ? server.ServerType
+            : configuredServer.ServerType;
         server.DiscoverySource = configuredServer.DiscoverySource;
         server.SummarySource = queryResult.SummarySource;
         server.PlayerCountSource = queryResult.PlayerCountSource;
@@ -454,6 +460,11 @@ public sealed class ServerPollingService(
             };
         }
 
+        if (battleMetricsPlayerCount.ServerType != RustServerType.Unknown)
+        {
+            server.ServerType = battleMetricsPlayerCount.ServerType;
+        }
+
         return queryResult with
         {
             BattleMetricsServerId = battleMetricsServerId,
@@ -547,6 +558,7 @@ public sealed class ServerPollingService(
             server.Players,
             server.MaxPlayers,
             server.QueuePlayers,
+            server.ServerType,
             server.Status,
             server.DiscoverySource,
             server.SummarySource,
@@ -689,6 +701,16 @@ public sealed class ServerPollingService(
     private static bool UpdatePlayerListSource(Server server, PlayerListSource nextValue)
     {
         return UpdateIfDifferent(server.PlayerListSource, nextValue, value => server.PlayerListSource = value);
+    }
+
+    private static bool UpdateServerType(Server server, RustServerType nextValue)
+    {
+        if (nextValue == RustServerType.Unknown)
+        {
+            return false;
+        }
+
+        return UpdateIfDifferent(server.ServerType, nextValue, value => server.ServerType = value);
     }
 
     private static bool UpdateLastDiscoveredAt(Server server, DateTimeOffset nextValue)

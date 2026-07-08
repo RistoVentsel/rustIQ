@@ -7,11 +7,13 @@ public interface IServerRepository
     Task<int> CountAsync(
         string? search,
         ServerStatus? status,
+        IReadOnlySet<RustServerType> serverTypes,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<Server>> GetPagedAsync(
         string? search,
         ServerStatus? status,
+        IReadOnlySet<RustServerType> serverTypes,
         string sortBy,
         bool sortDescending,
         int skip,
