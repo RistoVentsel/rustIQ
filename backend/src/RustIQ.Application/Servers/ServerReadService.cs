@@ -318,7 +318,6 @@ public sealed class ServerReadService(
     {
         return new CurrentPlayerDto(
             player.PlayerName,
-            player.Score,
             player.DurationSeconds,
             player.SeenAtUtc);
     }

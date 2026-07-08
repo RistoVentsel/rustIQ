@@ -42,7 +42,6 @@ public sealed class SteamRustServerQueryClient(
             return players
                 .Select(player => new RustServerPlayerResult(
                     NullIfWhiteSpace(player.Name),
-                    player.Score,
                     player.Duration))
                 .ToArray();
         }

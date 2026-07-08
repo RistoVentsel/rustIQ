@@ -162,9 +162,9 @@ public sealed class ServerPollingServiceTests
                 checkedAtUtc,
                 null),
             [
-                new RustServerPlayerResult("Alice", 10, 120),
-                new RustServerPlayerResult("Bob", 5, 60),
-                new RustServerPlayerResult(null, 0, 1)
+                new RustServerPlayerResult("Alice", 120),
+                new RustServerPlayerResult("Bob", 60),
+                new RustServerPlayerResult(null, 1)
             ]);
         var mapClient = new FakeRustServerMapMetadataClient(
             new RustServerMapMetadata(
@@ -251,8 +251,8 @@ public sealed class ServerPollingServiceTests
                 DateTimeOffset.Parse("2026-07-06T12:00:00Z"),
                 null),
             [
-                new RustServerPlayerResult(null, 0, 1),
-                new RustServerPlayerResult(" ", 0, 1)
+                new RustServerPlayerResult(null, 1),
+                new RustServerPlayerResult(" ", 1)
             ]);
         var service = new ServerPollingService(
             queryClient,
@@ -286,7 +286,7 @@ public sealed class ServerPollingServiceTests
             {
                 [("alpha.test", 28015)] =
                 [
-                    new RustServerPlayerResult("Alice", 10, 120)
+                    new RustServerPlayerResult("Alice", 120)
                 ]
             });
         var mapClient = new FakeRustServerMapMetadataClient(

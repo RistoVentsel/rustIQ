@@ -60,6 +60,22 @@ function getQueryErrorDetail(error: unknown) {
     : 'Unexpected error while loading server data.'
 }
 
+function formatPlayerDuration(durationSeconds: number) {
+  const totalMinutes = Math.max(0, Math.round(durationSeconds / 60))
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+
+  if (hours > 0 && minutes > 0) {
+    return `${hours}h ${minutes}m`
+  }
+
+  if (hours > 0) {
+    return `${hours}h`
+  }
+
+  return `${minutes}m`
+}
+
 function ServerDetailLocation({
   server,
 }: {
@@ -453,12 +469,8 @@ export function ServerDetailPage() {
                   </div>
                   <dl className="player-list__stats">
                     <div>
-                      <dt>Score</dt>
-                      <dd>{player.score}</dd>
-                    </div>
-                    <div>
                       <dt>Duration</dt>
-                      <dd>{Math.round(player.durationSeconds)}s</dd>
+                      <dd>{formatPlayerDuration(player.durationSeconds)}</dd>
                     </div>
                   </dl>
                 </div>

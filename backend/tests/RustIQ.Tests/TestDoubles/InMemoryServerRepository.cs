@@ -136,7 +136,8 @@ internal sealed class InMemoryServerRepository : IServerRepository
     {
         var players = CurrentPlayers
             .Where(player => player.ServerId == serverId)
-            .OrderBy(player => player.PlayerName)
+            .OrderByDescending(player => player.DurationSeconds)
+            .ThenBy(player => player.PlayerName)
             .ToArray();
 
         return Task.FromResult<IReadOnlyList<ServerPlayerCurrent>>(players);
@@ -242,8 +243,8 @@ internal sealed class InMemoryServerRepository : IServerRepository
                 ? servers.OrderByDescending(server => server.LastWipeAtUtc ?? DateTimeOffset.MinValue)
                 : servers.OrderBy(server => server.LastWipeAtUtc ?? DateTimeOffset.MaxValue),
             ServerReadService.SortByNextWipe => sortDescending
-                ? servers.OrderByDescending(server => server.NextWipeAtUtc ?? DateTimeOffset.MinValue)
-                : servers.OrderBy(server => server.NextWipeAtUtc ?? DateTimeOffset.MaxValue),
+                ? servers.OrderBy(server => server.NextWipeAtUtc ?? DateTimeOffset.MaxValue)
+                : servers.OrderByDescending(server => server.NextWipeAtUtc ?? DateTimeOffset.MinValue),
             ServerReadService.SortByLocation => sortDescending
                 ? servers.OrderByDescending(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 : servers.OrderBy(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase),

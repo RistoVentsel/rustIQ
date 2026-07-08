@@ -216,6 +216,50 @@ public sealed class ServerReadServiceTests
     }
 
     [Fact]
+    public async Task GetServersAsync_SortsNextWipeAscendingAsFurthestFirst()
+    {
+        var repository = CreateNextWipeSortRepository();
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(
+            null,
+            null,
+            1,
+            25,
+            ServerReadService.SortByNextWipe,
+            ServerReadService.SortAscending,
+            null,
+            ServerReadService.RefreshNoneMode,
+            CancellationToken.None);
+
+        Assert.Equal(
+            ["far.test", "near.test", "unknown.test"],
+            result.Items.Select(server => server.Host));
+    }
+
+    [Fact]
+    public async Task GetServersAsync_SortsNextWipeDescendingAsClosestFirst()
+    {
+        var repository = CreateNextWipeSortRepository();
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(
+            null,
+            null,
+            1,
+            25,
+            ServerReadService.SortByNextWipe,
+            ServerReadService.SortDescending,
+            null,
+            ServerReadService.RefreshNoneMode,
+            CancellationToken.None);
+
+        Assert.Equal(
+            ["near.test", "far.test", "unknown.test"],
+            result.Items.Select(server => server.Host));
+    }
+
+    [Fact]
     public async Task GetSnapshotsAsync_ClampsLimitToMaximum()
     {
         var serverId = Guid.NewGuid();
@@ -515,6 +559,58 @@ public sealed class ServerReadServiceTests
         Assert.Equal("Alice", player.PlayerName);
     }
 
+    [Fact]
+    public async Task GetCurrentPlayersAsync_ReturnsPlayersByDurationDescending()
+    {
+        var serverId = Guid.NewGuid();
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = serverId,
+            Host = "server.test",
+            QueryPort = 28015,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        });
+        repository.CurrentPlayers.AddRange([
+            new ServerPlayerCurrent
+            {
+                Id = Guid.NewGuid(),
+                ServerId = serverId,
+                PlayerName = "Short",
+                DurationSeconds = 60,
+                SeenAtUtc = DateTimeOffset.Parse("2026-07-08T12:00:00Z")
+            },
+            new ServerPlayerCurrent
+            {
+                Id = Guid.NewGuid(),
+                ServerId = serverId,
+                PlayerName = "Long",
+                DurationSeconds = 7200,
+                SeenAtUtc = DateTimeOffset.Parse("2026-07-08T12:00:00Z")
+            },
+            new ServerPlayerCurrent
+            {
+                Id = Guid.NewGuid(),
+                ServerId = serverId,
+                PlayerName = "Medium",
+                DurationSeconds = 3600,
+                SeenAtUtc = DateTimeOffset.Parse("2026-07-08T12:00:00Z")
+            }
+        ]);
+        var refreshService = new RecordingServerRefreshService();
+        var service = new ServerReadService(repository, refreshService);
+
+        var result = await service.GetCurrentPlayersAsync(serverId, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Collection(
+            result.Players,
+            player => Assert.Equal("Long", player.PlayerName),
+            player => Assert.Equal("Medium", player.PlayerName),
+            player => Assert.Equal("Short", player.PlayerName));
+    }
+
     private static Server CreateTypedServer(string host, RustServerType serverType)
     {
         return new Server
@@ -529,5 +625,51 @@ public sealed class ServerReadServiceTests
             CreatedAtUtc = DateTimeOffset.UtcNow,
             UpdatedAtUtc = DateTimeOffset.UtcNow
         };
+    }
+
+    private static InMemoryServerRepository CreateNextWipeSortRepository()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.AddRange(
+        [
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "near.test",
+                QueryPort = 28015,
+                NextWipeAtUtc = DateTimeOffset.Parse("2026-07-09T12:00:00Z"),
+                Players = 10,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            },
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "far.test",
+                QueryPort = 28015,
+                NextWipeAtUtc = DateTimeOffset.Parse("2026-07-15T12:00:00Z"),
+                Players = 10,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            },
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "unknown.test",
+                QueryPort = 28015,
+                NextWipeAtUtc = null,
+                Players = 10,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            }
+        ]);
+
+        return repository;
     }
 }

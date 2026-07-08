@@ -394,7 +394,6 @@ public sealed class ServerPollingService(
                 Id = Guid.NewGuid(),
                 ServerId = serverId,
                 PlayerName = player.Name,
-                Score = player.Score,
                 DurationSeconds = player.DurationSeconds,
                 SeenAtUtc = seenAtUtc
             })
@@ -607,7 +606,6 @@ public sealed class ServerPollingService(
     {
         return new CurrentPlayerDto(
             player.PlayerName,
-            player.Score,
             player.DurationSeconds,
             player.SeenAtUtc);
     }

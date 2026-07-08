@@ -64,7 +64,6 @@ export type ServerSnapshot = {
 
 export type CurrentPlayer = {
   playerName: string | null
-  score: number
   durationSeconds: number
   seenAtUtc: string
 }

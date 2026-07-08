@@ -1,12 +1,10 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { Fragment, type FormEvent, useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Fragment, type FormEvent, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import {
   ApiError,
-  getServerRefreshStatus,
   getServers,
-  queueServerRefresh,
   rustServerType,
   serverStatus,
   type RustServerType,
@@ -35,8 +33,6 @@ export function ServersPage() {
   const [pageSize, setPageSize] = useState(10)
   const [sortBy, setSortBy] = useState<ServerSortBy>('players')
   const [sortDirection, setSortDirection] = useState<ServerSortDirection>('desc')
-  const [hideServerDataForRefresh, setHideServerDataForRefresh] = useState(false)
-  const [refreshStatusPollingEnabled, setRefreshStatusPollingEnabled] = useState(false)
   const nowMs = useNow()
   const statusValue = useMemo(() => {
     switch (statusFilter) {
@@ -67,48 +63,6 @@ export function ServersPage() {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
-  const refreshStatusQuery = useQuery({
-    queryKey: ['server-refresh-status'],
-    enabled: refreshStatusPollingEnabled,
-    queryFn: ({ signal }) => getServerRefreshStatus(signal),
-    staleTime: 0,
-    refetchInterval: (query) => (
-      query.state.data?.isQueuedOrRunning ? 1_000 : false
-    ),
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  })
-  const queueRefreshMutation = useMutation({
-    mutationFn: () => queueServerRefresh(),
-    onMutate: () => {
-      setHideServerDataForRefresh(true)
-      setRefreshStatusPollingEnabled(false)
-    },
-    onSuccess: () => {
-      setRefreshStatusPollingEnabled(true)
-    },
-    onError: () => {
-      setHideServerDataForRefresh(false)
-      setRefreshStatusPollingEnabled(false)
-    },
-  })
-  const refetchServers = serversQuery.refetch
-
-  useEffect(() => {
-    const status = refreshStatusQuery.data
-    if (hideServerDataForRefresh && status && !status.isQueuedOrRunning) {
-      setHideServerDataForRefresh(false)
-      setRefreshStatusPollingEnabled(false)
-      void refetchServers()
-    }
-  }, [hideServerDataForRefresh, refreshStatusQuery.data, refetchServers])
-
-  useEffect(() => {
-    if (hideServerDataForRefresh && refreshStatusQuery.isError) {
-      setHideServerDataForRefresh(false)
-      setRefreshStatusPollingEnabled(false)
-    }
-  }, [hideServerDataForRefresh, refreshStatusQuery.isError])
 
   const serversPageData = serversQuery.data ?? null
   const servers = serversPageData?.items ?? []
@@ -117,23 +71,13 @@ export function ServersPage() {
   const totalPages = serversPageData ? Math.max(1, Math.ceil(totalItems / serversPageData.pageSize)) : 1
   const hasServersData = Boolean(serversPageData)
   const isLoadingServers = serversQuery.isFetching && !hasServersData
-  const isRefreshingServers = hideServerDataForRefresh || (serversQuery.isFetching && hasServersData)
-  const shouldShowServerData = hasServersData && !serversQuery.isFetching && !hideServerDataForRefresh
-  const isRefreshButtonDisabled = queueRefreshMutation.isPending
-    || refreshStatusQuery.data?.isQueuedOrRunning
-    || hideServerDataForRefresh
+  const isRefreshingServers = serversQuery.isFetching && hasServersData
+  const shouldShowServerData = hasServersData
+  const isRefreshButtonDisabled = serversQuery.isFetching
   const serverListErrorDetail =
     serversQuery.error instanceof ApiError
       ? `${serversQuery.error.message} (${serversQuery.error.url})`
       : 'Unexpected error while loading the server list.'
-  const refreshErrorDetail =
-    queueRefreshMutation.error instanceof ApiError
-      ? `${queueRefreshMutation.error.message} (${queueRefreshMutation.error.url})`
-      : refreshStatusQuery.error instanceof ApiError
-        ? `${refreshStatusQuery.error.message} (${refreshStatusQuery.error.url})`
-        : refreshStatusQuery.data?.lastErrorMessage
-          ? refreshStatusQuery.data.lastErrorMessage
-          : 'Unexpected error while queuing the full server refresh.'
 
   function updateSearch(value: string) {
     setSearchInput(value)
@@ -238,10 +182,10 @@ export function ServersPage() {
             <button
               type="button"
               className="button-link button-link--secondary"
-              onClick={() => queueRefreshMutation.mutate()}
+              onClick={() => void serversQuery.refetch()}
               disabled={isRefreshButtonDisabled}
             >
-              {isRefreshButtonDisabled ? 'Refreshing...' : 'Refresh'}
+              {serversQuery.isFetching ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
         }
@@ -305,17 +249,8 @@ export function ServersPage() {
 
         {isRefreshingServers ? (
           <StateNotice
-            title="Refreshing server populations"
-            description="Refreshing all cached server populations before showing the sorted list again."
-          />
-        ) : null}
-
-        {queueRefreshMutation.isError || refreshStatusQuery.isError || refreshStatusQuery.data?.lastErrorMessage ? (
-          <StateNotice
-            title="Refresh could not complete"
-            description="Showing cached server data. The full refresh can be retried."
-            detail={refreshErrorDetail}
-            tone="error"
+            title="Refreshing cached servers"
+            description="Reading the latest saved server data from the database."
           />
         ) : null}
 
