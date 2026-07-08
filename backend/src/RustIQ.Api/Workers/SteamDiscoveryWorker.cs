@@ -44,10 +44,10 @@ public sealed class SteamDiscoveryWorker(
     {
         try
         {
-            IReadOnlyList<ConfiguredRustServer> discoveredServers;
+            IReadOnlyList<ConfiguredRustServer> steamDiscoveredServers;
             try
             {
-                discoveredServers = await discoveryClient.DiscoverServersAsync(
+                steamDiscoveredServers = await discoveryClient.DiscoverServersAsync(
                     options.Value.MaxServersPerRefresh,
                     cancellationToken);
             }
@@ -57,10 +57,24 @@ public sealed class SteamDiscoveryWorker(
                     exception,
                     "Steam discovery failed. Falling back to BattleMetrics directory discovery for this refresh.");
 
-                discoveredServers = await DiscoverViaBattleMetricsAsync(cancellationToken);
+                steamDiscoveredServers = [];
             }
 
-            if (discoveredServers.Count == 0)
+            IReadOnlyList<ConfiguredRustServer> battleMetricsDiscoveredServers;
+            try
+            {
+                battleMetricsDiscoveredServers = await DiscoverViaBattleMetricsAsync(cancellationToken);
+            }
+            catch (Exception exception) when (steamDiscoveredServers.Count > 0)
+            {
+                logger.LogWarning(
+                    exception,
+                    "BattleMetrics directory discovery failed. Continuing with Steam discovery results for this refresh.");
+
+                battleMetricsDiscoveredServers = [];
+            }
+
+            if (steamDiscoveredServers.Count == 0 && battleMetricsDiscoveredServers.Count == 0)
             {
                 if (!options.Value.AllowBattleMetricsFallback)
                 {
@@ -68,21 +82,17 @@ public sealed class SteamDiscoveryWorker(
                     return;
                 }
 
-                logger.LogWarning("Steam discovery returned no Rust servers. Falling back to BattleMetrics directory discovery for this refresh.");
-                discoveredServers = await DiscoverViaBattleMetricsAsync(cancellationToken);
-                if (discoveredServers.Count == 0)
-                {
-                    logger.LogWarning("BattleMetrics fallback discovery also returned no Rust servers.");
-                    return;
-                }
+                logger.LogWarning("Steam and BattleMetrics discovery returned no Rust servers.");
+                return;
             }
 
+            var discoveredServers = MergeDiscoveredServers(steamDiscoveredServers, battleMetricsDiscoveredServers);
             await using var scope = serviceScopeFactory.CreateAsyncScope();
             var pollingService = scope.ServiceProvider.GetRequiredService<ServerPollingService>();
             await pollingService.EnsureConfiguredServersExistAsync(discoveredServers, cancellationToken);
 
             var offlineThreshold = TimeSpan.FromSeconds(queryOptions.Value.OfflineThresholdSeconds);
-            foreach (var server in discoveredServers)
+            foreach (var server in steamDiscoveredServers)
             {
                 await pollingService.PollConfiguredServerAsync(
                     server,
@@ -93,8 +103,11 @@ public sealed class SteamDiscoveryWorker(
             }
 
             logger.LogInformation(
-                "Steam discovery refresh completed. ImportedServers: {ImportedServers}.",
-                discoveredServers.Count);
+                "Server discovery refresh completed. SteamServers: {SteamServers}. BattleMetricsServers: {BattleMetricsServers}. ImportedServers: {ImportedServers}. PolledServers: {PolledServers}.",
+                steamDiscoveredServers.Count,
+                battleMetricsDiscoveredServers.Count,
+                discoveredServers.Count,
+                steamDiscoveredServers.Count);
         }
         catch (Exception exception)
         {
@@ -120,5 +133,31 @@ public sealed class SteamDiscoveryWorker(
             cancellationToken);
 
         return discoveredServers;
+    }
+
+    private static IReadOnlyList<ConfiguredRustServer> MergeDiscoveredServers(
+        IReadOnlyList<ConfiguredRustServer> steamServers,
+        IReadOnlyList<ConfiguredRustServer> battleMetricsServers)
+    {
+        var serversByKey = new Dictionary<string, ConfiguredRustServer>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var server in steamServers)
+        {
+            serversByKey[ServerKey(server)] = server;
+        }
+
+        foreach (var server in battleMetricsServers)
+        {
+            serversByKey[ServerKey(server)] = server;
+        }
+
+        return serversByKey.Values.ToArray();
+    }
+
+    private static string ServerKey(ConfiguredRustServer server)
+    {
+        return server.BattleMetricsServerId is not null
+            ? $"bm:{server.BattleMetricsServerId.Value}"
+            : $"endpoint:{server.Host.Trim().ToLowerInvariant()}:{server.QueryPort}";
     }
 }

@@ -15,27 +15,17 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
         int maxPages,
         CancellationToken cancellationToken)
     {
-        var summaries = await GetRustServerSummariesAsync(pageSize, maxPages, cancellationToken);
+        IReadOnlyList<BattleMetricsServerSummary> summaries;
+        try
+        {
+            summaries = await GetRustServerSummariesAsync(pageSize, maxPages, cancellationToken);
+        }
+        catch (BattleMetricsRateLimitException exception)
+        {
+            summaries = exception.PartialSummaries;
+        }
 
-        return summaries
-            .Select(summary => new ConfiguredRustServer
-            {
-                BattleMetricsServerId = summary.BattleMetricsServerId,
-                Name = summary.Name,
-                Address = summary.Address,
-                Host = summary.Host,
-                GamePort = summary.GamePort,
-                QueryPort = summary.QueryPort,
-                Country = summary.Country,
-                Latitude = summary.Latitude,
-                Longitude = summary.Longitude,
-                LastWipeAtUtc = summary.LastWipeAtUtc,
-                NextWipeAtUtc = summary.NextWipeAtUtc,
-                DiscoverySource = ServerDiscoverySource.BattleMetrics,
-                SummarySource = ServerSummarySource.BattleMetrics,
-                PlayerCountSource = ServerPlayerCountSource.BattleMetrics,
-                PlayerListSource = PlayerListSource.A2S
-            })
+        return summaries.Select(ToConfiguredServer)
             .ToArray();
     }
 
@@ -230,5 +220,27 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
     private static string? NullIfWhiteSpace(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static ConfiguredRustServer ToConfiguredServer(BattleMetricsServerSummary summary)
+    {
+        return new ConfiguredRustServer
+        {
+            BattleMetricsServerId = summary.BattleMetricsServerId,
+            Name = summary.Name,
+            Address = summary.Address,
+            Host = summary.Host,
+            GamePort = summary.GamePort,
+            QueryPort = summary.QueryPort,
+            Country = summary.Country,
+            Latitude = summary.Latitude,
+            Longitude = summary.Longitude,
+            LastWipeAtUtc = summary.LastWipeAtUtc,
+            NextWipeAtUtc = summary.NextWipeAtUtc,
+            DiscoverySource = ServerDiscoverySource.BattleMetrics,
+            SummarySource = ServerSummarySource.BattleMetrics,
+            PlayerCountSource = ServerPlayerCountSource.BattleMetrics,
+            PlayerListSource = PlayerListSource.A2S
+        };
     }
 }

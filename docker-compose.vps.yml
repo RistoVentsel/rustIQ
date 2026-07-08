@@ -36,7 +36,7 @@ services:
       SteamDiscovery__AllowBattleMetricsFallback: "true"
       BattleMetricsDiscovery__Enabled: "true"
       BattleMetricsDiscovery__PageSize: 100
-      BattleMetricsDiscovery__MaxPages: 35
+      BattleMetricsDiscovery__MaxPages: 60
       BattleMetricsDiscovery__RefreshIntervalMinutes: 10
       BattleMetricsSummaryRefresh__Enabled: "true"
       BattleMetricsSummaryRefresh__BatchSize: 25
