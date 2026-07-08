@@ -10,19 +10,19 @@ namespace RustIQ.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<int>(
-                name: "QueuePlayers",
-                table: "servers",
-                type: "integer",
-                nullable: true);
+            migrationBuilder.Sql("""
+                ALTER TABLE servers
+                ADD COLUMN IF NOT EXISTS "QueuePlayers" integer;
+                """);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "QueuePlayers",
-                table: "servers");
+            migrationBuilder.Sql("""
+                ALTER TABLE servers
+                DROP COLUMN IF EXISTS "QueuePlayers";
+                """);
         }
     }
 }
