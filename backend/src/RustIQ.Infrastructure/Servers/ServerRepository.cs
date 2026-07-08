@@ -52,13 +52,16 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         int take,
         CancellationToken cancellationToken)
     {
-        return await ApplyServerSort(
-                DeduplicateServersQuery(ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status, serverTypes)),
+        var filteredServers = await ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status, serverTypes)
+            .ToListAsync(cancellationToken);
+
+        return ApplyServerSort(
+                DeduplicateServers(filteredServers),
                 sortBy,
                 sortDescending)
             .Skip(skip)
             .Take(take)
-            .ToListAsync(cancellationToken);
+            .ToArray();
     }
 
     public Task<Server?> GetByIdWithMapMetadataAsync(
@@ -254,23 +257,8 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             .ToArray();
     }
 
-    private static IQueryable<Server> DeduplicateServersQuery(IQueryable<Server> servers)
-    {
-        return servers
-            .GroupBy(server => new
-            {
-                Host = server.Host.Trim().ToLower(),
-                server.QueryPort
-            })
-            .Select(group => group
-                .OrderByDescending(server => server.BattleMetricsServerId.HasValue)
-                .ThenByDescending(server => server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics)
-                .ThenByDescending(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
-                .First());
-    }
-
-    private static IOrderedQueryable<Server> ApplyServerSort(
-        IQueryable<Server> servers,
+    private static IOrderedEnumerable<Server> ApplyServerSort(
+        IEnumerable<Server> servers,
         string sortBy,
         bool sortDescending)
     {
@@ -286,16 +274,8 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
                 ? servers.OrderByDescending(server => server.Country ?? string.Empty)
                 : servers.OrderBy(server => server.Country ?? string.Empty),
             ServerReadService.SortByServerType => sortDescending
-                ? servers.OrderByDescending(server =>
-                    server.ServerType == RustServerType.Official ? 0 :
-                    server.ServerType == RustServerType.Community ? 1 :
-                    server.ServerType == RustServerType.Modded ? 2 :
-                    3)
-                : servers.OrderBy(server =>
-                    server.ServerType == RustServerType.Official ? 0 :
-                    server.ServerType == RustServerType.Community ? 1 :
-                    server.ServerType == RustServerType.Modded ? 2 :
-                    3),
+                ? servers.OrderByDescending(server => ServerTypeSortRank(server.ServerType))
+                : servers.OrderBy(server => ServerTypeSortRank(server.ServerType)),
             _ => sortDescending
                 ? servers.OrderByDescending(server => server.Players)
                 : servers.OrderBy(server => server.Players)
@@ -305,5 +285,16 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             .ThenByDescending(server => server.Status == ServerStatus.Online)
             .ThenBy(server => server.Name)
             .ThenBy(server => server.Host);
+    }
+
+    private static int ServerTypeSortRank(RustServerType serverType)
+    {
+        return serverType switch
+        {
+            RustServerType.Official => 0,
+            RustServerType.Community => 1,
+            RustServerType.Modded => 2,
+            _ => 3
+        };
     }
 }
