@@ -49,6 +49,15 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
             await using var scope = serviceScopeFactory.CreateAsyncScope();
             var repository = scope.ServiceProvider.GetRequiredService<IServerRepository>();
             var pollingService = scope.ServiceProvider.GetRequiredService<ServerPollingService>();
+            var refreshService = scope.ServiceProvider.GetRequiredService<IServerRefreshService>();
+
+            var directoryRefreshedServers = await refreshService.RefreshBattleMetricsDirectoryServersAsync(cancellationToken);
+            if (directoryRefreshedServers > 0)
+            {
+                logger.LogInformation(
+                    "BattleMetrics directory population sweep completed. RefreshedServers: {RefreshedServers}.",
+                    directoryRefreshedServers);
+            }
 
             var staleBeforeUtc = DateTimeOffset.UtcNow.AddSeconds(-options.Value.StaleAfterSeconds);
             var servers = await repository.GetServersForPlayerCountRefreshAsync(

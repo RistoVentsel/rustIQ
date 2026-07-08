@@ -11,6 +11,9 @@ public interface IServerRefreshService
     Task RefreshAllServersAsync(
         CancellationToken cancellationToken);
 
+    Task<int> RefreshBattleMetricsDirectoryServersAsync(
+        CancellationToken cancellationToken);
+
     Task RefreshServerAsync(
         Server server,
         CancellationToken cancellationToken);

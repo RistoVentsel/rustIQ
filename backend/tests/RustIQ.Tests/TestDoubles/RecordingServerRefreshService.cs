@@ -7,6 +7,8 @@ internal sealed class RecordingServerRefreshService : IServerRefreshService
 {
     public int RefreshAllCallCount { get; private set; }
 
+    public int RefreshBattleMetricsDirectoryCallCount { get; private set; }
+
     public bool ThrowOnRefreshAll { get; set; }
 
     public bool ThrowOnRefreshServers { get; set; }
@@ -40,6 +42,13 @@ internal sealed class RecordingServerRefreshService : IServerRefreshService
         }
 
         return Task.CompletedTask;
+    }
+
+    public Task<int> RefreshBattleMetricsDirectoryServersAsync(
+        CancellationToken cancellationToken)
+    {
+        RefreshBattleMetricsDirectoryCallCount++;
+        return Task.FromResult(0);
     }
 
     public Task RefreshServerAsync(

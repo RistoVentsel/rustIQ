@@ -38,6 +38,30 @@ public sealed class ServerRefreshService(
         await RefreshPlayerCountsAsync(servers, cancellationToken);
     }
 
+    public async Task<int> RefreshBattleMetricsDirectoryServersAsync(
+        CancellationToken cancellationToken)
+    {
+        var servers = await serverRepository.GetAllAsync(cancellationToken);
+        if (servers.Count == 0)
+        {
+            return 0;
+        }
+
+        Dictionary<Guid, PlayerCountRefreshResult> directoryRefreshResults;
+        try
+        {
+            directoryRefreshResults = await FetchDirectoryPlayerCountsAsync(servers, cancellationToken);
+        }
+        catch (BattleMetricsRateLimitException exception)
+        {
+            directoryRefreshResults = BuildDirectoryPlayerCounts(servers, exception.PartialSummaries);
+        }
+
+        await ApplyPlayerCountRefreshesAsync(directoryRefreshResults, cancellationToken);
+
+        return directoryRefreshResults.Count;
+    }
+
     public async Task RefreshServerAsync(
         Server server,
         CancellationToken cancellationToken)
