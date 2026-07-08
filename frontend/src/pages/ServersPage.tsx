@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { Fragment, type FormEvent, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Fragment, type FormEvent, useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import {
   ApiError,
@@ -33,14 +33,21 @@ const wipeFilterOptions: Array<{ value: WipeFilter, label: string }> = [
   { value: 'hasWipeData', label: 'Has wipe data' },
 ]
 
+function getPageFromSearchParams(searchParams: URLSearchParams) {
+  const pageParam = Number(searchParams.get('page'))
+
+  return Number.isInteger(pageParam) && pageParam > 0 ? pageParam : 1
+}
+
 export function ServersPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [searchInput, setSearchInput] = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all')
   const [serverTypeFilters, setServerTypeFilters] = useState<RustServerType[]>([])
   const [wipeFilter, setWipeFilter] = useState<WipeFilter>('all')
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
-  const [page, setPage] = useState(1)
+  const [page, setPageState] = useState(() => getPageFromSearchParams(searchParams))
   const [pageSize, setPageSize] = useState(10)
   const [sortBy, setSortBy] = useState<ServerSortBy>('players')
   const [sortDirection, setSortDirection] = useState<ServerSortDirection>('desc')
@@ -97,6 +104,34 @@ export function ServersPage() {
     serversQuery.error instanceof ApiError
       ? `${serversQuery.error.message} (${serversQuery.error.url})`
       : 'Unexpected error while loading the server list.'
+
+  useEffect(() => {
+    const pageFromSearchParams = getPageFromSearchParams(searchParams)
+
+    if (pageFromSearchParams !== page) {
+      setPageState(pageFromSearchParams)
+    }
+  }, [page, searchParams])
+
+  function setPage(nextPageOrUpdater: number | ((currentPage: number) => number)) {
+    const nextPage = typeof nextPageOrUpdater === 'function'
+      ? nextPageOrUpdater(page)
+      : nextPageOrUpdater
+    const normalizedPage = Math.max(1, nextPage)
+
+    setPageState(normalizedPage)
+    setSearchParams((currentSearchParams) => {
+      const nextSearchParams = new URLSearchParams(currentSearchParams)
+
+      if (normalizedPage === 1) {
+        nextSearchParams.delete('page')
+      } else {
+        nextSearchParams.set('page', String(normalizedPage))
+      }
+
+      return nextSearchParams
+    })
+  }
 
   function updateSearch(value: string) {
     setSearchInput(value)

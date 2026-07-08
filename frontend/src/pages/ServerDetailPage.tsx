@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import { ApiError, getServerById, getServerMap, getServerPlayers } from '../api'
 import { SectionCard } from '../components/SectionCard'
@@ -101,6 +101,7 @@ function ServerDetailLocation({
 
 export function ServerDetailPage() {
   const { serverId } = useParams<{ serverId: string }>()
+  const navigate = useNavigate()
   const liveStatus = useServerLiveUpdates(serverId)
   const nowMs = useNow()
   const [copiedAddress, setCopiedAddress] = useState(false)
@@ -145,6 +146,15 @@ export function ServerDetailPage() {
     window.setTimeout(() => setCopiedAddress(false), 1600)
   }
 
+  function navigateBackToServerList() {
+    if (window.history.state?.idx > 0) {
+      navigate(-1)
+      return
+    }
+
+    navigate('/')
+  }
+
   return (
     <div className="page-stack">
       <div className="page-copy">
@@ -162,9 +172,13 @@ export function ServerDetailPage() {
           <div className="server-detail-actions">
             <span className={getLiveStatusClassName(liveStatus)}>{getLiveStatusLabel(liveStatus)}</span>
             <span className="status-pill status-pill--online">Live playercount</span>
-            <Link to="/" className="button-link button-link--secondary">
+            <button
+              type="button"
+              className="button-link button-link--secondary"
+              onClick={navigateBackToServerList}
+            >
               Back
-            </Link>
+            </button>
           </div>
         }
       >
