@@ -81,6 +81,7 @@ export type ServerListItem = {
   map: string | null
   players: number
   maxPlayers: number
+  queuePlayers: number | null
   status: ServerStatus
   lastValidationReason: string | null
   lastSeenAtUtc: string | null
@@ -107,6 +108,7 @@ export type ServerDetails = {
   map: string | null
   players: number
   maxPlayers: number
+  queuePlayers: number | null
   status: ServerStatus
   lastSeenAtUtc: string | null
   lastCheckedAtUtc: string | null

@@ -20,6 +20,7 @@ public sealed class ServerUpdateMessageTests
             serverId,
             Players: 42,
             MaxPlayers: 100,
+            QueuePlayers: 6,
             Status: ServerStatus.Online,
             CheckedAtUtc: checkedAtUtc,
             UpdatedSecondsAgo: 1,
@@ -32,6 +33,7 @@ public sealed class ServerUpdateMessageTests
         Assert.Equal(serverId, message.ServerId);
         Assert.Equal(42, message.Players);
         Assert.Equal(100, message.MaxPlayers);
+        Assert.Equal(6, message.QueuePlayers);
         Assert.Equal(ServerStatus.Online, message.Status);
         Assert.Equal(checkedAtUtc, message.CheckedAtUtc);
         Assert.Equal(1, message.UpdatedSecondsAgo);
@@ -73,6 +75,7 @@ public sealed class ServerUpdateMessageTests
             "Procedural Map",
             12,
             100,
+            3,
             ServerStatus.Online,
             ServerDiscoverySource.Steam,
             ServerSummarySource.A2S,
@@ -105,6 +108,7 @@ public sealed class ServerUpdateMessageTests
             "Procedural Map",
             0,
             50,
+            null,
             ServerStatus.Offline,
             ServerDiscoverySource.Steam,
             ServerSummarySource.A2S,
@@ -127,6 +131,7 @@ public sealed class ServerUpdateMessageTests
 
         Assert.Equal(firstServer.Id, firstMessage.ServerId);
         Assert.Equal(12, firstMessage.Players);
+        Assert.Equal(3, firstMessage.QueuePlayers);
         Assert.Equal("Map One", firstMessage.MapName);
         Assert.Equal(3, firstMessage.UpdatedSecondsAgo);
 

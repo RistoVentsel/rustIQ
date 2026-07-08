@@ -28,6 +28,8 @@ public sealed class Server
 
     public int MaxPlayers { get; set; }
 
+    public int? QueuePlayers { get; set; }
+
     public ServerStatus Status { get; set; } = ServerStatus.Unknown;
 
     public ServerDiscoverySource DiscoverySource { get; set; } = ServerDiscoverySource.Unknown;

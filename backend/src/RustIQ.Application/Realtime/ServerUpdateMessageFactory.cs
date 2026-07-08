@@ -10,6 +10,7 @@ public sealed class ServerUpdateMessageFactory
             server.Id,
             server.Players,
             server.MaxPlayers,
+            server.QueuePlayers,
             server.Status,
             server.LatestSnapshot.CheckedAtUtc,
             SecondsAgo(server.UpdatedAtUtc, now),

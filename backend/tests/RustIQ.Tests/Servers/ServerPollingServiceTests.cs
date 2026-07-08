@@ -530,6 +530,7 @@ public sealed class ServerPollingServiceTests
                     42,
                     77,
                     200,
+                    4,
                     true,
                     Country: null,
                     Latitude: null,
@@ -556,8 +557,10 @@ public sealed class ServerPollingServiceTests
         Assert.Equal(ServerPlayerCountSource.BattleMetrics, server.PlayerCountSource);
         Assert.Equal(77, server.Players);
         Assert.Equal(200, server.MaxPlayers);
+        Assert.Equal(4, server.QueuePlayers);
         Assert.Equal(77, result.Players);
         Assert.Equal(200, result.MaxPlayers);
+        Assert.Equal(4, result.QueuePlayers);
     }
 
     private static RustServerQueryResult QueryResult(
@@ -587,6 +590,7 @@ public sealed class ServerPollingServiceTests
             Map: map,
             Players: players,
             MaxPlayers: maxPlayers,
+            QueuePlayers: null,
             IsOnline: isOnline,
             PingMilliseconds: pingMilliseconds,
             CheckedAtUtc: checkedAtUtc,

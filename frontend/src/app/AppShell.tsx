@@ -1,6 +1,21 @@
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 
+type Theme = 'dark' | 'light'
+
 export function AppShell() {
+  const [theme, setTheme] = useState<Theme>(() => {
+    const savedTheme = window.localStorage.getItem('rustiq-theme')
+    return savedTheme === 'light' ? 'light' : 'dark'
+  })
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    window.localStorage.setItem('rustiq-theme', theme)
+  }, [theme])
+
+  const nextTheme = theme === 'dark' ? 'light' : 'dark'
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -25,6 +40,20 @@ export function AppShell() {
               </li>
             </ul>
           </nav>
+
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setTheme(nextTheme)}
+            aria-label={`Switch to ${nextTheme} theme`}
+            aria-pressed={theme === 'light'}
+          >
+            <span className="theme-toggle__label">Dark</span>
+            <span className="theme-toggle__track" aria-hidden="true">
+              <span className="theme-toggle__thumb" />
+            </span>
+            <span className="theme-toggle__label">Light</span>
+          </button>
         </div>
       </header>
 

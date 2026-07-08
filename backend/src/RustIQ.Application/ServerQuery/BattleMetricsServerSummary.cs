@@ -14,5 +14,6 @@ public sealed record BattleMetricsServerSummary(
     DateTimeOffset? NextWipeAtUtc,
     int Players,
     int MaxPlayers,
+    int? QueuePlayers,
     bool IsOnline,
     DateTimeOffset CheckedAtUtc);

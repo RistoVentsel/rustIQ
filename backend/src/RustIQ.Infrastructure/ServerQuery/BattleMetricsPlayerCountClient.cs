@@ -53,6 +53,7 @@ public sealed class BattleMetricsPlayerCountClient(IHttpClientFactory httpClient
             battleMetricsServerId,
             GetInt(attributes, "players") ?? 0,
             GetInt(attributes, "maxPlayers") ?? 0,
+            GetInt(attributes, "details", "rust_queued_players"),
             string.Equals(status, "online", StringComparison.OrdinalIgnoreCase),
             GetString(attributes, "country"),
             GetLatitude(attributes),
@@ -135,6 +136,20 @@ public sealed class BattleMetricsPlayerCountClient(IHttpClientFactory httpClient
         return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : null;
+    }
+
+    private static int? GetInt(
+        JsonElement element,
+        string objectPropertyName,
+        string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty(objectPropertyName, out var nestedElement))
+        {
+            return null;
+        }
+
+        return GetInt(nestedElement, propertyName);
     }
 
     private static long? GetLong(JsonElement element, string propertyName)

@@ -37,6 +37,7 @@ public sealed class ServerPollingService(
                     Longitude = configuredServer.Longitude,
                     LastWipeAtUtc = configuredServer.LastWipeAtUtc,
                     NextWipeAtUtc = configuredServer.NextWipeAtUtc,
+                    QueuePlayers = configuredServer.QueuePlayers,
                     Name = configuredName,
                     Status = ServerStatus.Unknown,
                     DiscoverySource = configuredServer.DiscoverySource,
@@ -120,6 +121,7 @@ public sealed class ServerPollingService(
             Longitude = server.Longitude,
             LastWipeAtUtc = server.LastWipeAtUtc,
             NextWipeAtUtc = server.NextWipeAtUtc,
+            QueuePlayers = server.QueuePlayers,
             DiscoverySource = server.DiscoverySource,
             SummarySource = server.SummarySource,
             PlayerCountSource = server.PlayerCountSource,
@@ -285,6 +287,7 @@ public sealed class ServerPollingService(
         server.Longitude = queryResult.Longitude ?? configuredServer.Longitude ?? server.Longitude;
         server.LastWipeAtUtc = queryResult.LastWipeAtUtc ?? configuredServer.LastWipeAtUtc ?? server.LastWipeAtUtc;
         server.NextWipeAtUtc = queryResult.NextWipeAtUtc ?? configuredServer.NextWipeAtUtc ?? server.NextWipeAtUtc;
+        server.QueuePlayers = NormalizeQueuePlayers(queryResult.QueuePlayers ?? configuredServer.QueuePlayers ?? server.QueuePlayers);
         server.DiscoverySource = configuredServer.DiscoverySource;
         server.SummarySource = queryResult.SummarySource;
         server.PlayerCountSource = queryResult.PlayerCountSource;
@@ -310,6 +313,7 @@ public sealed class ServerPollingService(
             server.Map = string.IsNullOrWhiteSpace(queryResult.Map) ? server.Map : queryResult.Map;
             server.Players = queryResult.Players;
             server.MaxPlayers = queryResult.MaxPlayers;
+            server.QueuePlayers = queryResult.QueuePlayers;
             server.Status = ServerStatus.Online;
             server.LastSeenAtUtc = queryResult.CheckedAtUtc;
             server.LastPlayerCountUpdatedAtUtc = queryResult.CheckedAtUtc;
@@ -448,6 +452,7 @@ public sealed class ServerPollingService(
                 BattleMetricsServerId = battleMetricsServerId,
                 Players = lastKnownBattleMetricsPlayers,
                 MaxPlayers = lastKnownBattleMetricsMaxPlayers,
+                QueuePlayers = server.QueuePlayers ?? queryResult.QueuePlayers,
                 PlayerCountSource = ServerPlayerCountSource.BattleMetrics
             };
         }
@@ -462,6 +467,7 @@ public sealed class ServerPollingService(
             NextWipeAtUtc = battleMetricsPlayerCount.NextWipeAtUtc ?? queryResult.NextWipeAtUtc,
             Players = battleMetricsPlayerCount.Players,
             MaxPlayers = battleMetricsPlayerCount.MaxPlayers,
+            QueuePlayers = battleMetricsPlayerCount.QueuePlayers,
             IsOnline = battleMetricsPlayerCount.IsOnline,
             CheckedAtUtc = battleMetricsPlayerCount.CheckedAtUtc,
             PlayerCountSource = ServerPlayerCountSource.BattleMetrics
@@ -472,6 +478,7 @@ public sealed class ServerPollingService(
     {
         var normalizedPlayers = Math.Max(0, queryResult.Players);
         var normalizedMaxPlayers = Math.Max(0, queryResult.MaxPlayers);
+        var normalizedQueuePlayers = NormalizeQueuePlayers(queryResult.QueuePlayers);
         string? validationReason = null;
 
         if (queryResult.IsOnline && normalizedPlayers > normalizedMaxPlayers)
@@ -492,6 +499,7 @@ public sealed class ServerPollingService(
         {
             Players = normalizedPlayers,
             MaxPlayers = normalizedMaxPlayers,
+            QueuePlayers = normalizedQueuePlayers,
             Error = mergedError
         };
     }
@@ -541,6 +549,7 @@ public sealed class ServerPollingService(
             server.Map,
             server.Players,
             server.MaxPlayers,
+            server.QueuePlayers,
             server.Status,
             server.DiscoverySource,
             server.SummarySource,
@@ -652,6 +661,11 @@ public sealed class ServerPollingService(
     private static bool UpdateNextWipeAt(Server server, DateTimeOffset? nextValue)
     {
         return UpdateIfDifferent(server.NextWipeAtUtc, nextValue, value => server.NextWipeAtUtc = value);
+    }
+
+    private static int? NormalizeQueuePlayers(int? queuePlayers)
+    {
+        return queuePlayers is null ? null : Math.Max(0, queuePlayers.Value);
     }
 
     private static bool UpdateDiscoverySource(Server server, ServerDiscoverySource nextValue)

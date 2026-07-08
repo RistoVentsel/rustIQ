@@ -17,6 +17,7 @@ public sealed record RustServerQueryResult(
     string? Map,
     int Players,
     int MaxPlayers,
+    int? QueuePlayers,
     bool IsOnline,
     long? PingMilliseconds,
     DateTimeOffset CheckedAtUtc,

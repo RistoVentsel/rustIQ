@@ -9,6 +9,7 @@ type ServerUpdateMessage = {
   serverId: string
   players: number
   maxPlayers: number
+  queuePlayers: number | null
   status: ServerStatus
   checkedAtUtc: string
   updatedSecondsAgo: number
@@ -68,6 +69,7 @@ export function useServerLiveUpdates(serverId?: string) {
           ...current,
           players: update.players,
           maxPlayers: update.maxPlayers,
+          queuePlayers: update.queuePlayers,
           status: update.status,
           updatedAtUtc: update.checkedAtUtc,
           updatedSecondsAgo: update.updatedSecondsAgo,

@@ -6,6 +6,7 @@ public sealed record ServerUpdateMessage(
     Guid ServerId,
     int Players,
     int MaxPlayers,
+    int? QueuePlayers,
     ServerStatus Status,
     DateTimeOffset CheckedAtUtc,
     int UpdatedSecondsAgo,

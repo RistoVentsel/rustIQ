@@ -7,6 +7,7 @@ import { StateNotice } from '../components/StateNotice'
 import { ServerLayoutPreview } from '../features/servers/ServerLayoutPreview'
 import {
   formatServerLocation,
+  formatPlayerCount,
   formatServerSubtitle,
   formatServerTimestamp,
   getServerDisplayName,
@@ -180,7 +181,7 @@ export function ServerDetailPage() {
               subtitle={formatServerSubtitle(serverQuery.data)}
               badgeLabel={getServerStatusLabel(serverQuery.data.status)}
               stats={[
-                { label: 'Players', value: `${serverQuery.data.players} / ${serverQuery.data.maxPlayers}` },
+                { label: 'Players', value: formatPlayerCount(serverQuery.data) },
                 { label: 'Updated', value: formatSecondsAgo(updatedSecondsAgo) },
                 {
                   label: 'Last seen',

@@ -12,6 +12,16 @@ export function formatCountry(country: string | null | undefined) {
   return country?.trim().toUpperCase() || 'Unknown'
 }
 
+export function formatPlayerCount(
+  server: Pick<ServerListItem | ServerDetails, 'players' | 'maxPlayers' | 'queuePlayers'>,
+) {
+  const queueSuffix = server.queuePlayers && server.queuePlayers > 0
+    ? ` (${server.queuePlayers})`
+    : ''
+
+  return `${server.players}/${server.maxPlayers}${queueSuffix}`
+}
+
 export function formatServerLocation(
   server: Pick<ServerListItem | ServerDetails, 'country' | 'latitude' | 'longitude'>,
 ) {
@@ -113,7 +123,7 @@ export function formatServerSubtitle(
   return server.map ? `${address} | ${server.map}` : address
 }
 
-function getCountryFlag(country: string | null | undefined) {
+export function getCountryFlag(country: string | null | undefined) {
   const code = country?.trim().toUpperCase()
   if (!code || code.length !== 2 || !/^[A-Z]{2}$/.test(code)) {
     return ''

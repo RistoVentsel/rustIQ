@@ -34,6 +34,7 @@ public sealed class ServerRefreshServiceTests
                     42,
                     77,
                     200,
+                    6,
                     true,
                     "GB",
                     51.5,
@@ -113,6 +114,7 @@ public sealed class ServerRefreshServiceTests
                     1,
                     10,
                     100,
+                    QueuePlayers: null,
                     true,
                     Country: null,
                     Latitude: null,
@@ -124,6 +126,7 @@ public sealed class ServerRefreshServiceTests
                     2,
                     20,
                     100,
+                    QueuePlayers: null,
                     true,
                     Country: null,
                     Latitude: null,
@@ -190,6 +193,7 @@ public sealed class ServerRefreshServiceTests
                 DateTimeOffset.Parse("2026-07-14T08:00:00Z"),
                 77,
                 200,
+                6,
                 true,
                 checkedAtUtc)
         ]);
@@ -216,6 +220,7 @@ public sealed class ServerRefreshServiceTests
         Assert.Equal(42, server.BattleMetricsServerId);
         Assert.Equal(77, server.Players);
         Assert.Equal(200, server.MaxPlayers);
+        Assert.Equal(6, server.QueuePlayers);
         Assert.Equal(ServerPlayerCountSource.BattleMetrics, server.PlayerCountSource);
         Assert.Equal(checkedAtUtc, server.LastCheckedAtUtc);
         Assert.InRange(server.UpdatedAtUtc, beforeRefreshUtc, afterRefreshUtc);
@@ -263,6 +268,7 @@ public sealed class ServerRefreshServiceTests
                     43,
                     88,
                     250,
+                    null,
                     true,
                     null,
                     null,
@@ -287,6 +293,7 @@ public sealed class ServerRefreshServiceTests
                 null,
                 77,
                 200,
+                null,
                 true,
                 checkedAtUtc)
         ]);
@@ -364,6 +371,7 @@ public sealed class ServerRefreshServiceTests
                 null,
                 77,
                 200,
+                null,
                 true,
                 checkedAtUtc)
         };
@@ -377,6 +385,7 @@ public sealed class ServerRefreshServiceTests
                     43,
                     88,
                     250,
+                    null,
                     true,
                     null,
                     null,

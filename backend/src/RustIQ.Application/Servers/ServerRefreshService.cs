@@ -79,6 +79,7 @@ public sealed class ServerRefreshService(
             Longitude = server.Longitude,
             LastWipeAtUtc = server.LastWipeAtUtc,
             NextWipeAtUtc = server.NextWipeAtUtc,
+            QueuePlayers = server.QueuePlayers,
             DiscoverySource = server.DiscoverySource,
             SummarySource = server.SummarySource,
             PlayerCountSource = server.PlayerCountSource,
@@ -217,6 +218,7 @@ public sealed class ServerRefreshService(
                     summary.BattleMetricsServerId,
                     summary.Players,
                     summary.MaxPlayers,
+                    summary.QueuePlayers,
                     summary.IsOnline,
                     summary.Country,
                     summary.Latitude,
@@ -297,6 +299,7 @@ public sealed class ServerRefreshService(
         var checkedAtUtc = refreshResult.PlayerCount.CheckedAtUtc;
         var players = Math.Max(0, refreshResult.PlayerCount.Players);
         var maxPlayers = Math.Max(players, Math.Max(0, refreshResult.PlayerCount.MaxPlayers));
+        var queuePlayers = NormalizeQueuePlayers(refreshResult.PlayerCount.QueuePlayers);
 
         server.BattleMetricsServerId = refreshResult.BattleMetricsServerId;
         server.PlayerCountSource = ServerPlayerCountSource.BattleMetrics;
@@ -304,6 +307,7 @@ public sealed class ServerRefreshService(
         server.LastPlayerCountUpdatedAtUtc = refreshCompletedAtUtc;
         server.UpdatedAtUtc = refreshCompletedAtUtc;
         server.MaxPlayers = maxPlayers;
+        server.QueuePlayers = queuePlayers;
         server.Country = string.IsNullOrWhiteSpace(refreshResult.PlayerCount.Country)
             ? server.Country
             : refreshResult.PlayerCount.Country;
@@ -336,6 +340,11 @@ public sealed class ServerRefreshService(
     private sealed record PlayerCountRefreshResult(
         long BattleMetricsServerId,
         BattleMetricsPlayerCountResult PlayerCount);
+
+    private static int? NormalizeQueuePlayers(int? queuePlayers)
+    {
+        return queuePlayers is null ? null : Math.Max(0, queuePlayers.Value);
+    }
 
     private static string ServerEndpointKey(string host, int queryPort)
     {

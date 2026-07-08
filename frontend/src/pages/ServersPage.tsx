@@ -1,12 +1,12 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { ApiError, getServerRefreshStatus, getServers, queueServerRefresh, serverStatus } from '../api'
 import { SectionCard } from '../components/SectionCard'
 import { StateNotice } from '../components/StateNotice'
 import { ServerListCard } from '../features/servers/ServerListCard'
-import { useDebouncedValue, useNow } from '../hooks'
+import { useNow } from '../hooks'
 
 const pageSizeOptions = [10, 25, 50]
 type ServerSortBy = 'players' | 'lastWipe' | 'nextWipe'
@@ -14,6 +14,7 @@ type ServerSortDirection = 'asc' | 'desc'
 
 export function ServersPage() {
   const [searchInput, setSearchInput] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -22,7 +23,6 @@ export function ServersPage() {
   const [hideServerDataForRefresh, setHideServerDataForRefresh] = useState(false)
   const [refreshStatusPollingEnabled, setRefreshStatusPollingEnabled] = useState(false)
   const nowMs = useNow()
-  const debouncedSearch = useDebouncedValue(searchInput.trim(), 300)
   const statusValue = useMemo(() => {
     switch (statusFilter) {
       case 'online':
@@ -35,7 +35,7 @@ export function ServersPage() {
   }, [statusFilter])
 
   const serverQueryParams = {
-    search: debouncedSearch || undefined,
+    search: appliedSearch || undefined,
     status: statusValue,
     page,
     pageSize,
@@ -121,6 +121,11 @@ export function ServersPage() {
 
   function updateSearch(value: string) {
     setSearchInput(value)
+  }
+
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setAppliedSearch(searchInput.trim())
     setPage(1)
   }
 
@@ -154,14 +159,34 @@ export function ServersPage() {
     return <span aria-hidden="true">{sortDirection === 'desc' ? '↓' : '↑'}</span>
   }
 
+  function getVisiblePageNumbers() {
+    const pages = new Set<number>()
+    const addPage = (pageNumber: number) => {
+      if (pageNumber >= 1 && pageNumber <= totalPages) {
+        pages.add(pageNumber)
+      }
+    }
+
+    for (let pageNumber = 1; pageNumber <= 4; pageNumber += 1) {
+      addPage(pageNumber)
+    }
+
+    for (let pageNumber = page - 1; pageNumber <= page + 1; pageNumber += 1) {
+      addPage(pageNumber)
+    }
+
+    addPage(totalPages)
+
+    return Array.from(pages).sort((left, right) => left - right)
+  }
+
   return (
     <div className="page-stack">
       <div className="page-copy">
         <p className="page-eyebrow">Server List</p>
-        <h2 className="page-heading">Cached Rust server snapshot</h2>
+        <h2 className="page-heading">Unofficial Rust server tracking</h2>
         <p className="page-text">
-          This page loads cached backend data from <code>GET /servers</code>. Refresh updates all
-          cached server populations before the list is shown again.
+          Browse server activity, wipe timing, locations, and player counts in one survival-focused view.
         </p>
       </div>
 
@@ -196,7 +221,7 @@ export function ServersPage() {
           </div>
         }
       >
-        <div className="server-list-filters">
+        <form className="server-list-filters" onSubmit={submitSearch}>
           <label className="server-list-control server-list-control--search">
             <span>Search</span>
             <input
@@ -207,6 +232,10 @@ export function ServersPage() {
               className="server-list-input"
             />
           </label>
+
+          <button type="submit" className="button-link">
+            Search
+          </button>
 
           <label className="server-list-control">
             <span>Status</span>
@@ -220,7 +249,7 @@ export function ServersPage() {
               <option value="offline">Offline</option>
             </select>
           </label>
-        </div>
+        </form>
 
         {isLoadingServers ? (
           <StateNotice
@@ -265,11 +294,7 @@ export function ServersPage() {
             return (
               <div className="server-list-summary">
                 <div className="server-list-summary__stat">
-                  <span className="server-list-summary__label">Visible servers</span>
-                  <strong>{servers.length}</strong>
-                </div>
-                <div className="server-list-summary__stat">
-                  <span className="server-list-summary__label">Total cached</span>
+                  <span className="server-list-summary__label">Total servers</span>
                   <strong>{pageData.totalItems}</strong>
                 </div>
                 <div className="server-list-summary__stat">
@@ -338,7 +363,7 @@ export function ServersPage() {
           <StateNotice
             title="No servers available"
             description={
-              debouncedSearch || statusValue !== undefined
+              appliedSearch || statusValue !== undefined
                 ? 'No cached servers match the current search or status filter.'
                 : 'Start backend polling to populate the cached server list.'
             }
@@ -355,9 +380,31 @@ export function ServersPage() {
             >
               Previous
             </button>
-            <p className="page-text">
-              Page {page} of {totalPages}
-            </p>
+            <div className="server-list-pagination__pages" aria-label="Pagination">
+              {getVisiblePageNumbers().map((pageNumber, index, visiblePages) => {
+                const previousPageNumber = visiblePages[index - 1]
+                const needsGap = previousPageNumber !== undefined && pageNumber - previousPageNumber > 1
+
+                return (
+                  <Fragment key={pageNumber}>
+                    {needsGap ? <span className="server-list-pagination__gap">...</span> : null}
+                    <button
+                      type="button"
+                      className={
+                        pageNumber === page
+                          ? 'server-list-pagination__page server-list-pagination__page--active'
+                          : 'server-list-pagination__page'
+                      }
+                      onClick={() => setPage(pageNumber)}
+                      disabled={pageNumber === page || serversQuery.isFetching}
+                      aria-current={pageNumber === page ? 'page' : undefined}
+                    >
+                      {pageNumber}
+                    </button>
+                  </Fragment>
+                )
+              })}
+            </div>
             <button
               type="button"
               className="button-link button-link--secondary"

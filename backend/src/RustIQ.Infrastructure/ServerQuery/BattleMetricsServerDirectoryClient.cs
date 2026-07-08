@@ -89,6 +89,7 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
                     GetDateTimeOffset(attributes, "details", "rust_next_wipe"),
                     GetInt(attributes, "players") ?? 0,
                     GetInt(attributes, "maxPlayers") ?? 0,
+                    GetInt(attributes, "details", "rust_queued_players"),
                     string.Equals(status, "online", StringComparison.OrdinalIgnoreCase),
                     checkedAtUtc));
             }
@@ -139,6 +140,20 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
         return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : null;
+    }
+
+    private static int? GetInt(
+        JsonElement element,
+        string objectPropertyName,
+        string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty(objectPropertyName, out var nestedElement))
+        {
+            return null;
+        }
+
+        return GetInt(nestedElement, propertyName);
     }
 
     private static long? GetLong(JsonElement element, string propertyName)
@@ -237,6 +252,7 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
             Longitude = summary.Longitude,
             LastWipeAtUtc = summary.LastWipeAtUtc,
             NextWipeAtUtc = summary.NextWipeAtUtc,
+            QueuePlayers = summary.QueuePlayers,
             DiscoverySource = ServerDiscoverySource.BattleMetrics,
             SummarySource = ServerSummarySource.BattleMetrics,
             PlayerCountSource = ServerPlayerCountSource.BattleMetrics,

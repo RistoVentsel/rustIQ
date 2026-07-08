@@ -114,6 +114,9 @@ namespace RustIQ.Infrastructure.Migrations
                     b.Property<int>("QueryPort")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("QueuePlayers")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)

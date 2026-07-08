@@ -18,6 +18,7 @@ public sealed record ServerDto(
     string? Map,
     int Players,
     int MaxPlayers,
+    int? QueuePlayers,
     ServerStatus Status,
     ServerDiscoverySource DiscoverySource,
     ServerSummarySource SummarySource,

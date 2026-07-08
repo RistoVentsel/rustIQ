@@ -26,6 +26,8 @@ public sealed class ConfiguredRustServer
 
     public DateTimeOffset? NextWipeAtUtc { get; init; }
 
+    public int? QueuePlayers { get; init; }
+
     public ServerDiscoverySource DiscoverySource { get; init; } = ServerDiscoverySource.Manual;
 
     public ServerSummarySource SummarySource { get; init; } = ServerSummarySource.A2S;

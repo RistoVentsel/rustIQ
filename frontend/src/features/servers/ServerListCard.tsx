@@ -4,7 +4,8 @@ import type { ServerListItem } from '../../api'
 import {
   formatAddress,
   formatRelativeTimestamp,
-  formatServerLocationShort,
+  formatCountry,
+  formatPlayerCount,
   getServerDisplayName,
 } from './serverPresentation'
 
@@ -14,6 +15,12 @@ type ServerListCardProps = {
 }
 
 export function ServerListCard({ server, nowMs }: ServerListCardProps) {
+  const country = formatCountry(server.country)
+  const countryCode = server.country?.trim().toLowerCase()
+  const flagSrc = countryCode && /^[a-z]{2}$/.test(countryCode)
+    ? `https://flagcdn.com/w40/${countryCode}.png`
+    : null
+
   return (
     <Link to={`/servers/${server.id}`} className="server-list-card">
       <div className="server-list-card__identity">
@@ -23,10 +30,20 @@ export function ServerListCard({ server, nowMs }: ServerListCardProps) {
         </p>
       </div>
 
-      <div className="server-list-card__cell">{server.players}/{server.maxPlayers}</div>
+      <div className="server-list-card__cell">{formatPlayerCount(server)}</div>
       <div className="server-list-card__cell">{formatRelativeTimestamp(server.lastWipeAtUtc, nowMs)}</div>
       <div className="server-list-card__cell">{formatRelativeTimestamp(server.nextWipeAtUtc, nowMs)}</div>
-      <div className="server-list-card__cell">{formatServerLocationShort(server)}</div>
+      <div className="server-list-card__cell server-list-card__cell--location">
+        <span className="server-location" aria-label={`Location ${country}`}>
+          <span className="server-location__initials">{country}</span>
+          {flagSrc ? (
+            <img className="server-location__flag" src={flagSrc} alt="" loading="lazy" />
+          ) : (
+            <span className="server-location__flag server-location__flag--empty" aria-hidden="true" />
+          )}
+          <span className="server-location__pulse" aria-hidden="true" />
+        </span>
+      </div>
       <div className="server-list-card__cell">{formatRelativeTimestamp(server.updatedAtUtc, nowMs)}</div>
     </Link>
   )
