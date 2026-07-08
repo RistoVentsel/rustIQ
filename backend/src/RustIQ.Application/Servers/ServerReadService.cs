@@ -21,6 +21,11 @@ public sealed class ServerReadService(
     public const string SortByServerType = "serverType";
     public const string SortAscending = "asc";
     public const string SortDescending = "desc";
+    public const string WipeFilterAll = "all";
+    public const string WipeFilterNext24Hours = "next24h";
+    public const string WipeFilterNext7Days = "next7d";
+    public const string WipeFilterWiped24Hours = "wiped24h";
+    public const string WipeFilterHasWipeData = "hasWipeData";
 
     public async Task<PagedResult<ServerListItemDto>> GetServersAsync(
         string? search,
@@ -31,19 +36,24 @@ public sealed class ServerReadService(
         string? sortDirection,
         string? serverTypes,
         string? refreshMode,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? wipeFilter = null)
     {
+        var now = DateTimeOffset.UtcNow;
         var normalizedPage = Math.Max(page ?? DefaultPage, 1);
         var normalizedPageSize = Math.Clamp(pageSize ?? DefaultPageSize, 1, MaxPageSize);
         var normalizedSortBy = NormalizeSortBy(sortBy);
         var sortDescending = NormalizeSortDirection(sortDirection);
         var normalizedServerTypes = NormalizeServerTypes(serverTypes);
+        var normalizedWipeFilter = NormalizeWipeFilter(wipeFilter);
         var skip = (normalizedPage - 1) * normalizedPageSize;
 
         var servers = await serverRepository.GetPagedAsync(
             search,
             status,
             normalizedServerTypes,
+            normalizedWipeFilter,
+            now,
             normalizedSortBy,
             sortDescending,
             skip,
@@ -63,6 +73,8 @@ public sealed class ServerReadService(
                         search,
                         status,
                         normalizedServerTypes,
+                        normalizedWipeFilter,
+                        now,
                         normalizedSortBy,
                         sortDescending,
                         skip,
@@ -82,6 +94,8 @@ public sealed class ServerReadService(
                         search,
                         status,
                         normalizedServerTypes,
+                        normalizedWipeFilter,
+                        now,
                         normalizedSortBy,
                         sortDescending,
                         skip,
@@ -94,10 +108,19 @@ public sealed class ServerReadService(
             }
         }
 
-        var totalItems = await serverRepository.CountAsync(search, status, normalizedServerTypes, cancellationToken);
+        var totalItems = await serverRepository.CountAsync(
+            search,
+            status,
+            normalizedServerTypes,
+            normalizedWipeFilter,
+            now,
+            cancellationToken);
 
-        var now = DateTimeOffset.UtcNow;
-        var items = servers.Select(server => ToListItemDto(server, now)).ToArray();
+        var trends = await serverRepository.GetSnapshotTrendsAsync(
+            servers.Select(server => server.Id).ToArray(),
+            now.AddHours(-1),
+            cancellationToken);
+        var items = servers.Select(server => ToListItemDto(server, now, trends)).ToArray();
 
         return new PagedResult<ServerListItemDto>(
             items,
@@ -204,8 +227,13 @@ public sealed class ServerReadService(
         return await serverRepository.GetByIdWithMapMetadataAsync(serverId, cancellationToken) is not null;
     }
 
-    private static ServerListItemDto ToListItemDto(Server server, DateTimeOffset now)
+    private static ServerListItemDto ToListItemDto(
+        Server server,
+        DateTimeOffset now,
+        IReadOnlyDictionary<Guid, ServerSnapshotTrend> trends)
     {
+        trends.TryGetValue(server.Id, out var trend);
+
         return new ServerListItemDto(
             server.Id,
             server.BattleMetricsServerId,
@@ -235,7 +263,9 @@ public sealed class ServerReadService(
             server.LastDiscoveredAtUtc,
             server.LastPlayerCountUpdatedAtUtc,
             server.UpdatedAtUtc,
-            SecondsAgo(server.UpdatedAtUtc, now));
+            SecondsAgo(server.UpdatedAtUtc, now),
+            trend?.PlayersDeltaLastHour,
+            trend?.PlayersPeakLastHour);
     }
 
     private static ServerDetailsDto ToDetailsDto(Server server, DateTimeOffset now)
@@ -377,6 +407,18 @@ public sealed class ServerReadService(
         }
 
         return parsedTypes;
+    }
+
+    private static string NormalizeWipeFilter(string? wipeFilter)
+    {
+        return wipeFilter?.Trim() switch
+        {
+            WipeFilterNext24Hours => WipeFilterNext24Hours,
+            WipeFilterNext7Days => WipeFilterNext7Days,
+            WipeFilterWiped24Hours => WipeFilterWiped24Hours,
+            WipeFilterHasWipeData => WipeFilterHasWipeData,
+            _ => WipeFilterAll
+        };
     }
 
     private static bool TryParseServerType(string value, out RustServerType serverType)

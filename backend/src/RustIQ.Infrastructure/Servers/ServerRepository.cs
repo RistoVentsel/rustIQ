@@ -11,9 +11,11 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         string? search,
         ServerStatus? status,
         IReadOnlySet<RustServerType> serverTypes,
+        string wipeFilter,
+        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        return ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status, serverTypes)
+        return ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status, serverTypes, wipeFilter, now)
             .Select(server => new
             {
                 Host = server.Host.Trim().ToLower(),
@@ -46,13 +48,21 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         string? search,
         ServerStatus? status,
         IReadOnlySet<RustServerType> serverTypes,
+        string wipeFilter,
+        DateTimeOffset now,
         string sortBy,
         bool sortDescending,
         int skip,
         int take,
         CancellationToken cancellationToken)
     {
-        var filteredServers = await ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status, serverTypes)
+        var filteredServers = await ApplyServerFilters(
+                dbContext.Servers.AsNoTracking(),
+                search,
+                status,
+                serverTypes,
+                wipeFilter,
+                now)
             .ToListAsync(cancellationToken);
 
         return ApplyServerSort(
@@ -62,6 +72,40 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             .Skip(skip)
             .Take(take)
             .ToArray();
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, ServerSnapshotTrend>> GetSnapshotTrendsAsync(
+        IReadOnlyList<Guid> serverIds,
+        DateTimeOffset sinceUtc,
+        CancellationToken cancellationToken)
+    {
+        if (serverIds.Count == 0)
+        {
+            return new Dictionary<Guid, ServerSnapshotTrend>();
+        }
+
+        var snapshots = await dbContext.ServerSnapshots
+            .AsNoTracking()
+            .Where(snapshot => serverIds.Contains(snapshot.ServerId) && snapshot.CheckedAtUtc >= sinceUtc)
+            .OrderBy(snapshot => snapshot.ServerId)
+            .ThenBy(snapshot => snapshot.CheckedAtUtc)
+            .ToListAsync(cancellationToken);
+
+        return snapshots
+            .GroupBy(snapshot => snapshot.ServerId)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var orderedSnapshots = group.ToArray();
+                    var first = orderedSnapshots[0];
+                    var last = orderedSnapshots[^1];
+
+                    return new ServerSnapshotTrend(
+                        group.Key,
+                        last.Players - first.Players,
+                        orderedSnapshots.Max(snapshot => snapshot.Players));
+                });
     }
 
     public Task<Server?> GetByIdWithMapMetadataAsync(
@@ -221,7 +265,9 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         IQueryable<Server> query,
         string? search,
         ServerStatus? status,
-        IReadOnlySet<RustServerType> serverTypes)
+        IReadOnlySet<RustServerType> serverTypes,
+        string wipeFilter,
+        DateTimeOffset now)
     {
         if (status is not null)
         {
@@ -241,6 +287,25 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
                 || (server.Name != null && EF.Functions.ILike(server.Name, pattern))
                 || (server.Map != null && EF.Functions.ILike(server.Map, pattern)));
         }
+
+        query = wipeFilter switch
+        {
+            ServerReadService.WipeFilterNext24Hours => query.Where(server =>
+                server.NextWipeAtUtc != null
+                && server.NextWipeAtUtc >= now
+                && server.NextWipeAtUtc <= now.AddHours(24)),
+            ServerReadService.WipeFilterNext7Days => query.Where(server =>
+                server.NextWipeAtUtc != null
+                && server.NextWipeAtUtc >= now
+                && server.NextWipeAtUtc <= now.AddDays(7)),
+            ServerReadService.WipeFilterWiped24Hours => query.Where(server =>
+                server.LastWipeAtUtc != null
+                && server.LastWipeAtUtc >= now.AddHours(-24)
+                && server.LastWipeAtUtc <= now),
+            ServerReadService.WipeFilterHasWipeData => query.Where(server =>
+                server.LastWipeAtUtc != null || server.NextWipeAtUtc != null),
+            _ => query
+        };
 
         return query;
     }
@@ -268,8 +333,12 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
                 ? servers.OrderByDescending(server => server.LastWipeAtUtc ?? DateTimeOffset.MinValue)
                 : servers.OrderBy(server => server.LastWipeAtUtc ?? DateTimeOffset.MaxValue),
             ServerReadService.SortByNextWipe => sortDescending
-                ? servers.OrderBy(server => server.NextWipeAtUtc ?? DateTimeOffset.MaxValue)
-                : servers.OrderByDescending(server => server.NextWipeAtUtc ?? DateTimeOffset.MinValue),
+                ? servers
+                    .OrderBy(server => server.NextWipeAtUtc is null)
+                    .ThenByDescending(server => server.NextWipeAtUtc)
+                : servers
+                    .OrderBy(server => server.NextWipeAtUtc is null)
+                    .ThenBy(server => server.NextWipeAtUtc),
             ServerReadService.SortByLocation => sortDescending
                 ? servers.OrderByDescending(server => server.Country ?? string.Empty)
                 : servers.OrderBy(server => server.Country ?? string.Empty),

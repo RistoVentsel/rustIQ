@@ -19,15 +19,19 @@ internal sealed class InMemoryServerRepository : IServerRepository
         string? search,
         ServerStatus? status,
         IReadOnlySet<RustServerType> serverTypes,
+        string wipeFilter,
+        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        return Task.FromResult(DeduplicateServers(ApplyServerFilters(search, status, serverTypes)).Count());
+        return Task.FromResult(DeduplicateServers(ApplyServerFilters(search, status, serverTypes, wipeFilter, now)).Count());
     }
 
     public Task<IReadOnlyList<Server>> GetPagedAsync(
         string? search,
         ServerStatus? status,
         IReadOnlySet<RustServerType> serverTypes,
+        string wipeFilter,
+        DateTimeOffset now,
         string sortBy,
         bool sortDescending,
         int skip,
@@ -35,12 +39,40 @@ internal sealed class InMemoryServerRepository : IServerRepository
         CancellationToken cancellationToken)
     {
         LastPagedTake = take;
-        var servers = ApplyServerSort(DeduplicateServers(ApplyServerFilters(search, status, serverTypes)), sortBy, sortDescending)
+        var servers = ApplyServerSort(
+                DeduplicateServers(ApplyServerFilters(search, status, serverTypes, wipeFilter, now)),
+                sortBy,
+                sortDescending)
             .Skip(skip)
             .Take(take)
             .ToArray();
 
         return Task.FromResult<IReadOnlyList<Server>>(servers);
+    }
+
+    public Task<IReadOnlyDictionary<Guid, ServerSnapshotTrend>> GetSnapshotTrendsAsync(
+        IReadOnlyList<Guid> serverIds,
+        DateTimeOffset sinceUtc,
+        CancellationToken cancellationToken)
+    {
+        var trends = Snapshots
+            .Where(snapshot => serverIds.Contains(snapshot.ServerId) && snapshot.CheckedAtUtc >= sinceUtc)
+            .GroupBy(snapshot => snapshot.ServerId)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var orderedSnapshots = group.OrderBy(snapshot => snapshot.CheckedAtUtc).ToArray();
+                    var first = orderedSnapshots[0];
+                    var last = orderedSnapshots[^1];
+
+                    return new ServerSnapshotTrend(
+                        group.Key,
+                        last.Players - first.Players,
+                        orderedSnapshots.Max(snapshot => snapshot.Players));
+                });
+
+        return Task.FromResult<IReadOnlyDictionary<Guid, ServerSnapshotTrend>>(trends);
     }
 
     public Task<IReadOnlyList<Server>> GetAllAsync(
@@ -195,7 +227,9 @@ internal sealed class InMemoryServerRepository : IServerRepository
     private IEnumerable<Server> ApplyServerFilters(
         string? search,
         ServerStatus? status,
-        IReadOnlySet<RustServerType> serverTypes)
+        IReadOnlySet<RustServerType> serverTypes,
+        string wipeFilter,
+        DateTimeOffset now)
     {
         var query = Servers.AsEnumerable();
 
@@ -216,6 +250,25 @@ internal sealed class InMemoryServerRepository : IServerRepository
                 || (server.Name?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)
                 || (server.Map?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false));
         }
+
+        query = wipeFilter switch
+        {
+            ServerReadService.WipeFilterNext24Hours => query.Where(server =>
+                server.NextWipeAtUtc is not null
+                && server.NextWipeAtUtc >= now
+                && server.NextWipeAtUtc <= now.AddHours(24)),
+            ServerReadService.WipeFilterNext7Days => query.Where(server =>
+                server.NextWipeAtUtc is not null
+                && server.NextWipeAtUtc >= now
+                && server.NextWipeAtUtc <= now.AddDays(7)),
+            ServerReadService.WipeFilterWiped24Hours => query.Where(server =>
+                server.LastWipeAtUtc is not null
+                && server.LastWipeAtUtc >= now.AddHours(-24)
+                && server.LastWipeAtUtc <= now),
+            ServerReadService.WipeFilterHasWipeData => query.Where(server =>
+                server.LastWipeAtUtc is not null || server.NextWipeAtUtc is not null),
+            _ => query
+        };
 
         return query;
     }
@@ -243,8 +296,12 @@ internal sealed class InMemoryServerRepository : IServerRepository
                 ? servers.OrderByDescending(server => server.LastWipeAtUtc ?? DateTimeOffset.MinValue)
                 : servers.OrderBy(server => server.LastWipeAtUtc ?? DateTimeOffset.MaxValue),
             ServerReadService.SortByNextWipe => sortDescending
-                ? servers.OrderBy(server => server.NextWipeAtUtc ?? DateTimeOffset.MaxValue)
-                : servers.OrderByDescending(server => server.NextWipeAtUtc ?? DateTimeOffset.MinValue),
+                ? servers
+                    .OrderBy(server => server.NextWipeAtUtc is null)
+                    .ThenByDescending(server => server.NextWipeAtUtc)
+                : servers
+                    .OrderBy(server => server.NextWipeAtUtc is null)
+                    .ThenBy(server => server.NextWipeAtUtc),
             ServerReadService.SortByLocation => sortDescending
                 ? servers.OrderByDescending(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 : servers.OrderBy(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase),

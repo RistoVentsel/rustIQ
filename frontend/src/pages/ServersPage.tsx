@@ -13,26 +13,41 @@ import { SectionCard } from '../components/SectionCard'
 import { StateNotice } from '../components/StateNotice'
 import { ServerListCard } from '../features/servers/ServerListCard'
 import { getRustServerTypeLabel } from '../features/servers/serverPresentation'
+import { useFavoriteServers } from '../features/servers/useFavoriteServers'
 import { useNow } from '../hooks'
 
 const pageSizeOptions = [10, 25, 50]
 type ServerSortBy = 'players' | 'lastWipe' | 'nextWipe' | 'serverType'
 type ServerSortDirection = 'asc' | 'desc'
+type WipeFilter = 'all' | 'next24h' | 'next7d' | 'wiped24h' | 'hasWipeData'
 const serverTypeFilterOptions = [
   rustServerType.Official,
   rustServerType.Community,
   rustServerType.Modded,
 ] as const
+const wipeFilterOptions: Array<{ value: WipeFilter, label: string }> = [
+  { value: 'all', label: 'All wipes' },
+  { value: 'next24h', label: 'Wipes in 24h' },
+  { value: 'next7d', label: 'Wipes in 7d' },
+  { value: 'wiped24h', label: 'Wiped in 24h' },
+  { value: 'hasWipeData', label: 'Has wipe data' },
+]
 
 export function ServersPage() {
   const [searchInput, setSearchInput] = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all')
   const [serverTypeFilters, setServerTypeFilters] = useState<RustServerType[]>([])
+  const [wipeFilter, setWipeFilter] = useState<WipeFilter>('all')
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [sortBy, setSortBy] = useState<ServerSortBy>('players')
   const [sortDirection, setSortDirection] = useState<ServerSortDirection>('desc')
+  const {
+    favoriteServerIdSet,
+    toggleFavoriteServer,
+  } = useFavoriteServers()
   const nowMs = useNow()
   const statusValue = useMemo(() => {
     switch (statusFilter) {
@@ -53,6 +68,7 @@ export function ServersPage() {
     pageSize,
     sortBy,
     sortDirection,
+    wipeFilter: wipeFilter === 'all' ? undefined : wipeFilter,
   }
   const serversQueryKey = ['servers', serverQueryParams] as const
   const serversQuery = useQuery({
@@ -66,7 +82,10 @@ export function ServersPage() {
 
   const serversPageData = serversQuery.data ?? null
   const servers = serversPageData?.items ?? []
-  const hasSingleServer = servers.length === 1
+  const visibleServers = showFavoritesOnly
+    ? servers.filter((server) => favoriteServerIdSet.has(server.id))
+    : servers
+  const hasSingleServer = visibleServers.length === 1
   const totalItems = serversPageData?.totalItems ?? 0
   const totalPages = serversPageData ? Math.max(1, Math.ceil(totalItems / serversPageData.pageSize)) : 1
   const hasServersData = Boolean(serversPageData)
@@ -100,6 +119,16 @@ export function ServersPage() {
         ? currentFilters.filter((currentFilter) => currentFilter !== serverType)
         : [...currentFilters, serverType]
     ))
+    setPage(1)
+  }
+
+  function updateWipeFilter(nextWipeFilter: WipeFilter) {
+    setWipeFilter(nextWipeFilter)
+    setPage(1)
+  }
+
+  function toggleFavoritesOnly() {
+    setShowFavoritesOnly((currentValue) => !currentValue)
     setPage(1)
   }
 
@@ -238,6 +267,31 @@ export function ServersPage() {
               )
             })}
           </div>
+
+          <div className="server-type-filters" aria-label="Wipe timing filters">
+            {wipeFilterOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={wipeFilter === option.value ? 'server-type-filter server-type-filter--active' : 'server-type-filter'}
+                onClick={() => updateWipeFilter(option.value)}
+                aria-pressed={wipeFilter === option.value}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="server-type-filters" aria-label="Favorite filters">
+            <button
+              type="button"
+              className={showFavoritesOnly ? 'server-type-filter server-type-filter--active' : 'server-type-filter'}
+              onClick={toggleFavoritesOnly}
+              aria-pressed={showFavoritesOnly}
+            >
+              Favorites
+            </button>
+          </div>
         </div>
 
         {isLoadingServers ? (
@@ -267,7 +321,7 @@ export function ServersPage() {
           />
         ) : null}
 
-        {shouldShowServerData && servers.length > 0 ? (
+        {shouldShowServerData && visibleServers.length > 0 ? (
           (() => {
             const pageData = serversPageData!
 
@@ -287,6 +341,10 @@ export function ServersPage() {
                     {pageData.page} / {totalPages}
                   </strong>
                 </div>
+                <div className="server-list-summary__stat">
+                  <span className="server-list-summary__label">Shown</span>
+                  <strong>{visibleServers.length}</strong>
+                </div>
               </div>
             )
           })()
@@ -299,15 +357,16 @@ export function ServersPage() {
                 One cached server is available. Open it directly and continue on the detail page.
               </p>
             </div>
-            <Link to={`/servers/${servers[0].id}`} className="button-link">
+            <Link to={`/servers/${visibleServers[0].id}`} className="button-link">
               Open server
             </Link>
           </div>
         ) : null}
 
-        {shouldShowServerData && servers.length > 0 ? (
+        {shouldShowServerData && visibleServers.length > 0 ? (
           <div className="server-list-table" aria-label="Server list">
             <div className="server-list-table__header">
+              <span>Save</span>
               <span>Name</span>
               <button
                 type="button"
@@ -323,6 +382,7 @@ export function ServersPage() {
               >
                 Players{getSortIndicator('players')}
               </button>
+              <span>Trend</span>
               <button
                 type="button"
                 className="server-list-table__sort"
@@ -340,18 +400,26 @@ export function ServersPage() {
               <span>Location</span>
               <span>Updated</span>
             </div>
-            {servers.map((server) => (
-              <ServerListCard key={server.id} server={server} nowMs={nowMs} />
+            {visibleServers.map((server) => (
+              <ServerListCard
+                key={server.id}
+                server={server}
+                nowMs={nowMs}
+                isFavorite={favoriteServerIdSet.has(server.id)}
+                onToggleFavorite={toggleFavoriteServer}
+              />
             ))}
           </div>
         ) : null}
 
-        {shouldShowServerData && servers.length === 0 ? (
+        {shouldShowServerData && visibleServers.length === 0 ? (
           <StateNotice
-            title="No servers available"
+            title={showFavoritesOnly && servers.length > 0 ? 'No favorite servers on this page' : 'No servers available'}
             description={
-              appliedSearch || statusValue !== undefined
-                ? 'No cached servers match the current search or status filter.'
+              showFavoritesOnly && servers.length > 0
+                ? 'Favorite a server on this page or change pages to find saved servers that match the current filters.'
+                : appliedSearch || statusValue !== undefined || wipeFilter !== 'all'
+                ? 'No cached servers match the current search, status, or wipe filter.'
                 : 'Start backend polling to populate the cached server list.'
             }
           />

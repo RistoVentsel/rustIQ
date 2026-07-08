@@ -19,6 +19,7 @@ public static class ServerEndpoints
             string? sortBy,
             string? sortDirection,
             string? serverTypes,
+            string? wipeFilter,
             string? refresh,
             IServerRefreshJobQueue refreshJobQueue,
             ServerReadService serverReadService,
@@ -39,7 +40,8 @@ public static class ServerEndpoints
                 sortDirection,
                 serverTypes,
                 refresh,
-                cancellationToken);
+                cancellationToken,
+                wipeFilter);
 
             return Results.Ok(result);
         })

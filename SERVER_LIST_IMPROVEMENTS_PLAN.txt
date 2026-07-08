@@ -1,0 +1,79 @@
+Server List Improvements Implementation Plan
+
+1. Fix nextWipe sorting
+
+- Update backend sorting in ServerRepository.ApplyServerSort.
+- Make sortDirection=asc mean closest upcoming wipe first.
+- Make sortDirection=desc mean furthest upcoming wipe first.
+- Keep servers with missing NextWipeAtUtc at the end for both directions.
+- Update matching logic in InMemoryServerRepository.
+- Rename and update tests in ServerReadServiceTests so expected behavior matches the UI.
+
+2. Add wipe timing filters
+
+- Extend /servers query parameters with a wipe filter, likely:
+  - wipeFilter=next24h
+  - wipeFilter=next7d
+  - wipeFilter=wiped24h
+  - wipeFilter=hasWipeData
+- Add constants and normalization in ServerReadService.
+- Add repository filtering support in IServerRepository, ServerRepository, and InMemoryServerRepository.
+- Add frontend API support in GetServersParams.
+- Add filter chips or a dropdown on ServersPage.
+- Reset page to 1 whenever the wipe filter changes.
+- Add backend tests for each wipe filter.
+- Add at least one frontend sanity check if the project already has frontend tests; otherwise verify manually.
+
+3. Remove hardcoded PVE: False
+
+- Edit frontend/src/features/servers/ServerListCard.tsx.
+- Remove the hardcoded PVE: False span.
+- Leave map, type, and address visible.
+- Optionally clean up spacing so the subtitle still reads naturally.
+
+4. Add favorites
+
+- Store favorite server IDs in localStorage.
+- Add a small hook, probably useFavoriteServers, under frontend/src/features/servers/.
+- Add a star/favorite button to each server row.
+- Prevent the favorite button from accidentally navigating the row link.
+- Add a Favorites filter chip or toggle on ServersPage.
+- Preferred first pass: filter the current server list client-side to favorites when enabled.
+- Backend favorite-aware querying is unnecessary unless favorites become account-based later.
+- Add a "No favorite servers match this page/filter" empty state.
+- Keep favorites persistent across refreshes.
+
+5. Add server trend indicators
+
+- Backend already has snapshots, so add lightweight trend fields to list items.
+- Extend ServerListItemDto with values like:
+  - PlayersDeltaLastHour
+  - PlayersPeakLastHour or PlayersPeakToday
+- Add repository support to calculate trend data for the paged server IDs.
+- Avoid loading all snapshots for all servers; calculate only for the current page.
+- Update API types in frontend/src/api/types.ts.
+- Add a small trend display in ServerListCard, for example:
+  - +12 1h
+  - -4 1h
+  - flat
+- Add tests for trend calculation:
+  - positive delta
+  - negative delta
+  - no snapshots
+  - offline or stale snapshots
+
+Suggested implementation order
+
+1. Fix nextWipe sorting and tests.
+2. Remove PVE: False.
+3. Add wipe filters.
+4. Add favorites.
+5. Add trend indicators.
+
+Skipped items from the original recommendation list
+
+- Skip activity/fill sort.
+- Skip clearer server freshness/data quality display.
+- Skip region/latency-focused display.
+- Skip compact/dense list mode.
+- Skip Steam connect action.

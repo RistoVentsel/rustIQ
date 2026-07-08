@@ -216,7 +216,7 @@ public sealed class ServerReadServiceTests
     }
 
     [Fact]
-    public async Task GetServersAsync_SortsNextWipeAscendingAsFurthestFirst()
+    public async Task GetServersAsync_SortsNextWipeAscendingAsClosestFirst()
     {
         var repository = CreateNextWipeSortRepository();
         var service = new ServerReadService(repository);
@@ -233,12 +233,12 @@ public sealed class ServerReadServiceTests
             CancellationToken.None);
 
         Assert.Equal(
-            ["far.test", "near.test", "unknown.test"],
+            ["near.test", "far.test", "unknown.test"],
             result.Items.Select(server => server.Host));
     }
 
     [Fact]
-    public async Task GetServersAsync_SortsNextWipeDescendingAsClosestFirst()
+    public async Task GetServersAsync_SortsNextWipeDescendingAsFurthestFirst()
     {
         var repository = CreateNextWipeSortRepository();
         var service = new ServerReadService(repository);
@@ -255,8 +255,185 @@ public sealed class ServerReadServiceTests
             CancellationToken.None);
 
         Assert.Equal(
-            ["near.test", "far.test", "unknown.test"],
+            ["far.test", "near.test", "unknown.test"],
             result.Items.Select(server => server.Host));
+    }
+
+    [Fact]
+    public async Task GetServersAsync_FiltersNextWipeWithin24Hours()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var repository = CreateWipeFilterRepository(now);
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(
+            null,
+            null,
+            1,
+            25,
+            ServerReadService.SortByNextWipe,
+            ServerReadService.SortAscending,
+            null,
+            ServerReadService.RefreshNoneMode,
+            CancellationToken.None,
+            ServerReadService.WipeFilterNext24Hours);
+
+        Assert.Equal(["next-24h.test"], result.Items.Select(server => server.Host));
+    }
+
+    [Fact]
+    public async Task GetServersAsync_FiltersNextWipeWithin7Days()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var repository = CreateWipeFilterRepository(now);
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(
+            null,
+            null,
+            1,
+            25,
+            ServerReadService.SortByNextWipe,
+            ServerReadService.SortAscending,
+            null,
+            ServerReadService.RefreshNoneMode,
+            CancellationToken.None,
+            ServerReadService.WipeFilterNext7Days);
+
+        Assert.Equal(["next-24h.test", "next-7d.test"], result.Items.Select(server => server.Host));
+    }
+
+    [Fact]
+    public async Task GetServersAsync_FiltersWipedWithin24Hours()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var repository = CreateWipeFilterRepository(now);
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(
+            null,
+            null,
+            1,
+            25,
+            null,
+            null,
+            null,
+            ServerReadService.RefreshNoneMode,
+            CancellationToken.None,
+            ServerReadService.WipeFilterWiped24Hours);
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal("wiped-24h.test", item.Host);
+    }
+
+    [Fact]
+    public async Task GetServersAsync_FiltersServersWithAnyWipeData()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var repository = CreateWipeFilterRepository(now);
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(
+            null,
+            null,
+            1,
+            25,
+            null,
+            null,
+            null,
+            ServerReadService.RefreshNoneMode,
+            CancellationToken.None,
+            ServerReadService.WipeFilterHasWipeData);
+
+        Assert.Equal(4, result.TotalItems);
+        Assert.DoesNotContain(result.Items, server => server.Host == "no-wipe.test");
+    }
+
+    [Fact]
+    public async Task GetServersAsync_ReturnsPositivePlayerTrendFromRecentSnapshots()
+    {
+        var serverId = Guid.NewGuid();
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(CreateServer("trend-up.test", serverId));
+        repository.Snapshots.AddRange([
+            CreateSnapshot(serverId, DateTimeOffset.UtcNow.AddMinutes(-55), 10),
+            CreateSnapshot(serverId, DateTimeOffset.UtcNow.AddMinutes(-5), 24)
+        ]);
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(null, null, 1, 25, null, null, null, ServerReadService.RefreshNoneMode, CancellationToken.None);
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal(14, item.PlayersDeltaLastHour);
+        Assert.Equal(24, item.PlayersPeakLastHour);
+    }
+
+    [Fact]
+    public async Task GetServersAsync_ReturnsNegativePlayerTrendFromRecentSnapshots()
+    {
+        var serverId = Guid.NewGuid();
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(CreateServer("trend-down.test", serverId));
+        repository.Snapshots.AddRange([
+            CreateSnapshot(serverId, DateTimeOffset.UtcNow.AddMinutes(-50), 40),
+            CreateSnapshot(serverId, DateTimeOffset.UtcNow.AddMinutes(-10), 12)
+        ]);
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(null, null, 1, 25, null, null, null, ServerReadService.RefreshNoneMode, CancellationToken.None);
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal(-28, item.PlayersDeltaLastHour);
+        Assert.Equal(40, item.PlayersPeakLastHour);
+    }
+
+    [Fact]
+    public async Task GetServersAsync_ReturnsNullPlayerTrendWhenSnapshotsAreMissing()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(CreateServer("no-trend.test", Guid.NewGuid()));
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(null, null, 1, 25, null, null, null, ServerReadService.RefreshNoneMode, CancellationToken.None);
+
+        var item = Assert.Single(result.Items);
+        Assert.Null(item.PlayersDeltaLastHour);
+        Assert.Null(item.PlayersPeakLastHour);
+    }
+
+    [Fact]
+    public async Task GetServersAsync_IgnoresStaleSnapshotsForPlayerTrend()
+    {
+        var serverId = Guid.NewGuid();
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(CreateServer("stale-trend.test", serverId));
+        repository.Snapshots.Add(CreateSnapshot(serverId, DateTimeOffset.UtcNow.AddHours(-2), 80));
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(null, null, 1, 25, null, null, null, ServerReadService.RefreshNoneMode, CancellationToken.None);
+
+        var item = Assert.Single(result.Items);
+        Assert.Null(item.PlayersDeltaLastHour);
+        Assert.Null(item.PlayersPeakLastHour);
+    }
+
+    [Fact]
+    public async Task GetServersAsync_ReturnsTrendFromOfflineRecentSnapshots()
+    {
+        var serverId = Guid.NewGuid();
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(CreateServer("offline-trend.test", serverId));
+        repository.Snapshots.AddRange([
+            CreateSnapshot(serverId, DateTimeOffset.UtcNow.AddMinutes(-45), 18, isOnline: false),
+            CreateSnapshot(serverId, DateTimeOffset.UtcNow.AddMinutes(-5), 0, isOnline: false)
+        ]);
+        var service = new ServerReadService(repository);
+
+        var result = await service.GetServersAsync(null, null, 1, 25, null, null, null, ServerReadService.RefreshNoneMode, CancellationToken.None);
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal(-18, item.PlayersDeltaLastHour);
+        Assert.Equal(18, item.PlayersPeakLastHour);
     }
 
     [Fact]
@@ -627,6 +804,38 @@ public sealed class ServerReadServiceTests
         };
     }
 
+    private static Server CreateServer(string host, Guid serverId)
+    {
+        return new Server
+        {
+            Id = serverId,
+            Host = host,
+            QueryPort = 28015,
+            Players = 10,
+            MaxPlayers = 100,
+            Status = ServerStatus.Online,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        };
+    }
+
+    private static ServerSnapshot CreateSnapshot(
+        Guid serverId,
+        DateTimeOffset checkedAtUtc,
+        int players,
+        bool? isOnline = null)
+    {
+        return new ServerSnapshot
+        {
+            Id = Guid.NewGuid(),
+            ServerId = serverId,
+            CheckedAtUtc = checkedAtUtc,
+            Players = players,
+            MaxPlayers = 100,
+            IsOnline = isOnline ?? players > 0
+        };
+    }
+
     private static InMemoryServerRepository CreateNextWipeSortRepository()
     {
         var repository = new InMemoryServerRepository();
@@ -667,6 +876,76 @@ public sealed class ServerReadServiceTests
                 Status = ServerStatus.Online,
                 CreatedAtUtc = DateTimeOffset.UtcNow,
                 UpdatedAtUtc = DateTimeOffset.UtcNow
+            }
+        ]);
+
+        return repository;
+    }
+
+    private static InMemoryServerRepository CreateWipeFilterRepository(DateTimeOffset now)
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.AddRange(
+        [
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "next-24h.test",
+                QueryPort = 28015,
+                NextWipeAtUtc = now.AddHours(12),
+                Players = 10,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            },
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "next-7d.test",
+                QueryPort = 28015,
+                NextWipeAtUtc = now.AddDays(3),
+                Players = 10,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            },
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "wiped-24h.test",
+                QueryPort = 28015,
+                LastWipeAtUtc = now.AddHours(-8),
+                Players = 10,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            },
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "old-wipe.test",
+                QueryPort = 28015,
+                LastWipeAtUtc = now.AddDays(-3),
+                NextWipeAtUtc = now.AddDays(10),
+                Players = 10,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            },
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "no-wipe.test",
+                QueryPort = 28015,
+                Players = 10,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
             }
         ]);
 

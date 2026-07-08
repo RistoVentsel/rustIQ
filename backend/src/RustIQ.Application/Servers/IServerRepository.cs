@@ -8,16 +8,25 @@ public interface IServerRepository
         string? search,
         ServerStatus? status,
         IReadOnlySet<RustServerType> serverTypes,
+        string wipeFilter,
+        DateTimeOffset now,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<Server>> GetPagedAsync(
         string? search,
         ServerStatus? status,
         IReadOnlySet<RustServerType> serverTypes,
+        string wipeFilter,
+        DateTimeOffset now,
         string sortBy,
         bool sortDescending,
         int skip,
         int take,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyDictionary<Guid, ServerSnapshotTrend>> GetSnapshotTrendsAsync(
+        IReadOnlyList<Guid> serverIds,
+        DateTimeOffset sinceUtc,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<Server>> GetAllAsync(

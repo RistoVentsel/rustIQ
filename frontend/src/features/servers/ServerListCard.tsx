@@ -6,6 +6,8 @@ import {
   formatRelativeTimestamp,
   formatCountry,
   formatPlayerCount,
+  formatPlayerTrend,
+  getPlayerTrendClassName,
   getRustServerTypeClassName,
   getRustServerTypeLabel,
   getServerDisplayName,
@@ -14,29 +16,57 @@ import {
 type ServerListCardProps = {
   server: ServerListItem
   nowMs: number
+  isFavorite: boolean
+  onToggleFavorite: (serverId: string) => void
 }
 
-export function ServerListCard({ server, nowMs }: ServerListCardProps) {
+export function ServerListCard({
+  server,
+  nowMs,
+  isFavorite,
+  onToggleFavorite,
+}: ServerListCardProps) {
   const country = formatCountry(server.country)
   const serverTypeLabel = getRustServerTypeLabel(server.serverType)
+  const displayName = getServerDisplayName(server)
   const countryCode = server.country?.trim().toLowerCase()
   const flagSrc = countryCode && /^[a-z]{2}$/.test(countryCode)
     ? `https://flagcdn.com/w40/${countryCode}.png`
     : null
 
   return (
-    <Link to={`/servers/${server.id}`} className="server-list-card">
-      <div className="server-list-card__identity">
-        <h3 className="server-list-card__name">{getServerDisplayName(server)}</h3>
+    <article className="server-list-card">
+      <button
+        type="button"
+        className={isFavorite ? 'server-favorite server-favorite--active' : 'server-favorite'}
+        onClick={() => onToggleFavorite(server.id)}
+        aria-label={isFavorite ? `Remove ${displayName} from favorites` : `Add ${displayName} to favorites`}
+        aria-pressed={isFavorite}
+      >
+        {isFavorite ? 'Favorited' : 'Favorite'}
+      </button>
+
+      <Link to={`/servers/${server.id}`} className="server-list-card__identity">
+        <h3 className="server-list-card__name">{displayName}</h3>
         <p className="server-list-card__address">
-          Map: {server.map ?? 'Unavailable'} <span>Type: {serverTypeLabel}</span> <span>PVE: False</span> <span>{formatAddress(server)}</span>
+          Map: {server.map ?? 'Unavailable'} <span>Type: {serverTypeLabel}</span> <span>{formatAddress(server)}</span>
         </p>
-      </div>
+      </Link>
 
       <div className="server-list-card__cell">
         <span className={getRustServerTypeClassName(server.serverType)}>{serverTypeLabel}</span>
       </div>
       <div className="server-list-card__cell">{formatPlayerCount(server)}</div>
+      <div className="server-list-card__cell">
+        <span
+          className={getPlayerTrendClassName(server)}
+          title={server.playersPeakLastHour === null || server.playersPeakLastHour === undefined
+            ? undefined
+            : `Peak last hour: ${server.playersPeakLastHour}`}
+        >
+          {formatPlayerTrend(server)}
+        </span>
+      </div>
       <div className="server-list-card__cell">{formatRelativeTimestamp(server.lastWipeAtUtc, nowMs)}</div>
       <div className="server-list-card__cell">{formatRelativeTimestamp(server.nextWipeAtUtc, nowMs)}</div>
       <div className="server-list-card__cell server-list-card__cell--location">
@@ -51,6 +81,6 @@ export function ServerListCard({ server, nowMs }: ServerListCardProps) {
         </span>
       </div>
       <div className="server-list-card__cell">{formatRelativeTimestamp(server.updatedAtUtc, nowMs)}</div>
-    </Link>
+    </article>
   )
 }

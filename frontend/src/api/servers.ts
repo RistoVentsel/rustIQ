@@ -20,6 +20,7 @@ export type GetServersParams = {
   pageSize?: number
   sortBy?: 'players' | 'lastWipe' | 'nextWipe' | 'location' | 'serverType'
   sortDirection?: 'asc' | 'desc'
+  wipeFilter?: 'next24h' | 'next7d' | 'wiped24h' | 'hasWipeData'
   refresh?: 'page' | 'all'
 }
 

@@ -29,6 +29,39 @@ export function formatPlayerCount(
   return `${server.players}/${server.maxPlayers}${queueSuffix}`
 }
 
+export function formatPlayerTrend(
+  server: Pick<ServerListItem, 'playersDeltaLastHour' | 'playersPeakLastHour'>,
+) {
+  if (server.playersDeltaLastHour === null || server.playersDeltaLastHour === undefined) {
+    return 'No trend'
+  }
+
+  if (server.playersDeltaLastHour === 0) {
+    return 'Flat 1h'
+  }
+
+  const prefix = server.playersDeltaLastHour > 0 ? '+' : ''
+  return `${prefix}${server.playersDeltaLastHour} 1h`
+}
+
+export function getPlayerTrendClassName(
+  server: Pick<ServerListItem, 'playersDeltaLastHour'>,
+) {
+  if (server.playersDeltaLastHour === null || server.playersDeltaLastHour === undefined) {
+    return 'server-trend server-trend--unknown'
+  }
+
+  if (server.playersDeltaLastHour > 0) {
+    return 'server-trend server-trend--up'
+  }
+
+  if (server.playersDeltaLastHour < 0) {
+    return 'server-trend server-trend--down'
+  }
+
+  return 'server-trend server-trend--flat'
+}
+
 export function formatServerLocation(
   server: Pick<ServerListItem | ServerDetails, 'country' | 'latitude' | 'longitude'>,
 ) {

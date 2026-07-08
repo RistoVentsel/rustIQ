@@ -99,6 +99,8 @@ export type ServerListItem = {
   lastPlayerCountUpdatedAtUtc: string | null
   updatedAtUtc: string
   updatedSecondsAgo: number
+  playersDeltaLastHour: number | null
+  playersPeakLastHour: number | null
 }
 
 export type ServerDetails = {

@@ -20,9 +20,12 @@ export function AppShell() {
     <div className="app-shell">
       <header className="app-header">
         <div className="app-header__inner">
-          <div>
-            <p className="app-eyebrow">RustIQ</p>
-            <h1 className="app-title">Server Monitor</h1>
+          <div className="app-brand">
+            <img className="app-brand__logo" src="/rustiq-logo.png" alt="rustIQ" />
+            <div>
+              <p className="app-eyebrow">rustIQ</p>
+              <h1 className="app-title">Server Monitor</h1>
+            </div>
           </div>
 
           <nav aria-label="Primary">
