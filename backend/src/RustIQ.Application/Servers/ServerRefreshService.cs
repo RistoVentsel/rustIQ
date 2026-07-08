@@ -39,6 +39,7 @@ public sealed class ServerRefreshService(
     }
 
     public async Task<int> RefreshBattleMetricsDirectoryServersAsync(
+        bool captureSnapshots,
         CancellationToken cancellationToken)
     {
         var servers = await serverRepository.GetAllAsync(cancellationToken);
@@ -57,7 +58,7 @@ public sealed class ServerRefreshService(
             directoryRefreshResults = BuildDirectoryPlayerCounts(servers, exception.PartialSummaries);
         }
 
-        await ApplyPlayerCountRefreshesAsync(directoryRefreshResults, cancellationToken);
+        await ApplyPlayerCountRefreshesAsync(directoryRefreshResults, captureSnapshots, cancellationToken);
 
         return directoryRefreshResults.Count;
     }
@@ -142,7 +143,7 @@ public sealed class ServerRefreshService(
 
         if (directoryRefreshResults.Count > 0)
         {
-            await ApplyPlayerCountRefreshesAsync(directoryRefreshResults, cancellationToken);
+            await ApplyPlayerCountRefreshesAsync(directoryRefreshResults, captureSnapshots: true, cancellationToken);
         }
 
         if (directoryRateLimited)
@@ -160,11 +161,12 @@ public sealed class ServerRefreshService(
         }
 
         var refreshResults = await FetchPlayerCountsAsync(serversNotRefreshedFromDirectory, cancellationToken);
-        await ApplyPlayerCountRefreshesAsync(refreshResults, cancellationToken);
+        await ApplyPlayerCountRefreshesAsync(refreshResults, captureSnapshots: true, cancellationToken);
     }
 
     private async Task ApplyPlayerCountRefreshesAsync(
         IReadOnlyDictionary<Guid, PlayerCountRefreshResult> refreshResults,
+        bool captureSnapshots,
         CancellationToken cancellationToken)
     {
         if (refreshResults.Count == 0)
@@ -189,6 +191,16 @@ public sealed class ServerRefreshService(
                 refreshResult,
                 refreshCompletedAtUtc,
                 offlineThreshold);
+
+            if (captureSnapshots)
+            {
+                serverRepository.AddSnapshot(CreateSnapshot(
+                    trackedServer.Id,
+                    refreshResult.PlayerCount,
+                    trackedServer.Status,
+                    trackedServer.Players,
+                    trackedServer.MaxPlayers));
+            }
         }
 
         await serverRepository.SaveChangesAsync(cancellationToken);
@@ -370,6 +382,25 @@ public sealed class ServerRefreshService(
 
         server.DataQuality = ServerDataQuality.Degraded;
         server.LastValidationReason = "BattleMetricsOffline";
+    }
+
+    private static ServerSnapshot CreateSnapshot(
+        Guid serverId,
+        BattleMetricsPlayerCountResult playerCount,
+        ServerStatus status,
+        int players,
+        int maxPlayers)
+    {
+        return new ServerSnapshot
+        {
+            Id = Guid.NewGuid(),
+            ServerId = serverId,
+            CheckedAtUtc = playerCount.CheckedAtUtc,
+            Players = players,
+            MaxPlayers = maxPlayers,
+            IsOnline = status == ServerStatus.Online,
+            PingMilliseconds = null
+        };
     }
 
     private sealed record PlayerCountRefreshResult(

@@ -76,6 +76,7 @@ builder.Services
     .Validate(options => !options.Enabled || options.BatchSize > 0, "BattleMetrics summary refresh batch size must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.RefreshIntervalSeconds > 0, "BattleMetrics summary refresh interval seconds must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.StaleAfterSeconds > 0, "BattleMetrics summary refresh stale-after seconds must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || options.SnapshotIntervalMinutes > 0, "BattleMetrics summary refresh snapshot interval minutes must be greater than 0 when enabled.")
     .ValidateOnStart();
 builder.Services
     .AddOptions<SnapshotRetentionOptions>()

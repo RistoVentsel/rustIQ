@@ -43,13 +43,13 @@ export function ServerListCard({
         aria-label={isFavorite ? `Remove ${displayName} from favorites` : `Add ${displayName} to favorites`}
         aria-pressed={isFavorite}
       >
-        {isFavorite ? 'Favorited' : 'Favorite'}
+        <span aria-hidden="true">{isFavorite ? '★' : '☆'}</span>
       </button>
 
       <Link to={`/servers/${server.id}`} className="server-list-card__identity">
         <h3 className="server-list-card__name">{displayName}</h3>
         <p className="server-list-card__address">
-          Map: {server.map ?? 'Unavailable'} <span>Type: {serverTypeLabel}</span> <span>{formatAddress(server)}</span>
+          Map: {server.map ?? 'Unavailable'} <span>{formatAddress(server)}</span>
         </p>
       </Link>
 
@@ -80,7 +80,6 @@ export function ServerListCard({
           <span className="server-location__pulse" aria-hidden="true" />
         </span>
       </div>
-      <div className="server-list-card__cell">{formatRelativeTimestamp(server.updatedAtUtc, nowMs)}</div>
     </article>
   )
 }

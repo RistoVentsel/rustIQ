@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
 type Theme = 'dark' | 'light'
 
 export function AppShell() {
+  const location = useLocation()
   const [theme, setTheme] = useState<Theme>(() => {
     const savedTheme = window.localStorage.getItem('rustiq-theme')
     return savedTheme === 'light' ? 'light' : 'dark'
@@ -60,7 +61,7 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="app-main">
+      <main className={location.pathname === '/' ? 'app-main app-main--wide' : 'app-main'}>
         <Outlet />
       </main>
     </div>

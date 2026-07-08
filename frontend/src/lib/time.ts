@@ -15,3 +15,35 @@ export function formatSecondsAgo(seconds: number | null | undefined) {
 
   return `${seconds}s ago`
 }
+
+export function formatCoarseRelativeTime(seconds: number | null | undefined) {
+  if (seconds === null || seconds === undefined) {
+    return 'Unavailable'
+  }
+
+  if (seconds < 60) {
+    return 'Now'
+  }
+
+  if (seconds < 60 * 60) {
+    return `${Math.floor(seconds / 60)}m ago`
+  }
+
+  if (seconds < 2 * 60 * 60) {
+    return '1h ago'
+  }
+
+  if (seconds < 24 * 60 * 60) {
+    return `${Math.floor(seconds / (60 * 60))}h ago`
+  }
+
+  if (seconds < 2 * 24 * 60 * 60) {
+    return 'Yesterday'
+  }
+
+  if (seconds < 7 * 24 * 60 * 60) {
+    return `${Math.floor(seconds / (24 * 60 * 60))}d ago`
+  }
+
+  return 'Over a week ago'
+}

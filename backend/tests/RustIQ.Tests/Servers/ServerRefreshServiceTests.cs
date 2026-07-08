@@ -320,7 +320,9 @@ public sealed class ServerRefreshServiceTests
             battleMetricsDirectoryMaxPages: 20,
             TimeSpan.FromSeconds(60));
 
-        var refreshedServers = await service.RefreshBattleMetricsDirectoryServersAsync(CancellationToken.None);
+        var refreshedServers = await service.RefreshBattleMetricsDirectoryServersAsync(
+            captureSnapshots: false,
+            CancellationToken.None);
 
         Assert.Equal(1, refreshedServers);
         var refreshedServer = repository.Servers.Single(server => server.BattleMetricsServerId == 42);
@@ -329,6 +331,78 @@ public sealed class ServerRefreshServiceTests
         Assert.Equal(20, repository.Servers.Single(server => server.BattleMetricsServerId == 43).Players);
         Assert.Equal(0, battleMetricsClient.GetPlayerCountCallCount);
         Assert.Equal(0, battleMetricsClient.FindServerIdCallCount);
+    }
+
+    [Fact]
+    public async Task RefreshBattleMetricsDirectoryServersAsync_CapturesSnapshotsWhenRequested()
+    {
+        var checkedAtUtc = DateTimeOffset.Parse("2026-07-07T12:00:00Z");
+        var existingUpdatedAtUtc = checkedAtUtc.AddMinutes(-30);
+        var serverId = Guid.NewGuid();
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = serverId,
+            BattleMetricsServerId = 42,
+            Host = "203.0.113.10",
+            QueryPort = 28015,
+            Name = "BattleMetrics Server",
+            Players = 10,
+            MaxPlayers = 50,
+            Status = ServerStatus.Online,
+            PlayerCountSource = ServerPlayerCountSource.BattleMetrics,
+            CreatedAtUtc = existingUpdatedAtUtc,
+            UpdatedAtUtc = existingUpdatedAtUtc
+        });
+        var directoryClient = new FakeBattleMetricsServerDirectoryClient(
+        [
+            new BattleMetricsServerSummary(
+                42,
+                "BattleMetrics Server",
+                "203.0.113.10:28015",
+                "203.0.113.10",
+                28015,
+                28015,
+                "GB",
+                51.5,
+                -0.12,
+                null,
+                null,
+                77,
+                200,
+                null,
+                RustServerType.Community,
+                true,
+                checkedAtUtc)
+        ]);
+        var battleMetricsClient = new FakeBattleMetricsPlayerCountClient();
+        var pollingService = new ServerPollingService(
+            new FakeRustServerQueryClient(),
+            battleMetricsClient,
+            new FakeRustServerMapMetadataClient(),
+            repository);
+        var service = new ServerRefreshService(
+            repository,
+            new FakeRustServerCatalog(),
+            directoryClient,
+            battleMetricsClient,
+            pollingService,
+            battleMetricsDirectoryPageSize: 100,
+            battleMetricsDirectoryMaxPages: 20,
+            TimeSpan.FromSeconds(60));
+
+        var refreshedServers = await service.RefreshBattleMetricsDirectoryServersAsync(
+            captureSnapshots: true,
+            CancellationToken.None);
+
+        Assert.Equal(1, refreshedServers);
+        var snapshot = Assert.Single(repository.Snapshots);
+        Assert.Equal(serverId, snapshot.ServerId);
+        Assert.Equal(checkedAtUtc, snapshot.CheckedAtUtc);
+        Assert.Equal(77, snapshot.Players);
+        Assert.Equal(200, snapshot.MaxPlayers);
+        Assert.True(snapshot.IsOnline);
+        Assert.Null(snapshot.PingMilliseconds);
     }
 
     [Fact]

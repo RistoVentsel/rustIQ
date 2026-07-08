@@ -12,6 +12,8 @@ public sealed class BattleMetricsSummaryRefreshOptions
 
     public int StaleAfterSeconds { get; init; } = 120;
 
+    public int SnapshotIntervalMinutes { get; init; } = 30;
+
     public bool RefreshCurrentPlayers { get; init; }
 
     public bool RefreshMapMetadata { get; init; }

@@ -17,7 +17,7 @@ import { useFavoriteServers } from '../features/servers/useFavoriteServers'
 import { useNow } from '../hooks'
 
 const pageSizeOptions = [10, 25, 50]
-type ServerSortBy = 'players' | 'lastWipe' | 'nextWipe' | 'serverType'
+type ServerSortBy = 'players' | 'lastWipe' | 'nextWipe'
 type ServerSortDirection = 'asc' | 'desc'
 type WipeFilter = 'all' | 'next24h' | 'next7d' | 'wiped24h' | 'hasWipeData'
 const serverTypeFilterOptions = [
@@ -138,7 +138,7 @@ export function ServersPage() {
   }
 
   function updateSort(nextSortBy: ServerSortBy) {
-    const defaultDirection = nextSortBy === 'nextWipe' || nextSortBy === 'serverType' ? 'asc' : 'desc'
+    const defaultDirection = nextSortBy === 'nextWipe' ? 'asc' : 'desc'
     setSortDirection((currentDirection) => (
       sortBy === nextSortBy
         ? currentDirection === 'desc' ? 'asc' : 'desc'
@@ -179,7 +179,7 @@ export function ServersPage() {
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack server-browser-page">
       <div className="page-copy">
         <p className="page-eyebrow">Server List</p>
         <h2 className="page-heading">Unofficial Rust server tracking</h2>
@@ -248,6 +248,30 @@ export function ServersPage() {
                 <option value="offline">Offline</option>
               </select>
             </label>
+
+            <label className="server-list-control">
+              <span>Wipe timing</span>
+              <select
+                value={wipeFilter}
+                onChange={(event) => updateWipeFilter(event.target.value as WipeFilter)}
+                className="server-list-select"
+              >
+                {wipeFilterOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              className={showFavoritesOnly ? 'server-filter-toggle server-filter-toggle--active' : 'server-filter-toggle'}
+              onClick={toggleFavoritesOnly}
+              aria-pressed={showFavoritesOnly}
+            >
+              Favorites
+            </button>
           </form>
 
           <div className="server-type-filters" aria-label="Server type filters">
@@ -266,31 +290,6 @@ export function ServersPage() {
                 </button>
               )
             })}
-          </div>
-
-          <div className="server-type-filters" aria-label="Wipe timing filters">
-            {wipeFilterOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={wipeFilter === option.value ? 'server-type-filter server-type-filter--active' : 'server-type-filter'}
-                onClick={() => updateWipeFilter(option.value)}
-                aria-pressed={wipeFilter === option.value}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="server-type-filters" aria-label="Favorite filters">
-            <button
-              type="button"
-              className={showFavoritesOnly ? 'server-type-filter server-type-filter--active' : 'server-type-filter'}
-              onClick={toggleFavoritesOnly}
-              aria-pressed={showFavoritesOnly}
-            >
-              Favorites
-            </button>
           </div>
         </div>
 
@@ -327,24 +326,9 @@ export function ServersPage() {
 
             return (
               <div className="server-list-summary">
-                <div className="server-list-summary__stat">
-                  <span className="server-list-summary__label">Total servers</span>
-                  <strong>{pageData.totalItems}</strong>
-                </div>
-                <div className="server-list-summary__stat">
-                  <span className="server-list-summary__label">Page size</span>
-                  <strong>{pageData.pageSize}</strong>
-                </div>
-                <div className="server-list-summary__stat">
-                  <span className="server-list-summary__label">Page</span>
-                  <strong>
-                    {pageData.page} / {totalPages}
-                  </strong>
-                </div>
-                <div className="server-list-summary__stat">
-                  <span className="server-list-summary__label">Shown</span>
-                  <strong>{visibleServers.length}</strong>
-                </div>
+                <span>{pageData.totalItems} servers</span>
+                <span>Page {pageData.page} of {totalPages}</span>
+                <span>Showing {visibleServers.length} of {pageData.pageSize}</span>
               </div>
             )
           })()
@@ -366,15 +350,9 @@ export function ServersPage() {
         {shouldShowServerData && visibleServers.length > 0 ? (
           <div className="server-list-table" aria-label="Server list">
             <div className="server-list-table__header">
-              <span>Save</span>
+              <span>Favorite</span>
               <span>Name</span>
-              <button
-                type="button"
-                className="server-list-table__sort"
-                onClick={() => updateSort('serverType')}
-              >
-                Server Type{getSortIndicator('serverType')}
-              </button>
+              <span>Server Type</span>
               <button
                 type="button"
                 className="server-list-table__sort"
@@ -398,7 +376,6 @@ export function ServersPage() {
                 Next Wipe{getSortIndicator('nextWipe')}
               </button>
               <span>Location</span>
-              <span>Updated</span>
             </div>
             {visibleServers.map((server) => (
               <ServerListCard

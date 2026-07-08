@@ -12,6 +12,7 @@ public interface IServerRefreshService
         CancellationToken cancellationToken);
 
     Task<int> RefreshBattleMetricsDirectoryServersAsync(
+        bool captureSnapshots,
         CancellationToken cancellationToken);
 
     Task RefreshServerAsync(

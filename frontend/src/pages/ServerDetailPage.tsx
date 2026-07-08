@@ -20,7 +20,7 @@ import {
 } from '../features/servers/serverPresentation'
 import { useServerLiveUpdates } from '../features/servers/useServerLiveUpdates'
 import { useNow } from '../hooks'
-import { formatSecondsAgo, getSecondsAgo } from '../lib/time'
+import { formatCoarseRelativeTime, getSecondsAgo } from '../lib/time'
 
 function getLiveStatusLabel(status: ReturnType<typeof useServerLiveUpdates>) {
   switch (status) {
@@ -131,9 +131,6 @@ export function ServerDetailPage() {
   const players = playersQuery.data?.players ?? []
   const hasPlayerSnapshot = Boolean(playersQuery.data?.refreshedAtUtc)
   const hasServerData = Boolean(serverQuery.data)
-  const updatedSecondsAgo = serverQuery.data
-    ? getSecondsAgo(serverQuery.data.updatedAtUtc, nowMs)
-    : null
   const lastSeenSecondsAgo = serverQuery.data?.lastSeenAtUtc
     ? getSecondsAgo(serverQuery.data.lastSeenAtUtc, nowMs)
     : null
@@ -235,10 +232,9 @@ export function ServerDetailPage() {
                     </span>
                   ),
                 },
-                { label: 'Updated', value: formatSecondsAgo(updatedSecondsAgo) },
                 {
                   label: 'Last seen',
-                  value: formatSecondsAgo(lastSeenSecondsAgo),
+                  value: formatCoarseRelativeTime(lastSeenSecondsAgo),
                 },
                 { label: 'Last wiped', value: formatServerTimestamp(serverQuery.data.lastWipeAtUtc) },
                 { label: 'Next wipe', value: formatServerTimestamp(serverQuery.data.nextWipeAtUtc) },
@@ -410,7 +406,7 @@ export function ServerDetailPage() {
 
       <SectionCard
         title="Current players"
-        description="Players currently visible through the server query."
+        description="See who is online right now when the server shares player names."
       >
         {playersQuery.isLoading && playersQuery.data === undefined ? (
           <StateNotice
@@ -456,16 +452,11 @@ export function ServerDetailPage() {
 
         {!playersQuery.isLoading && !playersQuery.isError && players.length > 0 ? (
           <div className="page-stack">
-            <p className="page-text">
-              Refreshed at {playersQuery.data?.refreshedAtUtc ?? 'Unavailable'}
-            </p>
-
             <div className="player-list">
               {players.map((player, index) => (
                 <div key={`${player.playerName ?? 'player'}-${index}`} className="player-list__item">
                   <div className="player-list__identity">
                     <strong>{player.playerName ?? 'Unnamed player'}</strong>
-                    <span>Seen at {player.seenAtUtc}</span>
                   </div>
                   <dl className="player-list__stats">
                     <div>

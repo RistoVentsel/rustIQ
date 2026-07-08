@@ -17,6 +17,8 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
     ILogger<BattleMetricsPlayerCountRefreshWorker> logger)
     : BackgroundService
 {
+    private DateTimeOffset? _lastSnapshotRefreshUtc;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!options.Value.Enabled)
@@ -51,15 +53,27 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
             var pollingService = scope.ServiceProvider.GetRequiredService<ServerPollingService>();
             var refreshService = scope.ServiceProvider.GetRequiredService<IServerRefreshService>();
 
-            var directoryRefreshedServers = await refreshService.RefreshBattleMetricsDirectoryServersAsync(cancellationToken);
+            var now = DateTimeOffset.UtcNow;
+            var snapshotInterval = TimeSpan.FromMinutes(options.Value.SnapshotIntervalMinutes);
+            var captureSnapshots = _lastSnapshotRefreshUtc is null
+                || now - _lastSnapshotRefreshUtc.Value >= snapshotInterval;
+            var directoryRefreshedServers = await refreshService.RefreshBattleMetricsDirectoryServersAsync(
+                captureSnapshots,
+                cancellationToken);
+            if (captureSnapshots && directoryRefreshedServers > 0)
+            {
+                _lastSnapshotRefreshUtc = now;
+            }
+
             if (directoryRefreshedServers > 0)
             {
                 logger.LogInformation(
-                    "BattleMetrics directory population sweep completed. RefreshedServers: {RefreshedServers}.",
-                    directoryRefreshedServers);
+                    "BattleMetrics directory population sweep completed. RefreshedServers: {RefreshedServers}. CapturedSnapshots: {CapturedSnapshots}.",
+                    directoryRefreshedServers,
+                    captureSnapshots);
             }
 
-            var staleBeforeUtc = DateTimeOffset.UtcNow.AddSeconds(-options.Value.StaleAfterSeconds);
+            var staleBeforeUtc = now.AddSeconds(-options.Value.StaleAfterSeconds);
             var servers = await repository.GetServersForPlayerCountRefreshAsync(
                 ServerPlayerCountSource.BattleMetrics,
                 staleBeforeUtc,
