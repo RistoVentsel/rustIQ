@@ -1,11 +1,14 @@
 using RustIQ.Api.Workers;
 using RustIQ.Application.Servers;
 using RustIQ.Domain.Servers;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace RustIQ.Api.Endpoints;
 
 public static class ServerEndpoints
 {
+    private static readonly TimeSpan ServerListCacheDuration = TimeSpan.FromSeconds(5);
+
     public static IEndpointRouteBuilder MapServerEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var servers = endpoints.MapGroup("/servers")
@@ -21,10 +24,30 @@ public static class ServerEndpoints
             string? serverTypes,
             string? wipeFilter,
             string? refresh,
+            IMemoryCache serverListCache,
             IServerRefreshJobQueue refreshJobQueue,
             ServerReadService serverReadService,
             CancellationToken cancellationToken) =>
         {
+            var canUseCache = string.IsNullOrWhiteSpace(refresh)
+                || string.Equals(refresh, ServerReadService.RefreshNoneMode, StringComparison.OrdinalIgnoreCase);
+            var cacheKey = BuildServerListCacheKey(
+                search,
+                status,
+                page,
+                pageSize,
+                sortBy,
+                sortDirection,
+                serverTypes,
+                wipeFilter);
+
+            if (canUseCache
+                && serverListCache.TryGetValue(cacheKey, out PagedResult<ServerListItemDto>? cachedResult)
+                && cachedResult is not null)
+            {
+                return Results.Ok(cachedResult);
+            }
+
             if (string.Equals(refresh, ServerReadService.RefreshAllMode, StringComparison.OrdinalIgnoreCase))
             {
                 refreshJobQueue.TryQueueRefreshAll();
@@ -42,6 +65,11 @@ public static class ServerEndpoints
                 refresh,
                 cancellationToken,
                 wipeFilter);
+
+            if (canUseCache)
+            {
+                serverListCache.Set(cacheKey, result, ServerListCacheDuration);
+            }
 
             return Results.Ok(result);
         })
@@ -117,5 +145,34 @@ public static class ServerEndpoints
         .WithName("GetServerMap");
 
         return endpoints;
+    }
+
+    private static string BuildServerListCacheKey(
+        string? search,
+        ServerStatus? status,
+        int? page,
+        int? pageSize,
+        string? sortBy,
+        string? sortDirection,
+        string? serverTypes,
+        string? wipeFilter)
+    {
+        return string.Join('|',
+            "servers",
+            NormalizeCacheValue(search),
+            status?.ToString() ?? string.Empty,
+            page?.ToString() ?? string.Empty,
+            pageSize?.ToString() ?? string.Empty,
+            NormalizeCacheValue(sortBy),
+            NormalizeCacheValue(sortDirection),
+            NormalizeCacheValue(serverTypes),
+            NormalizeCacheValue(wipeFilter));
+    }
+
+    private static string NormalizeCacheValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : value.Trim().ToLowerInvariant();
     }
 }

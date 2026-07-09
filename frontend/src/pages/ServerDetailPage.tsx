@@ -108,11 +108,9 @@ export function ServerDetailPage() {
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
     enabled: Boolean(serverId),
-    queryFn: ({ signal }) => getServerById(serverId!, signal, 'page'),
-    staleTime: 0,
+    queryFn: ({ signal }) => getServerById(serverId!, signal),
+    staleTime: 10_000,
     refetchOnMount: 'always',
-    refetchInterval: 2500,
-    refetchIntervalInBackground: false,
     retry: false,
   })
   const playersQuery = useQuery({

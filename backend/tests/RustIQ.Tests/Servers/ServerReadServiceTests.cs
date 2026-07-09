@@ -669,7 +669,7 @@ public sealed class ServerReadServiceTests
     }
 
     [Fact]
-    public async Task GetCurrentPlayersAsync_RefreshesRequestedServerBeforeReadingPlayers()
+    public async Task GetCurrentPlayersAsync_ReadsCachedPlayersWithoutRefreshingRequestedServer()
     {
         var serverId = Guid.NewGuid();
         var repository = new InMemoryServerRepository();
@@ -696,8 +696,7 @@ public sealed class ServerReadServiceTests
         var result = await service.GetCurrentPlayersAsync(serverId, CancellationToken.None);
 
         Assert.NotNull(result);
-        var refreshedServer = Assert.Single(refreshService.CurrentPlayersRefreshedServers);
-        Assert.Equal(serverId, refreshedServer.Id);
+        Assert.Empty(refreshService.CurrentPlayersRefreshedServers);
         var player = Assert.Single(result.Players);
         Assert.Equal("Alice", player.PlayerName);
         Assert.Equal(DateTimeOffset.Parse("2026-07-08T12:00:00Z"), result.RefreshedAtUtc);

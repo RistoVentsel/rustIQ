@@ -69,11 +69,8 @@ export function getServerRefreshStatus(signal?: AbortSignal) {
   return getJson<ServerRefreshStatus>('servers/refresh', { signal })
 }
 
-export function getServerById(serverId: string, signal?: AbortSignal, refresh?: 'page') {
-  return getJson<ServerDetails>(`servers/${serverId}`, {
-    signal,
-    query: refresh ? { refresh } : undefined,
-  })
+export function getServerById(serverId: string, signal?: AbortSignal) {
+  return getJson<ServerDetails>(`servers/${serverId}`, { signal })
 }
 
 export function getServerSnapshots(

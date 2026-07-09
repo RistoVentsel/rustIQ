@@ -186,17 +186,7 @@ public sealed class ServerReadService(
             return null;
         }
 
-        if (serverRefreshService is not null)
-        {
-            try
-            {
-                await serverRefreshService.RefreshCurrentPlayersAsync(server, cancellationToken);
-            }
-            catch (Exception exception) when (!IsRequestCancellation(exception, cancellationToken))
-            {
-            }
-        }
-
+        // Player lists are refreshed by background polling; read endpoints must not query game servers per viewer.
         var players = await serverRepository.GetCurrentPlayersAsync(serverId, cancellationToken);
         var playerDtos = players.Select(ToCurrentPlayerDto).ToArray();
         DateTimeOffset? refreshedAtUtc = players.Count == 0

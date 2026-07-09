@@ -7,6 +7,7 @@ using RustIQ.Infrastructure;
 using RustIQ.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System.Threading.Channels;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 const string DevCorsPolicy = "DevCorsPolicy";
@@ -14,6 +15,21 @@ const string DevCorsPolicy = "DevCorsPolicy";
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddMemoryCache();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            GetRateLimitPartitionKey(httpContext),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 240,
+                QueueLimit = 0,
+                Window = TimeSpan.FromMinutes(1)
+            }));
+});
 builder.Services.AddSignalR();
 builder.Services.AddCors(options =>
 {
@@ -85,11 +101,13 @@ builder.Services
     .Validate(options => !options.Enabled || options.CleanupIntervalHours > 0, "Snapshot retention cleanup interval hours must be greater than 0 when retention is enabled.")
     .ValidateOnStart();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddSingleton<IWatchedServerRegistry, WatchedServerRegistry>();
 builder.Services.AddSingleton(Channel.CreateUnbounded<bool>());
 builder.Services.AddSingleton<ServerRefreshJobQueue>();
 builder.Services.AddSingleton<IServerRefreshJobQueue>(serviceProvider =>
     serviceProvider.GetRequiredService<ServerRefreshJobQueue>());
 builder.Services.AddHostedService<ServerPollingWorker>();
+builder.Services.AddHostedService<WatchedServerRefreshWorker>();
 builder.Services.AddHostedService<SteamDiscoveryWorker>();
 builder.Services.AddHostedService<BattleMetricsPlayerCountRefreshWorker>();
 builder.Services.AddHostedService<SnapshotRetentionWorker>();
@@ -112,8 +130,14 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors(DevCorsPolicy);
+app.UseRateLimiter();
 
 app.MapServerEndpoints();
 app.MapHub<ServerUpdatesHub>("/hubs/servers");
 
 app.Run();
+
+static string GetRateLimitPartitionKey(HttpContext httpContext)
+{
+    return httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+}

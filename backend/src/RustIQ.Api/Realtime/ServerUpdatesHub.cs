@@ -2,22 +2,33 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace RustIQ.Api.Realtime;
 
-public sealed class ServerUpdatesHub : Hub
+public sealed class ServerUpdatesHub(IWatchedServerRegistry watchedServerRegistry) : Hub
 {
-    public Task WatchServer(Guid serverId)
+    public async Task WatchServer(Guid serverId)
     {
-        return Groups.AddToGroupAsync(
+        await Groups.AddToGroupAsync(
             Context.ConnectionId,
             GetServerGroupName(serverId),
             Context.ConnectionAborted);
+
+        watchedServerRegistry.Watch(Context.ConnectionId, serverId);
     }
 
-    public Task UnwatchServer(Guid serverId)
+    public async Task UnwatchServer(Guid serverId)
     {
-        return Groups.RemoveFromGroupAsync(
+        await Groups.RemoveFromGroupAsync(
             Context.ConnectionId,
             GetServerGroupName(serverId),
             Context.ConnectionAborted);
+
+        watchedServerRegistry.Unwatch(Context.ConnectionId, serverId);
+    }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        watchedServerRegistry.UnwatchAll(Context.ConnectionId);
+
+        return base.OnDisconnectedAsync(exception);
     }
 
     public static string GetServerGroupName(Guid serverId)

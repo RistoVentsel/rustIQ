@@ -148,7 +148,8 @@ public sealed class ServerUpdateMessageTests
     public async Task WatchServer_AddsConnectionToExpectedGroup()
     {
         var groups = new RecordingGroupManager();
-        var hub = new ServerUpdatesHub
+        var registry = new WatchedServerRegistry();
+        var hub = new ServerUpdatesHub(registry)
         {
             Context = new TestHubCallerContext("connection-1"),
             Groups = groups
@@ -160,24 +161,28 @@ public sealed class ServerUpdateMessageTests
         var add = Assert.Single(groups.AddCalls);
         Assert.Equal("connection-1", add.ConnectionId);
         Assert.Equal(ServerUpdatesHub.GetServerGroupName(serverId), add.GroupName);
+        Assert.Equal([serverId], registry.GetWatchedServerIds());
     }
 
     [Fact]
     public async Task UnwatchServer_RemovesConnectionFromExpectedGroup()
     {
         var groups = new RecordingGroupManager();
-        var hub = new ServerUpdatesHub
+        var registry = new WatchedServerRegistry();
+        var hub = new ServerUpdatesHub(registry)
         {
             Context = new TestHubCallerContext("connection-2"),
             Groups = groups
         };
         var serverId = Guid.Parse("ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb");
+        registry.Watch("connection-2", serverId);
 
         await hub.UnwatchServer(serverId);
 
         var remove = Assert.Single(groups.RemoveCalls);
         Assert.Equal("connection-2", remove.ConnectionId);
         Assert.Equal(ServerUpdatesHub.GetServerGroupName(serverId), remove.GroupName);
+        Assert.Empty(registry.GetWatchedServerIds());
     }
 
     private sealed class RecordingGroupManager : IGroupManager
