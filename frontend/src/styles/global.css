@@ -425,15 +425,15 @@ select {
 .server-list-table__header,
 .server-list-card {
   display: grid;
-  grid-template-columns: 48px minmax(300px, 1fr) minmax(96px, 0.34fr) minmax(118px, 0.32fr) minmax(88px, 0.28fr) minmax(112px, 0.34fr) minmax(112px, 0.34fr) 124px;
+  grid-template-columns: 48px 64px minmax(260px, 1fr) minmax(96px, 0.34fr) minmax(118px, 0.32fr) minmax(88px, 0.28fr) minmax(112px, 0.34fr) minmax(112px, 0.34fr) 124px;
   column-gap: 16px;
   row-gap: 12px;
   align-items: center;
   min-width: 0;
 }
 
-.server-list-table__header > :nth-child(2),
-.server-list-card > :nth-child(2) {
+.server-list-table__header > :nth-child(3),
+.server-list-card > :nth-child(3) {
   margin-left: 10px;
 }
 
@@ -557,6 +557,40 @@ select {
 
 .server-list-card__cell--location {
   min-width: 0;
+}
+
+.server-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.server-rank-badge--empty {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+:root[data-theme='light'] .server-rank-badge {
+  border-color: rgba(178, 116, 21, 0.38);
+  background: rgba(178, 116, 21, 0.12);
+  color: #9a6700;
+}
+
+:root[data-theme='light'] .server-rank-badge--empty {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-muted);
 }
 
 .server-type-badge {

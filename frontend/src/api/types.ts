@@ -101,6 +101,11 @@ export type ServerListItem = {
   updatedSecondsAgo: number
   playersDeltaLastHour: number | null
   playersPeakLastHour: number | null
+  popularityRank: number | null
+  rankedAveragePlayers: number | null
+  rankedPeakPlayers: number | null
+  rankingSnapshotCount: number | null
+  rankingGeneratedAtUtc: string | null
 }
 
 export type ServerDetails = {

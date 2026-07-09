@@ -29,6 +29,19 @@ public interface IServerRepository
         DateTimeOffset sinceUtc,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyDictionary<Guid, ServerRankingSummary>> GetLatestRankingsAsync(
+        IReadOnlyList<Guid> serverIds,
+        CancellationToken cancellationToken);
+
+    Task<int> ReplaceLatestServerRankingsAsync(
+        DateTimeOffset now,
+        int maxRankedServers,
+        int rankingWindowDays,
+        int minimumSnapshots,
+        int recentOnlineWindowHours,
+        int minimumMaxPlayers,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<Server>> GetAllAsync(
         CancellationToken cancellationToken);
 

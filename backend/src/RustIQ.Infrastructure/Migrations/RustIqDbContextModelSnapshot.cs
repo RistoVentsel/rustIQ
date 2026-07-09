@@ -229,6 +229,46 @@ namespace RustIQ.Infrastructure.Migrations
                     b.ToTable("server_players_current", (string)null);
                 });
 
+            modelBuilder.Entity("RustIQ.Domain.Servers.ServerRanking", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<double>("AveragePlayers")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTimeOffset>("GeneratedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("PeakPlayers")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Rank")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SnapshotCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("WindowEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("WindowStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Rank")
+                        .IsUnique();
+
+                    b.HasIndex("ServerId")
+                        .IsUnique();
+
+                    b.ToTable("server_rankings", (string)null);
+                });
+
             modelBuilder.Entity("RustIQ.Domain.Servers.ServerSnapshot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -274,6 +314,17 @@ namespace RustIQ.Infrastructure.Migrations
                 {
                     b.HasOne("RustIQ.Domain.Servers.Server", "Server")
                         .WithMany("CurrentPlayers")
+                        .HasForeignKey("ServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Server");
+                });
+
+            modelBuilder.Entity("RustIQ.Domain.Servers.ServerRanking", b =>
+                {
+                    b.HasOne("RustIQ.Domain.Servers.Server", "Server")
+                        .WithMany()
                         .HasForeignKey("ServerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

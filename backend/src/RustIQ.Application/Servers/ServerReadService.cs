@@ -15,6 +15,7 @@ public sealed class ServerReadService(
     private const int DefaultSnapshotLimit = 100;
     private const int MaxSnapshotLimit = 500;
     public const string SortByPlayers = "players";
+    public const string SortByRank = "rank";
     public const string SortByLastWipe = "lastWipe";
     public const string SortByNextWipe = "nextWipe";
     public const string SortByLocation = "location";
@@ -120,7 +121,10 @@ public sealed class ServerReadService(
             servers.Select(server => server.Id).ToArray(),
             now.AddHours(-1),
             cancellationToken);
-        var items = servers.Select(server => ToListItemDto(server, now, trends)).ToArray();
+        var rankings = await serverRepository.GetLatestRankingsAsync(
+            servers.Select(server => server.Id).ToArray(),
+            cancellationToken);
+        var items = servers.Select(server => ToListItemDto(server, now, trends, rankings)).ToArray();
 
         return new PagedResult<ServerListItemDto>(
             items,
@@ -220,9 +224,11 @@ public sealed class ServerReadService(
     private static ServerListItemDto ToListItemDto(
         Server server,
         DateTimeOffset now,
-        IReadOnlyDictionary<Guid, ServerSnapshotTrend> trends)
+        IReadOnlyDictionary<Guid, ServerSnapshotTrend> trends,
+        IReadOnlyDictionary<Guid, ServerRankingSummary> rankings)
     {
         trends.TryGetValue(server.Id, out var trend);
+        rankings.TryGetValue(server.Id, out var ranking);
 
         return new ServerListItemDto(
             server.Id,
@@ -255,7 +261,12 @@ public sealed class ServerReadService(
             server.UpdatedAtUtc,
             SecondsAgo(server.UpdatedAtUtc, now),
             trend?.PlayersDeltaLastHour,
-            trend?.PlayersPeakLastHour);
+            trend?.PlayersPeakLastHour,
+            ranking?.Rank,
+            ranking?.AveragePlayers,
+            ranking?.PeakPlayers,
+            ranking?.SnapshotCount,
+            ranking?.GeneratedAtUtc);
     }
 
     private static ServerDetailsDto ToDetailsDto(Server server, DateTimeOffset now)
@@ -367,6 +378,7 @@ public sealed class ServerReadService(
         return sortBy?.Trim() switch
         {
             SortByLastWipe => SortByLastWipe,
+            SortByRank => SortByRank,
             SortByNextWipe => SortByNextWipe,
             SortByLocation => SortByLocation,
             SortByServerType => SortByServerType,

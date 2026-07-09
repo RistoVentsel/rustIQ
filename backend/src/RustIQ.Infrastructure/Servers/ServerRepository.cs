@@ -120,6 +120,114 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
                 });
     }
 
+    public async Task<IReadOnlyDictionary<Guid, ServerRankingSummary>> GetLatestRankingsAsync(
+        IReadOnlyList<Guid> serverIds,
+        CancellationToken cancellationToken)
+    {
+        if (serverIds.Count == 0)
+        {
+            return new Dictionary<Guid, ServerRankingSummary>();
+        }
+
+        return await dbContext.ServerRankings
+            .AsNoTracking()
+            .Where(ranking => serverIds.Contains(ranking.ServerId))
+            .ToDictionaryAsync(
+                ranking => ranking.ServerId,
+                ranking => new ServerRankingSummary(
+                    ranking.ServerId,
+                    ranking.Rank,
+                    ranking.AveragePlayers,
+                    ranking.PeakPlayers,
+                    ranking.SnapshotCount,
+                    ranking.WindowStartUtc,
+                    ranking.WindowEndUtc,
+                    ranking.GeneratedAtUtc),
+                cancellationToken);
+    }
+
+    public async Task<int> ReplaceLatestServerRankingsAsync(
+        DateTimeOffset now,
+        int maxRankedServers,
+        int rankingWindowDays,
+        int minimumSnapshots,
+        int recentOnlineWindowHours,
+        int minimumMaxPlayers,
+        CancellationToken cancellationToken)
+    {
+        var windowStartUtc = now.AddDays(-rankingWindowDays);
+        var recentOnlineCutoffUtc = now.AddHours(-recentOnlineWindowHours);
+
+        var preferredServerIds = dbContext.Servers
+            .AsNoTracking()
+            .Where(server =>
+                server.MaxPlayers >= minimumMaxPlayers
+                && server.Name != null
+                && server.Name != string.Empty
+                && (server.LastSeenAtUtc != null && server.LastSeenAtUtc >= recentOnlineCutoffUtc))
+            .GroupBy(server => new
+            {
+                Host = server.Host.Trim().ToLower(),
+                server.QueryPort
+            })
+            .Select(group => group
+                .OrderByDescending(server => server.BattleMetricsServerId != null)
+                .ThenByDescending(server => server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics)
+                .ThenByDescending(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+                .ThenBy(server => server.Id)
+                .Select(server => server.Id)
+                .First());
+
+        var rankedServers = await dbContext.ServerSnapshots
+            .AsNoTracking()
+            .Where(snapshot =>
+                preferredServerIds.Contains(snapshot.ServerId)
+                && snapshot.CheckedAtUtc >= windowStartUtc
+                && snapshot.CheckedAtUtc <= now)
+            .GroupBy(snapshot => snapshot.ServerId)
+            .Select(group => new
+            {
+                ServerId = group.Key,
+                AveragePlayers = group.Average(snapshot => (double)snapshot.Players),
+                PeakPlayers = group.Max(snapshot => snapshot.Players),
+                SnapshotCount = group.Count()
+            })
+            .Where(server => server.SnapshotCount >= minimumSnapshots)
+            .OrderByDescending(server => server.AveragePlayers)
+            .ThenByDescending(server => server.PeakPlayers)
+            .ThenBy(server => server.ServerId)
+            .Take(maxRankedServers)
+            .ToListAsync(cancellationToken);
+
+        var nextRankings = rankedServers
+            .Select((server, index) => new ServerRanking
+            {
+                Id = Guid.NewGuid(),
+                ServerId = server.ServerId,
+                Rank = index + 1,
+                AveragePlayers = server.AveragePlayers,
+                PeakPlayers = server.PeakPlayers,
+                SnapshotCount = server.SnapshotCount,
+                WindowStartUtc = windowStartUtc,
+                WindowEndUtc = now,
+                GeneratedAtUtc = now
+            })
+            .ToArray();
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await dbContext.ServerRankings.ExecuteDeleteAsync(cancellationToken);
+
+        if (nextRankings.Length > 0)
+        {
+            dbContext.ServerRankings.AddRange(nextRankings);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return nextRankings.Length;
+    }
+
     public Task<Server?> GetByIdWithMapMetadataAsync(
         Guid serverId,
         CancellationToken cancellationToken)
@@ -334,13 +442,32 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             .ToArray();
     }
 
-    private static IOrderedQueryable<Server> ApplyServerSort(
+    private IOrderedQueryable<Server> ApplyServerSort(
         IQueryable<Server> servers,
         string sortBy,
         bool sortDescending)
     {
         var sorted = sortBy switch
         {
+            ServerReadService.SortByRank => sortDescending
+                ? servers
+                    .OrderBy(server => dbContext.ServerRankings
+                        .Where(ranking => ranking.ServerId == server.Id)
+                        .Select(ranking => (int?)ranking.Rank)
+                        .FirstOrDefault() == null)
+                    .ThenByDescending(server => dbContext.ServerRankings
+                        .Where(ranking => ranking.ServerId == server.Id)
+                        .Select(ranking => (int?)ranking.Rank)
+                        .FirstOrDefault())
+                : servers
+                    .OrderBy(server => dbContext.ServerRankings
+                        .Where(ranking => ranking.ServerId == server.Id)
+                        .Select(ranking => (int?)ranking.Rank)
+                        .FirstOrDefault() == null)
+                    .ThenBy(server => dbContext.ServerRankings
+                        .Where(ranking => ranking.ServerId == server.Id)
+                        .Select(ranking => (int?)ranking.Rank)
+                        .FirstOrDefault()),
             ServerReadService.SortByLastWipe => sortDescending
                 ? servers
                     .OrderBy(server => server.LastWipeAtUtc == null)

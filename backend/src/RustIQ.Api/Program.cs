@@ -100,6 +100,16 @@ builder.Services
     .Validate(options => !options.Enabled || options.RetentionDays > 0, "Snapshot retention days must be greater than 0 when retention is enabled.")
     .Validate(options => !options.Enabled || options.CleanupIntervalHours > 0, "Snapshot retention cleanup interval hours must be greater than 0 when retention is enabled.")
     .ValidateOnStart();
+builder.Services
+    .AddOptions<ServerRankingOptions>()
+    .Bind(builder.Configuration.GetSection(ServerRankingOptions.SectionName))
+    .Validate(options => !options.Enabled || options.MaxRankedServers > 0, "Server ranking max ranked servers must be greater than 0 when ranking is enabled.")
+    .Validate(options => !options.Enabled || options.RankingWindowDays > 0, "Server ranking window days must be greater than 0 when ranking is enabled.")
+    .Validate(options => !options.Enabled || options.RefreshIntervalHours > 0, "Server ranking refresh interval hours must be greater than 0 when ranking is enabled.")
+    .Validate(options => !options.Enabled || options.MinimumSnapshots > 0, "Server ranking minimum snapshots must be greater than 0 when ranking is enabled.")
+    .Validate(options => !options.Enabled || options.RecentOnlineWindowHours > 0, "Server ranking recent online window hours must be greater than 0 when ranking is enabled.")
+    .Validate(options => !options.Enabled || options.MinimumMaxPlayers >= 0, "Server ranking minimum max players must not be negative.")
+    .ValidateOnStart();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<IWatchedServerRegistry, WatchedServerRegistry>();
 builder.Services.AddSingleton(Channel.CreateUnbounded<bool>());
@@ -111,6 +121,7 @@ builder.Services.AddHostedService<WatchedServerRefreshWorker>();
 builder.Services.AddHostedService<SteamDiscoveryWorker>();
 builder.Services.AddHostedService<BattleMetricsPlayerCountRefreshWorker>();
 builder.Services.AddHostedService<SnapshotRetentionWorker>();
+builder.Services.AddHostedService<ServerRankingWorker>();
 builder.Services.AddHostedService(serviceProvider =>
     serviceProvider.GetRequiredService<ServerRefreshJobQueue>());
 

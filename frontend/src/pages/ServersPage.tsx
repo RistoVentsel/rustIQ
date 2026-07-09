@@ -17,7 +17,7 @@ import { useFavoriteServers } from '../features/servers/useFavoriteServers'
 import { useNow } from '../hooks'
 
 const pageSizeOptions = [10, 25, 50]
-type ServerSortBy = 'players' | 'lastWipe' | 'nextWipe'
+type ServerSortBy = 'players' | 'rank' | 'lastWipe' | 'nextWipe'
 type ServerSortDirection = 'asc' | 'desc'
 type WipeFilter = 'all' | 'next24h' | 'next7d' | 'wiped24h' | 'hasWipeData'
 const serverTypeFilterOptions = [
@@ -173,7 +173,7 @@ export function ServersPage() {
   }
 
   function updateSort(nextSortBy: ServerSortBy) {
-    const defaultDirection = nextSortBy === 'nextWipe' ? 'asc' : 'desc'
+    const defaultDirection = nextSortBy === 'nextWipe' || nextSortBy === 'rank' ? 'asc' : 'desc'
     setSortDirection((currentDirection) => (
       sortBy === nextSortBy
         ? currentDirection === 'desc' ? 'asc' : 'desc'
@@ -225,7 +225,7 @@ export function ServersPage() {
 
       <SectionCard
         title="Servers"
-        description="Find active Rust servers, compare player counts, and open a server for live details."
+        description="Find active Rust servers, compare player counts, and browse RustIQ Top 250 ranks by recent average population."
         actions={
           <div className="server-list-actions">
             <label className="server-list-control">
@@ -383,9 +383,16 @@ export function ServersPage() {
         ) : null}
 
         {shouldShowServerData && visibleServers.length > 0 ? (
-          <div className="server-list-table" aria-label="Server list">
+            <div className="server-list-table" aria-label="Server list">
             <div className="server-list-table__header">
               <span>Favorite</span>
+              <button
+                type="button"
+                className="server-list-table__sort"
+                onClick={() => updateSort('rank')}
+              >
+                Rank{getSortIndicator('rank')}
+              </button>
               <span>Name</span>
               <span>Server Type</span>
               <button

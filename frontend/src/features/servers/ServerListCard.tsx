@@ -46,6 +46,23 @@ export function ServerListCard({
         <span aria-hidden="true">{isFavorite ? '★' : '☆'}</span>
       </button>
 
+      <div className="server-list-card__cell">
+        {server.popularityRank ? (
+          <span
+            className="server-rank-badge"
+            title={
+              server.rankedAveragePlayers === null || server.rankedAveragePlayers === undefined
+                ? undefined
+                : `Average ${server.rankedAveragePlayers.toFixed(1)}, peak ${server.rankedPeakPlayers ?? 'n/a'}`
+            }
+          >
+            #{server.popularityRank}
+          </span>
+        ) : (
+          <span className="server-rank-badge server-rank-badge--empty">--</span>
+        )}
+      </div>
+
       <Link to={`/servers/${server.id}`} className="server-list-card__identity">
         <h3 className="server-list-card__name">{displayName}</h3>
         <p className="server-list-card__address">

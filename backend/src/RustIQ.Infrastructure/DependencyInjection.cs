@@ -45,6 +45,10 @@ public static class DependencyInjection
             new SnapshotRetentionService(
                 serviceProvider.GetRequiredService<IServerRepository>(),
                 serviceProvider.GetRequiredService<IOptions<SnapshotRetentionOptions>>().Value));
+        services.AddScoped<ServerRankingService>(serviceProvider =>
+            new ServerRankingService(
+                serviceProvider.GetRequiredService<IServerRepository>(),
+                serviceProvider.GetRequiredService<IOptions<ServerRankingOptions>>().Value));
         services.AddSingleton<ServerUpdateMessageFactory>();
         services.AddScoped<IServerRepository, ServerRepository>();
         services.AddSingleton<IRustServerCatalog, FileBackedRustServerCatalog>();

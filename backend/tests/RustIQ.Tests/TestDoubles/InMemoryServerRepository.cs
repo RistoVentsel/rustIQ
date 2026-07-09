@@ -9,6 +9,8 @@ internal sealed class InMemoryServerRepository : IServerRepository
 
     public List<ServerSnapshot> Snapshots { get; } = [];
 
+    public List<ServerRanking> Rankings { get; } = [];
+
     public List<ServerPlayerCurrent> CurrentPlayers { get; } = [];
 
     public int? LastPagedTake { get; private set; }
@@ -73,6 +75,85 @@ internal sealed class InMemoryServerRepository : IServerRepository
                 });
 
         return Task.FromResult<IReadOnlyDictionary<Guid, ServerSnapshotTrend>>(trends);
+    }
+
+    public Task<IReadOnlyDictionary<Guid, ServerRankingSummary>> GetLatestRankingsAsync(
+        IReadOnlyList<Guid> serverIds,
+        CancellationToken cancellationToken)
+    {
+        var rankings = Rankings
+            .Where(ranking => serverIds.Contains(ranking.ServerId))
+            .ToDictionary(
+                ranking => ranking.ServerId,
+                ranking => new ServerRankingSummary(
+                    ranking.ServerId,
+                    ranking.Rank,
+                    ranking.AveragePlayers,
+                    ranking.PeakPlayers,
+                    ranking.SnapshotCount,
+                    ranking.WindowStartUtc,
+                    ranking.WindowEndUtc,
+                    ranking.GeneratedAtUtc));
+
+        return Task.FromResult<IReadOnlyDictionary<Guid, ServerRankingSummary>>(rankings);
+    }
+
+    public Task<int> ReplaceLatestServerRankingsAsync(
+        DateTimeOffset now,
+        int maxRankedServers,
+        int rankingWindowDays,
+        int minimumSnapshots,
+        int recentOnlineWindowHours,
+        int minimumMaxPlayers,
+        CancellationToken cancellationToken)
+    {
+        var windowStartUtc = now.AddDays(-rankingWindowDays);
+        var recentOnlineCutoffUtc = now.AddHours(-recentOnlineWindowHours);
+        var preferredServerIds = DeduplicateServers(Servers
+                .Where(server =>
+                    server.MaxPlayers >= minimumMaxPlayers
+                    && !string.IsNullOrWhiteSpace(server.Name)
+                    && server.LastSeenAtUtc is not null
+                    && server.LastSeenAtUtc >= recentOnlineCutoffUtc))
+            .Select(server => server.Id)
+            .ToHashSet();
+
+        var nextRankings = Snapshots
+            .Where(snapshot =>
+                preferredServerIds.Contains(snapshot.ServerId)
+                && snapshot.CheckedAtUtc >= windowStartUtc
+                && snapshot.CheckedAtUtc <= now)
+            .GroupBy(snapshot => snapshot.ServerId)
+            .Select(group => new
+            {
+                ServerId = group.Key,
+                AveragePlayers = group.Average(snapshot => snapshot.Players),
+                PeakPlayers = group.Max(snapshot => snapshot.Players),
+                SnapshotCount = group.Count()
+            })
+            .Where(server => server.SnapshotCount >= minimumSnapshots)
+            .OrderByDescending(server => server.AveragePlayers)
+            .ThenByDescending(server => server.PeakPlayers)
+            .ThenBy(server => server.ServerId)
+            .Take(maxRankedServers)
+            .Select((server, index) => new ServerRanking
+            {
+                Id = Guid.NewGuid(),
+                ServerId = server.ServerId,
+                Rank = index + 1,
+                AveragePlayers = server.AveragePlayers,
+                PeakPlayers = server.PeakPlayers,
+                SnapshotCount = server.SnapshotCount,
+                WindowStartUtc = windowStartUtc,
+                WindowEndUtc = now,
+                GeneratedAtUtc = now
+            })
+            .ToArray();
+
+        Rankings.Clear();
+        Rankings.AddRange(nextRankings);
+
+        return Task.FromResult(Rankings.Count);
     }
 
     public Task<IReadOnlyList<Server>> GetAllAsync(
@@ -285,7 +366,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
             .ToArray();
     }
 
-    private static IOrderedEnumerable<Server> ApplyServerSort(
+    private IOrderedEnumerable<Server> ApplyServerSort(
         IEnumerable<Server> servers,
         string sortBy,
         bool sortDescending)
@@ -295,6 +376,13 @@ internal sealed class InMemoryServerRepository : IServerRepository
             ServerReadService.SortByLastWipe => sortDescending
                 ? servers.OrderByDescending(server => server.LastWipeAtUtc ?? DateTimeOffset.MinValue)
                 : servers.OrderBy(server => server.LastWipeAtUtc ?? DateTimeOffset.MaxValue),
+            ServerReadService.SortByRank => sortDescending
+                ? servers
+                    .OrderBy(server => GetRank(server.Id) is null)
+                    .ThenByDescending(server => GetRank(server.Id))
+                : servers
+                    .OrderBy(server => GetRank(server.Id) is null)
+                    .ThenBy(server => GetRank(server.Id)),
             ServerReadService.SortByNextWipe => sortDescending
                 ? servers
                     .OrderBy(server => server.NextWipeAtUtc is null)
@@ -328,5 +416,10 @@ internal sealed class InMemoryServerRepository : IServerRepository
             RustServerType.Modded => 2,
             _ => 3
         };
+    }
+
+    private int? GetRank(Guid serverId)
+    {
+        return Rankings.FirstOrDefault(ranking => ranking.ServerId == serverId)?.Rank;
     }
 }

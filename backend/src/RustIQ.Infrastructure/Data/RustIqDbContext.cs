@@ -10,6 +10,8 @@ public sealed class RustIqDbContext(DbContextOptions<RustIqDbContext> options)
 
     public DbSet<ServerSnapshot> ServerSnapshots => Set<ServerSnapshot>();
 
+    public DbSet<ServerRanking> ServerRankings => Set<ServerRanking>();
+
     public DbSet<ServerPlayerCurrent> ServerPlayersCurrent => Set<ServerPlayerCurrent>();
 
     public DbSet<ServerMapMetadata> ServerMapMetadata => Set<ServerMapMetadata>();
@@ -94,6 +96,11 @@ public sealed class RustIqDbContext(DbContextOptions<RustIqDbContext> options)
                 .HasForeignKey(snapshot => snapshot.ServerId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            entity.HasMany<ServerRanking>()
+                .WithOne(ranking => ranking.Server)
+                .HasForeignKey(ranking => ranking.ServerId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             entity.HasMany(server => server.CurrentPlayers)
                 .WithOne(player => player.Server)
                 .HasForeignKey(player => player.ServerId)
@@ -115,6 +122,22 @@ public sealed class RustIqDbContext(DbContextOptions<RustIqDbContext> options)
                 .ValueGeneratedNever();
 
             entity.HasIndex(snapshot => new { snapshot.ServerId, snapshot.CheckedAtUtc });
+        });
+
+        modelBuilder.Entity<ServerRanking>(entity =>
+        {
+            entity.ToTable("server_rankings");
+
+            entity.HasKey(ranking => ranking.Id);
+
+            entity.Property(ranking => ranking.Id)
+                .ValueGeneratedNever();
+
+            entity.HasIndex(ranking => ranking.ServerId)
+                .IsUnique();
+
+            entity.HasIndex(ranking => ranking.Rank)
+                .IsUnique();
         });
 
         modelBuilder.Entity<ServerPlayerCurrent>(entity =>

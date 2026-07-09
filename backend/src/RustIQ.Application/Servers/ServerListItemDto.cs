@@ -33,4 +33,9 @@ public sealed record ServerListItemDto(
     DateTimeOffset UpdatedAtUtc,
     int UpdatedSecondsAgo,
     int? PlayersDeltaLastHour,
-    int? PlayersPeakLastHour);
+    int? PlayersPeakLastHour,
+    int? PopularityRank,
+    double? RankedAveragePlayers,
+    int? RankedPeakPlayers,
+    int? RankingSnapshotCount,
+    DateTimeOffset? RankingGeneratedAtUtc);
