@@ -195,8 +195,8 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 18px 0;
+  gap: 18px;
+  padding: 14px 0;
 }
 
 .app-main {
@@ -211,8 +211,8 @@ select {
 }
 
 .app-brand__logo {
-  width: 58px;
-  height: 58px;
+  width: 52px;
+  height: 52px;
   flex: 0 0 auto;
   border-radius: 8px;
   object-fit: contain;
@@ -250,30 +250,37 @@ select {
 }
 
 .app-title {
-  font-size: clamp(1.5rem, 2vw, 1.9rem);
+  font-size: clamp(1.35rem, 1.7vw, 1.7rem);
 }
 
 .app-nav {
   display: flex;
-  gap: 12px;
+  gap: 4px;
   list-style: none;
-  padding: 0;
+  padding: 4px;
   margin: 0;
   margin-left: auto;
+  border: 1px solid var(--header-border);
+  border-radius: 999px;
+  background: rgba(12, 14, 13, 0.28);
 }
 
 .app-nav__link {
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
-  padding: 0 14px;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 16px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 999px;
   color: var(--text-muted);
+  font-size: 0.88rem;
+  font-weight: 700;
 }
 
 .app-nav__link:hover {
-  border-color: var(--border);
+  border-color: var(--active-border);
+  background: rgba(167, 179, 155, 0.08);
   color: var(--text);
 }
 
@@ -281,6 +288,7 @@ select {
   border-color: var(--active-border);
   background: var(--active-bg);
   color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(240, 238, 231, 0.04);
 }
 
 .theme-toggle {
@@ -600,22 +608,48 @@ select {
 .minigame-options {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
+}
+
+.minigames-page .section-card {
+  border-color: rgba(245, 158, 11, 0.32);
+  background:
+    linear-gradient(180deg, rgba(245, 158, 11, 0.07), rgba(31, 33, 30, 0.78) 210px),
+    var(--panel-bg);
+  box-shadow: var(--shadow);
 }
 
 .minigame-option {
+  position: relative;
+  overflow: hidden;
   display: grid;
   gap: 14px;
   min-height: 150px;
-  padding: 16px;
+  padding: 18px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--panel-bg);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.045), transparent 42%),
+    var(--panel-bg);
+}
+
+.minigame-option::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-left: 4px solid transparent;
+  pointer-events: none;
 }
 
 .minigame-option--active {
   border-color: rgba(245, 158, 11, 0.48);
-  background: rgba(245, 158, 11, 0.08);
+  background:
+    linear-gradient(145deg, rgba(245, 158, 11, 0.16), rgba(245, 158, 11, 0.04) 44%, rgba(31, 33, 30, 0.86)),
+    var(--panel-bg);
+}
+
+.minigame-option--active::before {
+  border-left-color: #f59e0b;
 }
 
 .minigame-option h3 {
@@ -652,13 +686,17 @@ select {
 }
 
 .difficulty-button {
+  position: relative;
+  overflow: hidden;
   display: grid;
   gap: 4px;
   min-height: 64px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--row-bg);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.04), transparent 48%),
+    var(--row-bg);
   color: var(--text);
   text-align: left;
   cursor: pointer;
@@ -666,8 +704,10 @@ select {
 
 .difficulty-button:hover,
 .difficulty-button--active {
-  border-color: var(--button-border);
-  background: var(--button-bg);
+  border-color: rgba(245, 158, 11, 0.48);
+  background:
+    linear-gradient(145deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.05)),
+    var(--button-bg);
 }
 
 .difficulty-button span {
@@ -685,25 +725,133 @@ select {
 }
 
 .guess-server-game__status {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: flex-start;
-  padding: 14px;
-  border: 1px solid var(--soft-row-border);
+  padding: 18px;
+  border: 1px solid rgba(245, 158, 11, 0.34);
   border-radius: 8px;
-  background: var(--row-bg);
+  background:
+    linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(34, 197, 94, 0.045) 52%, rgba(20, 22, 20, 0.9)),
+    var(--row-bg);
 }
 
 .guess-server-game__status h3 {
   margin: 8px 0 4px;
 }
 
-.guess-server-game__cooldown {
-  color: var(--accent-strong);
-  font-size: 0.88rem;
+.guess-server-game__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(86px, 1fr));
+  gap: 8px;
+}
+
+.guess-server-game__stats div {
+  display: grid;
+  gap: 3px;
+  min-height: 58px;
+  padding: 9px 11px;
+  border: 1px solid rgba(245, 158, 11, 0.26);
+  border-radius: 8px;
+  background: rgba(12, 14, 13, 0.32);
+}
+
+.guess-server-game__stats span {
+  color: var(--text-muted);
+  font-size: 0.72rem;
   font-weight: 800;
-  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.guess-server-game__stats strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.guess-server-hint {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid rgba(34, 197, 94, 0.34);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(167, 179, 155, 0.08)),
+    var(--row-bg);
+}
+
+.guess-server-hint__eyebrow {
+  color: #bbf7d0;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.guess-server-hint h4 {
+  margin: 4px 0 0;
+  font-size: 1rem;
+}
+
+.guess-server-hint__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.guess-server-hint__meta span {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.guess-server-revealed-hints {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.guess-server-revealed-hint {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.guess-server-revealed-hint span {
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.guess-server-revealed-hint strong {
+  font-size: 0.92rem;
+}
+
+.guess-server-revealed-hint p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.guess-server-actions {
+  display: grid;
+  gap: 10px;
 }
 
 .guess-server-form {
@@ -1605,11 +1753,13 @@ select {
   .server-preview__stats,
   .minigame-options,
   .difficulty-selector,
+  .guess-server-revealed-hints,
   .guess-result__clues {
     grid-template-columns: 1fr;
   }
 
   .guess-server-game__status,
+  .guess-server-hint,
   .guess-server-form {
     grid-template-columns: 1fr;
   }
@@ -1618,8 +1768,17 @@ select {
     display: grid;
   }
 
-  .guess-server-game__cooldown {
-    white-space: normal;
+  .guess-server-game__stats,
+  .guess-server-hint {
+    display: grid;
+  }
+
+  .guess-server-game__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .guess-server-hint__meta {
+    justify-content: flex-start;
   }
 
   .server-list-table__header {
