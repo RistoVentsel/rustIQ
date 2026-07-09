@@ -1,0 +1,38 @@
+RustIQ scalability implementation plan
+
+Goal
+- Reduce per-user backend/external refresh work.
+- Keep high-traffic list reads cheap.
+- Add basic traffic protection before public testing.
+
+1. Move list sorting, paging, and deduplication into SQL
+- Update the EF repository so GET /servers does filtering, preferred-row selection, sorting, Skip, and Take in the database.
+- Keep the in-memory test repository behavior unchanged for unit tests.
+- Later option: if the server table grows very large, replace query-time deduplication with a dedicated deduplicated read-model table.
+
+2. Stop per-user detail refreshes
+- Remove the frontend detail-page REST refresh loop.
+- Do not pass refresh=page from the detail page.
+- Make player-list reads cached/database-only instead of refreshing the game server per viewer.
+- Track SignalR WatchServer subscriptions server-side.
+- Add one backend worker that refreshes each watched server at most once per interval and broadcasts to all viewers in that server group.
+
+3. Add short caching for GET /servers
+- Cache only side-effect-free GET /servers requests.
+- Do not cache refresh=all or refresh=page requests.
+- Start with a 5 second in-process cache; replace with Redis/distributed cache if multiple API instances are added.
+
+4. Add rate limiting
+- Add a global fixed-window request limiter.
+- Return HTTP 429 when a client exceeds the limit.
+- Tune the limits after real load testing.
+
+5. Verify
+- Run backend tests.
+- Run frontend production build.
+- Smoke-test list and detail endpoints against the running API.
+
+Remaining after this pass
+- Add k6/autocannon load tests.
+- Add proper reverse proxy/CDN/TLS config.
+- Add distributed SignalR/backplane only if horizontally scaling API containers.
