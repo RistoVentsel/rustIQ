@@ -388,7 +388,7 @@ export function ServersPage() {
               <span>Favorite</span>
               <button
                 type="button"
-                className="server-list-table__sort"
+                className="server-list-table__sort server-list-table__sort--rank"
                 onClick={() => updateSort('rank')}
               >
                 Rank{getSortIndicator('rank')}

@@ -42,6 +42,16 @@ export function AppShell() {
                   Servers
                 </NavLink>
               </li>
+              <li>
+                <NavLink
+                  to="/minigames"
+                  className={({ isActive }) =>
+                    isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'
+                  }
+                >
+                  Minigames
+                </NavLink>
+              </li>
             </ul>
           </nav>
 
