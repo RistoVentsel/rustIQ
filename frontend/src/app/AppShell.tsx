@@ -1,7 +1,25 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, Outlet, useLocation } from 'react-router-dom'
 
 type Theme = 'dark' | 'light'
+
+const navItems = [
+  {
+    to: '/',
+    label: 'Servers',
+    meta: 'Live browser',
+  },
+  {
+    to: '/minigames',
+    label: 'Minigames',
+    meta: 'Daily challenges',
+  },
+  {
+    to: '/rust-knowledge',
+    label: 'Rust Knowledge',
+    meta: 'Guides & facts',
+  },
+] as const
 
 export function AppShell() {
   const location = useLocation()
@@ -16,6 +34,11 @@ export function AppShell() {
   }, [theme])
 
   const nextTheme = theme === 'dark' ? 'light' : 'dark'
+  const isNavItemActive = (to: string) => (
+    to === '/'
+      ? location.pathname === '/' || location.pathname.startsWith('/servers')
+      : location.pathname === to || location.pathname.startsWith(`${to}/`)
+  )
 
   return (
     <div className="app-shell">
@@ -31,27 +54,22 @@ export function AppShell() {
 
           <nav aria-label="Primary">
             <ul className="app-nav">
-              <li>
-                <NavLink
-                  to="/"
-                  className={({ isActive }) =>
-                    isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'
-                  }
-                  end
-                >
-                  Servers
-                </NavLink>
-              </li>
-              <li>
-                <NavLink
-                  to="/minigames"
-                  className={({ isActive }) =>
-                    isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'
-                  }
-                >
-                  Minigames
-                </NavLink>
-              </li>
+              {navItems.map((item) => {
+                const isActive = isNavItemActive(item.to)
+
+                return (
+                  <li key={item.to}>
+                    <Link
+                      to={item.to}
+                      className={isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'}
+                      aria-current={isActive ? 'page' : undefined}
+                    >
+                      <span className="app-nav__label">{item.label}</span>
+                      <span className="app-nav__meta">{item.meta}</span>
+                    </Link>
+                  </li>
+                )
+              })}
             </ul>
           </nav>
 
