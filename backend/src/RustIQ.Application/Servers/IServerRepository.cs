@@ -73,6 +73,20 @@ public interface IServerRepository
         int take,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<Server>> GetServersForRefreshLaneAsync(
+        ServerRefreshLane refreshLane,
+        DateTimeOffset dueBeforeUtc,
+        DateTimeOffset now,
+        int take,
+        int popularRankThreshold,
+        int popularPlayerThreshold,
+        int popularPeakPlayerThreshold,
+        TimeSpan recentPeakWindow,
+        TimeSpan popularOfflineGrace,
+        TimeSpan slowOfflineAfter,
+        TimeSpan veryStaleOfflineAfter,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(
         Guid serverId,
         DateTimeOffset? from,

@@ -224,6 +224,59 @@ internal sealed class InMemoryServerRepository : IServerRepository
             .ToArray());
     }
 
+    public Task<IReadOnlyList<Server>> GetServersForRefreshLaneAsync(
+        ServerRefreshLane refreshLane,
+        DateTimeOffset dueBeforeUtc,
+        DateTimeOffset now,
+        int take,
+        int popularRankThreshold,
+        int popularPlayerThreshold,
+        int popularPeakPlayerThreshold,
+        TimeSpan recentPeakWindow,
+        TimeSpan popularOfflineGrace,
+        TimeSpan slowOfflineAfter,
+        TimeSpan veryStaleOfflineAfter,
+        CancellationToken cancellationToken)
+    {
+        var recentPeakSinceUtc = now.Subtract(recentPeakWindow);
+        var popularOfflineGraceSinceUtc = now.Subtract(popularOfflineGrace);
+        var slowOfflineBeforeUtc = now.Subtract(slowOfflineAfter);
+        var veryStaleOfflineBeforeUtc = now.Subtract(veryStaleOfflineAfter);
+
+        var query = Servers
+            .Where(server =>
+                server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics
+                && server.BattleMetricsServerId != null
+                && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= dueBeforeUtc));
+
+        query = refreshLane switch
+        {
+            ServerRefreshLane.Fast => query.Where(server =>
+                IsPopular(server, popularRankThreshold, popularPlayerThreshold, popularPeakPlayerThreshold, recentPeakSinceUtc)
+                || IsRecentlyPopularOffline(server, popularRankThreshold, popularPeakPlayerThreshold, popularOfflineGraceSinceUtc)),
+            ServerRefreshLane.NormalOnline => query.Where(server =>
+                server.Status == ServerStatus.Online
+                && !IsPopular(server, popularRankThreshold, popularPlayerThreshold, popularPeakPlayerThreshold, recentPeakSinceUtc)),
+            ServerRefreshLane.SlowOffline => query.Where(server =>
+                server.Status != ServerStatus.Online
+                && server.LastSeenAtUtc is not null
+                && server.LastSeenAtUtc < slowOfflineBeforeUtc
+                && server.LastSeenAtUtc >= veryStaleOfflineBeforeUtc
+                && !IsPopular(server, popularRankThreshold, popularPlayerThreshold, popularPeakPlayerThreshold, recentPeakSinceUtc)),
+            ServerRefreshLane.VeryStaleOffline => query.Where(server =>
+                server.Status != ServerStatus.Online
+                && (server.LastSeenAtUtc is null || server.LastSeenAtUtc < veryStaleOfflineBeforeUtc)
+                && !IsPopular(server, popularRankThreshold, popularPlayerThreshold, popularPeakPlayerThreshold, recentPeakSinceUtc)),
+            _ => []
+        };
+
+        return Task.FromResult<IReadOnlyList<Server>>(query
+            .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+            .ThenByDescending(server => server.Players)
+            .Take(take)
+            .ToArray());
+    }
+
     public Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(
         Guid serverId,
         DateTimeOffset? from,
@@ -421,5 +474,38 @@ internal sealed class InMemoryServerRepository : IServerRepository
     private int? GetRank(Guid serverId)
     {
         return Rankings.FirstOrDefault(ranking => ranking.ServerId == serverId)?.Rank;
+    }
+
+    private bool IsPopular(
+        Server server,
+        int popularRankThreshold,
+        int popularPlayerThreshold,
+        int popularPeakPlayerThreshold,
+        DateTimeOffset recentPeakSinceUtc)
+    {
+        return server.Players >= popularPlayerThreshold
+               || GetRank(server.Id) <= popularRankThreshold
+               || HasPeakSince(server.Id, popularPeakPlayerThreshold, recentPeakSinceUtc);
+    }
+
+    private bool IsRecentlyPopularOffline(
+        Server server,
+        int popularRankThreshold,
+        int popularPeakPlayerThreshold,
+        DateTimeOffset popularOfflineGraceSinceUtc)
+    {
+        return server.Status != ServerStatus.Online
+               && server.LastSeenAtUtc is not null
+               && server.LastSeenAtUtc >= popularOfflineGraceSinceUtc
+               && (GetRank(server.Id) <= popularRankThreshold
+                   || HasPeakSince(server.Id, popularPeakPlayerThreshold, popularOfflineGraceSinceUtc));
+    }
+
+    private bool HasPeakSince(Guid serverId, int popularPeakPlayerThreshold, DateTimeOffset sinceUtc)
+    {
+        return Snapshots.Any(snapshot =>
+            snapshot.ServerId == serverId
+            && snapshot.CheckedAtUtc >= sinceUtc
+            && snapshot.Players >= popularPeakPlayerThreshold);
     }
 }

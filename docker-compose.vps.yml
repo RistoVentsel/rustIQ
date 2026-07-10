@@ -42,6 +42,23 @@ services:
       BattleMetricsSummaryRefresh__BatchSize: 25
       BattleMetricsSummaryRefresh__RefreshIntervalSeconds: 120
       BattleMetricsSummaryRefresh__StaleAfterSeconds: 300
+      BattleMetricsSummaryRefresh__WorkerTickSeconds: 15
+      BattleMetricsSummaryRefresh__DirectoryRefreshIntervalMinutes: 3
+      BattleMetricsSummaryRefresh__FastLaneRefreshIntervalSeconds: 45
+      BattleMetricsSummaryRefresh__NormalOnlineRefreshIntervalMinutes: 3
+      BattleMetricsSummaryRefresh__SlowOfflineRefreshIntervalMinutes: 20
+      BattleMetricsSummaryRefresh__VeryStaleOfflineRefreshIntervalMinutes: 60
+      BattleMetricsSummaryRefresh__PopularOfflineGraceMinutes: 60
+      BattleMetricsSummaryRefresh__SlowOfflineAfterMinutes: 60
+      BattleMetricsSummaryRefresh__VeryStaleOfflineAfterHours: 24
+      BattleMetricsSummaryRefresh__PopularRankThreshold: 250
+      BattleMetricsSummaryRefresh__PopularPlayerThreshold: 100
+      BattleMetricsSummaryRefresh__PopularPeakPlayerThreshold: 100
+      BattleMetricsSummaryRefresh__RecentPeakWindowMinutes: 60
+      BattleMetricsSummaryRefresh__FastLaneBatchSize: 50
+      BattleMetricsSummaryRefresh__NormalOnlineLaneBatchSize: 100
+      BattleMetricsSummaryRefresh__SlowOfflineLaneBatchSize: 100
+      BattleMetricsSummaryRefresh__VeryStaleOfflineLaneBatchSize: 100
       BattleMetricsSummaryRefresh__RefreshCurrentPlayers: "false"
       BattleMetricsSummaryRefresh__RefreshMapMetadata: "false"
       SnapshotRetention__Enabled: "true"

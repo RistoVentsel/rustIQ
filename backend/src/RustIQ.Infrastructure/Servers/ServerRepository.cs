@@ -273,6 +273,90 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Server>> GetServersForRefreshLaneAsync(
+        ServerRefreshLane refreshLane,
+        DateTimeOffset dueBeforeUtc,
+        DateTimeOffset now,
+        int take,
+        int popularRankThreshold,
+        int popularPlayerThreshold,
+        int popularPeakPlayerThreshold,
+        TimeSpan recentPeakWindow,
+        TimeSpan popularOfflineGrace,
+        TimeSpan slowOfflineAfter,
+        TimeSpan veryStaleOfflineAfter,
+        CancellationToken cancellationToken)
+    {
+        var recentPeakSinceUtc = now.Subtract(recentPeakWindow);
+        var popularOfflineGraceSinceUtc = now.Subtract(popularOfflineGrace);
+        var slowOfflineBeforeUtc = now.Subtract(slowOfflineAfter);
+        var veryStaleOfflineBeforeUtc = now.Subtract(veryStaleOfflineAfter);
+
+        var query = dbContext.Servers
+            .AsNoTracking()
+            .Where(server =>
+                server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics
+                && server.BattleMetricsServerId != null
+                && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= dueBeforeUtc));
+
+        query = refreshLane switch
+        {
+            ServerRefreshLane.Fast => query.Where(server =>
+                server.Players >= popularPlayerThreshold
+                || dbContext.ServerRankings.Any(ranking =>
+                    ranking.ServerId == server.Id && ranking.Rank <= popularRankThreshold)
+                || dbContext.ServerSnapshots.Any(snapshot =>
+                    snapshot.ServerId == server.Id
+                    && snapshot.CheckedAtUtc >= recentPeakSinceUtc
+                    && snapshot.Players >= popularPeakPlayerThreshold)
+                || (server.Status != ServerStatus.Online
+                    && server.LastSeenAtUtc != null
+                    && server.LastSeenAtUtc >= popularOfflineGraceSinceUtc
+                    && (dbContext.ServerRankings.Any(ranking =>
+                            ranking.ServerId == server.Id && ranking.Rank <= popularRankThreshold)
+                        || dbContext.ServerSnapshots.Any(snapshot =>
+                            snapshot.ServerId == server.Id
+                            && snapshot.CheckedAtUtc >= popularOfflineGraceSinceUtc
+                            && snapshot.Players >= popularPeakPlayerThreshold)))),
+            ServerRefreshLane.NormalOnline => query.Where(server =>
+                server.Status == ServerStatus.Online
+                && server.Players < popularPlayerThreshold
+                && !dbContext.ServerRankings.Any(ranking =>
+                    ranking.ServerId == server.Id && ranking.Rank <= popularRankThreshold)
+                && !dbContext.ServerSnapshots.Any(snapshot =>
+                    snapshot.ServerId == server.Id
+                    && snapshot.CheckedAtUtc >= recentPeakSinceUtc
+                    && snapshot.Players >= popularPeakPlayerThreshold)),
+            ServerRefreshLane.SlowOffline => query.Where(server =>
+                server.Status != ServerStatus.Online
+                && server.LastSeenAtUtc != null
+                && server.LastSeenAtUtc < slowOfflineBeforeUtc
+                && server.LastSeenAtUtc >= veryStaleOfflineBeforeUtc
+                && !dbContext.ServerRankings.Any(ranking =>
+                    ranking.ServerId == server.Id && ranking.Rank <= popularRankThreshold)
+                && !dbContext.ServerSnapshots.Any(snapshot =>
+                    snapshot.ServerId == server.Id
+                    && snapshot.CheckedAtUtc >= recentPeakSinceUtc
+                    && snapshot.Players >= popularPeakPlayerThreshold)),
+            ServerRefreshLane.VeryStaleOffline => query.Where(server =>
+                server.Status != ServerStatus.Online
+                && (server.LastSeenAtUtc == null || server.LastSeenAtUtc < veryStaleOfflineBeforeUtc)
+                && !dbContext.ServerRankings.Any(ranking =>
+                    ranking.ServerId == server.Id && ranking.Rank <= popularRankThreshold)
+                && !dbContext.ServerSnapshots.Any(snapshot =>
+                    snapshot.ServerId == server.Id
+                    && snapshot.CheckedAtUtc >= recentPeakSinceUtc
+                    && snapshot.Players >= popularPeakPlayerThreshold)),
+            _ => query.Where(_ => false)
+        };
+
+        return await query
+            .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+            .ThenByDescending(server => server.Players)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(
         Guid serverId,
         DateTimeOffset? from,
