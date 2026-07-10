@@ -16,11 +16,6 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         CancellationToken cancellationToken)
     {
         return ApplyServerFilters(dbContext.Servers.AsNoTracking(), search, status, serverTypes, wipeFilter, now)
-            .GroupBy(server => new
-            {
-                Host = server.Host.Trim().ToLower(),
-                server.QueryPort
-            })
             .CountAsync(cancellationToken);
     }
 
@@ -63,22 +58,8 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             wipeFilter,
             now);
 
-        var preferredServerIds = filteredServers
-            .GroupBy(server => new
-            {
-                Host = server.Host.Trim().ToLower(),
-                server.QueryPort
-            })
-            .Select(group => group
-                .OrderByDescending(server => server.BattleMetricsServerId != null)
-                .ThenByDescending(server => server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics)
-                .ThenByDescending(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
-                .ThenBy(server => server.Id)
-                .Select(server => server.Id)
-                .First());
-
         return await ApplyServerSort(
-                dbContext.Servers.AsNoTracking().Where(server => preferredServerIds.Contains(server.Id)),
+                filteredServers,
                 sortBy,
                 sortDescending)
             .Skip(skip)

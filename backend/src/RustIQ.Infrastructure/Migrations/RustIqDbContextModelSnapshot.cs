@@ -140,6 +140,18 @@ namespace RustIQ.Infrastructure.Migrations
                     b.HasIndex("BattleMetricsServerId")
                         .IsUnique();
 
+                    b.HasIndex("Country");
+
+                    b.HasIndex("LastWipeAtUtc");
+
+                    b.HasIndex("NextWipeAtUtc");
+
+                    b.HasIndex("Players");
+
+                    b.HasIndex("ServerType");
+
+                    b.HasIndex("Status");
+
                     b.HasIndex("Host", "QueryPort")
                         .IsUnique();
 

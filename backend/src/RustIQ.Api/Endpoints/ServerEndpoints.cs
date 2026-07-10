@@ -7,7 +7,7 @@ namespace RustIQ.Api.Endpoints;
 
 public static class ServerEndpoints
 {
-    private static readonly TimeSpan ServerListCacheDuration = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ServerListCacheDuration = TimeSpan.FromMinutes(1);
 
     public static IEndpointRouteBuilder MapServerEndpoints(this IEndpointRouteBuilder endpoints)
     {

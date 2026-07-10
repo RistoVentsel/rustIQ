@@ -91,6 +91,18 @@ public sealed class RustIqDbContext(DbContextOptions<RustIqDbContext> options)
             entity.HasIndex(server => server.BattleMetricsServerId)
                 .IsUnique();
 
+            entity.HasIndex(server => server.Players);
+
+            entity.HasIndex(server => server.Status);
+
+            entity.HasIndex(server => server.ServerType);
+
+            entity.HasIndex(server => server.LastWipeAtUtc);
+
+            entity.HasIndex(server => server.NextWipeAtUtc);
+
+            entity.HasIndex(server => server.Country);
+
             entity.HasMany(server => server.Snapshots)
                 .WithOne(snapshot => snapshot.Server)
                 .HasForeignKey(snapshot => snapshot.ServerId)

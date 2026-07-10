@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Fragment, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import {
   ApiError,
+  type GetServersParams,
   getServers,
   rustServerType,
   serverStatus,
@@ -32,6 +33,12 @@ const wipeFilterOptions: Array<{ value: WipeFilter, label: string }> = [
   { value: 'wiped24h', label: 'Wiped in 24h' },
   { value: 'hasWipeData', label: 'Has wipe data' },
 ]
+const serverListStaleTimeMs = 2 * 60 * 1000
+const serverListCacheTimeMs = 10 * 60 * 1000
+
+function getServersQueryKey(params: GetServersParams) {
+  return ['servers', params] as const
+}
 
 function getPageFromSearchParams(searchParams: URLSearchParams) {
   const pageParam = Number(searchParams.get('page'))
@@ -40,6 +47,7 @@ function getPageFromSearchParams(searchParams: URLSearchParams) {
 }
 
 export function ServersPage() {
+  const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const [searchInput, setSearchInput] = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
@@ -67,22 +75,34 @@ export function ServersPage() {
     }
   }, [statusFilter])
 
-  const serverQueryParams = {
+  const serverQueryBaseParams = useMemo(() => ({
     search: appliedSearch || undefined,
     status: statusValue,
     serverTypes: serverTypeFilters,
-    page,
     pageSize,
     sortBy,
     sortDirection,
     wipeFilter: wipeFilter === 'all' ? undefined : wipeFilter,
-  }
-  const serversQueryKey = ['servers', serverQueryParams] as const
+  }), [
+    appliedSearch,
+    pageSize,
+    serverTypeFilters,
+    sortBy,
+    sortDirection,
+    statusValue,
+    wipeFilter,
+  ])
+  const serverQueryParams = useMemo(() => ({
+    ...serverQueryBaseParams,
+    page,
+  }), [page, serverQueryBaseParams])
+  const serversQueryKey = getServersQueryKey(serverQueryParams)
   const serversQuery = useQuery({
     queryKey: serversQueryKey,
     queryFn: ({ signal }) => getServers(signal, serverQueryParams),
-    staleTime: 0,
-    refetchOnMount: 'always',
+    staleTime: serverListStaleTimeMs,
+    gcTime: serverListCacheTimeMs,
+    placeholderData: keepPreviousData,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
@@ -97,7 +117,8 @@ export function ServersPage() {
   const totalPages = serversPageData ? Math.max(1, Math.ceil(totalItems / serversPageData.pageSize)) : 1
   const hasServersData = Boolean(serversPageData)
   const isLoadingServers = serversQuery.isFetching && !hasServersData
-  const isRefreshingServers = serversQuery.isFetching && hasServersData
+  const isLoadingServerPage = serversQuery.isFetching && serversQuery.isPlaceholderData
+  const isRefreshingServers = serversQuery.isFetching && hasServersData && !serversQuery.isPlaceholderData
   const shouldShowServerData = hasServersData
   const isRefreshButtonDisabled = serversQuery.isFetching
   const serverListErrorDetail =
@@ -112,6 +133,29 @@ export function ServersPage() {
       setPageState(pageFromSearchParams)
     }
   }, [page, searchParams])
+
+  useEffect(() => {
+    if (!hasServersData || totalPages <= 1) {
+      return
+    }
+
+    const pagesToPrefetch = [page - 1, page + 1]
+      .filter((pageNumber) => pageNumber >= 1 && pageNumber <= totalPages)
+
+    for (const pageNumber of pagesToPrefetch) {
+      const params = {
+        ...serverQueryBaseParams,
+        page: pageNumber,
+      }
+
+      void queryClient.prefetchQuery({
+        queryKey: getServersQueryKey(params),
+        queryFn: ({ signal }) => getServers(signal, params),
+        staleTime: serverListStaleTimeMs,
+        gcTime: serverListCacheTimeMs,
+      })
+    }
+  }, [hasServersData, page, queryClient, serverQueryBaseParams, totalPages])
 
   function setPage(nextPageOrUpdater: number | ((currentPage: number) => number)) {
     const nextPage = typeof nextPageOrUpdater === 'function'
@@ -335,6 +379,13 @@ export function ServersPage() {
           />
         ) : null}
 
+        {isLoadingServerPage ? (
+          <StateNotice
+            title={`Loading page ${page}`}
+            description="Fetching servers for the selected page."
+          />
+        ) : null}
+
         {isRefreshingServers ? (
           <StateNotice
             title="Refreshing cached servers"
@@ -362,7 +413,7 @@ export function ServersPage() {
             return (
               <div className="server-list-summary">
                 <span>{pageData.totalItems} servers</span>
-                <span>Page {pageData.page} of {totalPages}</span>
+                <span>Page {page} of {totalPages}</span>
                 <span>Showing {visibleServers.length} of {pageData.pageSize}</span>
               </div>
             )
@@ -431,7 +482,7 @@ export function ServersPage() {
           </div>
         ) : null}
 
-        {shouldShowServerData && visibleServers.length === 0 ? (
+        {shouldShowServerData && visibleServers.length === 0 && !isLoadingServerPage ? (
           <StateNotice
             title={showFavoritesOnly && servers.length > 0 ? 'No favorite servers on this page' : 'No servers available'}
             description={
@@ -450,7 +501,7 @@ export function ServersPage() {
               type="button"
               className="button-link button-link--secondary"
               onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page === 1 || serversQuery.isFetching}
+              disabled={page === 1}
             >
               Previous
             </button>
@@ -470,7 +521,7 @@ export function ServersPage() {
                           : 'server-list-pagination__page'
                       }
                       onClick={() => setPage(pageNumber)}
-                      disabled={pageNumber === page || serversQuery.isFetching}
+                      disabled={pageNumber === page}
                       aria-current={pageNumber === page ? 'page' : undefined}
                     >
                       {pageNumber}
@@ -483,7 +534,7 @@ export function ServersPage() {
               type="button"
               className="button-link button-link--secondary"
               onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages || serversQuery.isFetching}
+              disabled={page >= totalPages}
             >
               Next
             </button>
