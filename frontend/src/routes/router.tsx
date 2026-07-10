@@ -1,7 +1,13 @@
 import { createBrowserRouter } from 'react-router-dom'
 
 import { AppShell } from '../app/AppShell'
-import { MinigamesPage } from '../pages/MinigamesPage'
+import {
+  GuessServerMinigamePage,
+  GuessItemMinigamePage,
+  HigherLowerMinigamePage,
+  MinigamesPage,
+  RecipeGuessMinigamePage,
+} from '../pages/MinigamesPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { RustKnowledgePage } from '../pages/RustKnowledgePage'
 import { RustKnowledgeTopicPage } from '../pages/RustKnowledgeTopicPage'
@@ -24,6 +30,22 @@ export const router = createBrowserRouter([
       {
         path: 'minigames',
         element: <MinigamesPage />,
+      },
+      {
+        path: 'minigames/guess-the-server',
+        element: <GuessServerMinigamePage />,
+      },
+      {
+        path: 'minigames/higher-lower',
+        element: <HigherLowerMinigamePage />,
+      },
+      {
+        path: 'minigames/guess-the-item',
+        element: <GuessItemMinigamePage />,
+      },
+      {
+        path: 'minigames/recipe-guess',
+        element: <RecipeGuessMinigamePage />,
       },
       {
         path: 'rust-knowledge',

@@ -50,6 +50,7 @@ public sealed class BattleMetricsPlayerCountClient(IHttpClientFactory httpClient
         }
 
         var status = GetString(attributes, "status");
+        var checkedAtUtc = DateTimeOffset.UtcNow;
         return new BattleMetricsPlayerCountResult(
             battleMetricsServerId,
             GetInt(attributes, "players") ?? 0,
@@ -60,9 +61,9 @@ public sealed class BattleMetricsPlayerCountClient(IHttpClientFactory httpClient
             GetString(attributes, "country"),
             GetLatitude(attributes),
             GetLongitude(attributes),
-            GetDateTimeOffset(attributes, "details", "rust_last_wipe"),
-            GetDateTimeOffset(attributes, "details", "rust_next_wipe"),
-            DateTimeOffset.UtcNow);
+            BattleMetricsRustWipeParser.GetLastWipeAtUtc(attributes, checkedAtUtc),
+            BattleMetricsRustWipeParser.GetNextWipeAtUtc(attributes, checkedAtUtc),
+            checkedAtUtc);
     }
 
     private static bool TryFindServer(
@@ -218,28 +219,6 @@ public sealed class BattleMetricsPlayerCountClient(IHttpClientFactory httpClient
         var text = coordinate.ValueKind == JsonValueKind.String ? coordinate.GetString() : coordinate.ToString();
 
         return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : null;
-    }
-
-    private static DateTimeOffset? GetDateTimeOffset(
-        JsonElement element,
-        string objectPropertyName,
-        string propertyName)
-    {
-        if (element.ValueKind != JsonValueKind.Object
-            || !element.TryGetProperty(objectPropertyName, out var nestedElement))
-        {
-            return null;
-        }
-
-        var text = GetString(nestedElement, propertyName);
-
-        return DateTimeOffset.TryParse(
-            text,
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-            out var parsed)
             ? parsed
             : null;
     }

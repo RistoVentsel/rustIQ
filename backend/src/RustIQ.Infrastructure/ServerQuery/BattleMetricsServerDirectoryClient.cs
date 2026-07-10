@@ -85,8 +85,8 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
                     GetString(attributes, "country"),
                     GetLatitude(attributes),
                     GetLongitude(attributes),
-                    GetDateTimeOffset(attributes, "details", "rust_last_wipe"),
-                    GetDateTimeOffset(attributes, "details", "rust_next_wipe"),
+                    BattleMetricsRustWipeParser.GetLastWipeAtUtc(attributes, checkedAtUtc),
+                    BattleMetricsRustWipeParser.GetNextWipeAtUtc(attributes, checkedAtUtc),
                     GetInt(attributes, "players") ?? 0,
                     GetInt(attributes, "maxPlayers") ?? 0,
                     GetInt(attributes, "details", "rust_queued_players"),
@@ -221,28 +221,6 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
         var text = coordinate.ValueKind == JsonValueKind.String ? coordinate.GetString() : coordinate.ToString();
 
         return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : null;
-    }
-
-    private static DateTimeOffset? GetDateTimeOffset(
-        JsonElement element,
-        string objectPropertyName,
-        string propertyName)
-    {
-        if (element.ValueKind != JsonValueKind.Object
-            || !element.TryGetProperty(objectPropertyName, out var nestedElement))
-        {
-            return null;
-        }
-
-        var text = GetString(nestedElement, propertyName);
-
-        return DateTimeOffset.TryParse(
-            text,
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-            out var parsed)
             ? parsed
             : null;
     }

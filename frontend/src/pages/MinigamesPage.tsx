@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { ApiError, getServers, type ServerListItem } from '../api'
 import { SectionCard } from '../components/SectionCard'
@@ -70,6 +71,7 @@ const gameCards = [
     image: '/rust-minigame-guess-server.png',
     emote: '/rust-minigame-emote-mystery.png',
     meta: 'Top 250 pool',
+    path: '/minigames/guess-the-server',
   },
   {
     title: 'Higher / Lower',
@@ -78,6 +80,7 @@ const gameCards = [
     image: '/rust-minigame-higher-lower.png',
     emote: '/rust-minigame-emote-streak.png',
     meta: 'Population reads',
+    path: '/minigames/higher-lower',
   },
   {
     title: 'Guess the Item',
@@ -86,6 +89,7 @@ const gameCards = [
     image: '/rust-minigame-guess-item.png',
     emote: '/rust-minigame-emote-hint.png',
     meta: 'Item logic',
+    path: '/minigames/guess-the-item',
   },
   {
     title: 'Recipe Guess',
@@ -94,6 +98,7 @@ const gameCards = [
     image: '/rust-minigame-recipe-guess.png',
     emote: '/rust-minigame-emote-correct.png',
     meta: 'Craft clues',
+    path: '/minigames/recipe-guess',
   },
 ] as const
 
@@ -113,6 +118,119 @@ const higherLowerMetrics: Array<{ value: HigherLowerMetric, label: string, detai
 ]
 
 export function MinigamesPage() {
+  return (
+    <div className="page-stack minigames-page">
+      <MinigamesPageHeader />
+      <MinigameCardGrid />
+    </div>
+  )
+}
+
+export function GuessServerMinigamePage() {
+  return <MinigameExperience activeGame="guess" />
+}
+
+export function HigherLowerMinigamePage() {
+  return <MinigameExperience activeGame="higherLower" />
+}
+
+export function GuessItemMinigamePage() {
+  return <ComingSoonMinigamePage gameTitle="Guess the Item" />
+}
+
+export function RecipeGuessMinigamePage() {
+  return <ComingSoonMinigamePage gameTitle="Recipe Guess" />
+}
+
+function MinigamesPageHeader() {
+  return (
+    <div className="page-copy">
+      <p className="page-eyebrow">Minigames</p>
+      <h2 className="page-heading">Daily RustIQ challenges</h2>
+      <p className="page-text">
+        Server knowledge, wipe timing, and Rust trivia in a daily format.
+      </p>
+    </div>
+  )
+}
+
+function MinigameCardGrid() {
+  return (
+    <section className="minigame-options" aria-label="Minigame options">
+      {gameCards.map((game) => {
+        const cardContent = (
+          <>
+            <div className="minigame-option__media" aria-hidden="true">
+              <img src={game.image} alt="" />
+              <span className="minigame-option__icon">
+                <img src={game.emote} alt="" />
+              </span>
+            </div>
+            <div className="minigame-option__content">
+              <div>
+                <span className="minigame-option__status">{game.status}</span>
+                <h3>{game.title}</h3>
+              </div>
+              <p>{game.description}</p>
+              <span className="minigame-option__meta">{game.meta}</span>
+            </div>
+          </>
+        )
+        const className = game.status === 'Playable'
+          ? 'minigame-option minigame-option--active'
+          : 'minigame-option'
+
+        return (
+          <Link
+            key={game.title}
+            to={game.path}
+            className={className}
+          >
+            {cardContent}
+          </Link>
+        )
+      })}
+    </section>
+  )
+}
+
+function ComingSoonMinigamePage({
+  gameTitle,
+}: {
+  gameTitle: string
+}) {
+  const game = gameCards.find((item) => item.title === gameTitle)
+
+  if (!game) {
+    return null
+  }
+
+  return (
+    <div className="page-stack minigames-page">
+      <Link to="/minigames" className="knowledge-back-link">Back to minigames</Link>
+      <section className="minigame-coming-soon">
+        <div className="minigame-coming-soon__media" aria-hidden="true">
+          <img src={game.image} alt="" />
+          <span>
+            <img src={game.emote} alt="" />
+          </span>
+        </div>
+        <div className="minigame-coming-soon__copy">
+          <p className="page-eyebrow">Minigame</p>
+          <h2 className="page-heading">{game.title}</h2>
+          <p className="page-text">{game.description}</p>
+          <span className="minigame-option__status">{game.status}</span>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function MinigameExperience({
+  activeGame,
+}: {
+  activeGame: 'guess' | 'higherLower'
+}) {
   const nowMs = useNow()
   const [difficulty, setDifficulty] = useState<GuessDifficulty>('easy')
   const [guessInput, setGuessInput] = useState('')
@@ -385,42 +503,13 @@ export function MinigamesPage() {
 
   return (
     <div className="page-stack minigames-page">
-      <div className="page-copy">
-        <p className="page-eyebrow">Minigames</p>
-        <h2 className="page-heading">Daily RustIQ challenges</h2>
-        <p className="page-text">
-          Server knowledge, wipe timing, and Rust trivia in a daily format.
-        </p>
-      </div>
+      <Link to="/minigames" className="knowledge-back-link">Back to minigames</Link>
 
-      <section className="minigame-options" aria-label="Minigame options">
-        {gameCards.map((game) => (
-          <article
-            key={game.title}
-            className={game.status === 'Playable' ? 'minigame-option minigame-option--active' : 'minigame-option'}
-          >
-            <div className="minigame-option__media" aria-hidden="true">
-              <img src={game.image} alt="" />
-              <span className="minigame-option__icon">
-                <img src={game.emote} alt="" />
-              </span>
-            </div>
-            <div className="minigame-option__content">
-              <div>
-                <span className="minigame-option__status">{game.status}</span>
-                <h3>{game.title}</h3>
-              </div>
-              <p>{game.description}</p>
-              <span className="minigame-option__meta">{game.meta}</span>
-            </div>
-          </article>
-        ))}
-      </section>
-
-      <SectionCard
-        title="Guess the Server"
-        description="The answer is selected from the RustIQ Top 50, Top 100, or Top 250. Each difficulty has its own 24 hour cooldown."
-      >
+      {activeGame === 'guess' ? (
+        <SectionCard
+          title="Guess the Server"
+          description="The answer is selected from the RustIQ Top 50, Top 100, or Top 250. Each difficulty has its own 24 hour cooldown."
+        >
         <div className="difficulty-selector" aria-label="Guess the Server difficulty">
           {difficulties.map((item) => (
             (() => {
@@ -605,12 +694,14 @@ export function MinigamesPage() {
             </div>
           </div>
         ) : null}
-      </SectionCard>
+        </SectionCard>
+      ) : null}
 
-      <SectionCard
-        title="Higher / Lower"
-        description="Pick whether the challenger is higher or lower than the anchor server. Reach a streak of 10 before one wrong answer."
-      >
+      {activeGame === 'higherLower' ? (
+        <SectionCard
+          title="Higher / Lower"
+          description="Pick whether the challenger is higher or lower than the anchor server. Reach a streak of 10 before one wrong answer."
+        >
         <div className="higher-lower-modes" aria-label="Higher Lower metric">
           {higherLowerMetrics.map((item) => {
             const status = higherLowerMetricStatuses[item.value]
@@ -713,17 +804,25 @@ export function MinigamesPage() {
               <div className="higher-lower-actions" aria-label="Choose challenger comparison">
                 <button
                   type="button"
-                  className="button-link"
+                  className="higher-lower-choice higher-lower-choice--higher"
                   onClick={() => submitHigherLowerChoice('higher')}
                 >
-                  Higher
+                  <span className="higher-lower-choice__arrow" aria-hidden="true">↑</span>
+                  <span>
+                    <strong>Higher</strong>
+                    <small>Challenger is above the anchor</small>
+                  </span>
                 </button>
                 <button
                   type="button"
-                  className="button-link button-link--secondary"
+                  className="higher-lower-choice higher-lower-choice--lower"
                   onClick={() => submitHigherLowerChoice('lower')}
                 >
-                  Lower
+                  <span className="higher-lower-choice__arrow" aria-hidden="true">↓</span>
+                  <span>
+                    <strong>Lower</strong>
+                    <small>Challenger is below the anchor</small>
+                  </span>
                 </button>
               </div>
             )}
@@ -743,7 +842,8 @@ export function MinigamesPage() {
             </div>
           </div>
         ) : null}
-      </SectionCard>
+        </SectionCard>
+      ) : null}
     </div>
   )
 }
