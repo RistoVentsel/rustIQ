@@ -33,7 +33,7 @@ const wipeFilterOptions: Array<{ value: WipeFilter, label: string }> = [
   { value: 'wiped24h', label: 'Wiped in 24h' },
   { value: 'hasWipeData', label: 'Has wipe data' },
 ]
-const serverListStaleTimeMs = 2 * 60 * 1000
+const serverListStaleTimeMs = 60 * 1000
 const serverListCacheTimeMs = 10 * 60 * 1000
 
 function getServersQueryKey(params: GetServersParams) {
