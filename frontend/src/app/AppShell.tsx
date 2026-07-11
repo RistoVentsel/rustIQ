@@ -93,6 +93,13 @@ export function AppShell() {
       <main className={isServerRoute ? 'app-main app-main--wide' : 'app-main'}>
         <Outlet />
       </main>
+
+      <footer className="app-footer">
+        <p>
+          Sponsor inquiries:{' '}
+          <a href="mailto:greyezel@gmail.com">greyezel@gmail.com</a>
+        </p>
+      </footer>
     </div>
   )
 }
