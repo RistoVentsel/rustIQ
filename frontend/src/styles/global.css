@@ -398,6 +398,18 @@ select {
   gap: 24px;
 }
 
+.server-detail-page {
+  width: 111.111%;
+  zoom: 0.9;
+}
+
+@supports not (zoom: 1) {
+  .server-detail-page {
+    transform: scale(0.9);
+    transform-origin: top left;
+  }
+}
+
 .page-copy {
   display: grid;
   gap: 10px;

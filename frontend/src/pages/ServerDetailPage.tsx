@@ -160,7 +160,7 @@ export function ServerDetailPage() {
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack server-detail-page">
       <div className="page-copy">
         <p className="page-eyebrow">Server Detail</p>
         <h2 className="page-heading">Server details</h2>
