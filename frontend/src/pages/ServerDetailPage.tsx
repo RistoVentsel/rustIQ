@@ -7,7 +7,8 @@ import { SectionCard } from '../components/SectionCard'
 import { StateNotice } from '../components/StateNotice'
 import { ServerLayoutPreview } from '../features/servers/ServerLayoutPreview'
 import {
-  formatAddress,
+  formatClientConnectCommand,
+  formatConnectAddress,
   formatCountry,
   formatServerLocation,
   formatPlayerCount,
@@ -76,6 +77,8 @@ function formatPlayerDuration(durationSeconds: number) {
   return `${minutes}m`
 }
 
+type CopiedServerDetailField = 'address' | 'connect'
+
 function ServerDetailLocation({
   server,
 }: {
@@ -104,7 +107,7 @@ export function ServerDetailPage() {
   const navigate = useNavigate()
   const liveStatus = useServerLiveUpdates(serverId)
   const nowMs = useNow()
-  const [copiedAddress, setCopiedAddress] = useState(false)
+  const [copiedServerDetailField, setCopiedServerDetailField] = useState<CopiedServerDetailField | null>(null)
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
     enabled: Boolean(serverId),
@@ -133,15 +136,18 @@ export function ServerDetailPage() {
   const lastSeenSecondsAgo = serverQuery.data?.lastSeenAtUtc
     ? getSecondsAgo(serverQuery.data.lastSeenAtUtc, nowMs)
     : null
-  const serverAddress = serverQuery.data ? formatAddress(serverQuery.data) : ''
+  const serverConnectAddress = serverQuery.data ? formatConnectAddress(serverQuery.data) : ''
+  const serverConnectCommand = serverQuery.data ? formatClientConnectCommand(serverQuery.data) : ''
   const serverTypeLabel = serverQuery.data
     ? getRustServerTypeLabel(serverQuery.data.serverType)
     : 'Unknown'
 
-  async function copyAddressToClipboard(address: string) {
-    await navigator.clipboard.writeText(address)
-    setCopiedAddress(true)
-    window.setTimeout(() => setCopiedAddress(false), 1600)
+  async function copyServerDetailText(text: string, field: CopiedServerDetailField) {
+    await navigator.clipboard.writeText(text)
+    setCopiedServerDetailField(field)
+    window.setTimeout(() => {
+      setCopiedServerDetailField((currentField) => currentField === field ? null : currentField)
+    }, 1600)
   }
 
   function navigateBackToServerList() {
@@ -256,18 +262,34 @@ export function ServerDetailPage() {
 
             <dl className="server-detail-meta">
               <div className="server-detail-meta__item">
-                <dt>IP address</dt>
+                <dt>Connection address</dt>
                 <dd className="server-detail-address">
-                  <span>{serverAddress}</span>
+                  <span>{serverConnectAddress}</span>
                   <button
                     type="button"
                     className="copy-button"
                     onClick={() => {
-                      void copyAddressToClipboard(serverAddress)
+                      void copyServerDetailText(serverConnectAddress, 'address')
                     }}
-                    aria-label={`Copy IP address ${serverAddress}`}
+                    aria-label={`Copy connection address ${serverConnectAddress}`}
                   >
-                    {copiedAddress ? 'Copied' : 'Copy'}
+                    {copiedServerDetailField === 'address' ? 'Copied' : 'Copy'}
+                  </button>
+                </dd>
+              </div>
+              <div className="server-detail-meta__item">
+                <dt>Rust console</dt>
+                <dd className="server-detail-address">
+                  <code className="server-detail-command">{serverConnectCommand}</code>
+                  <button
+                    type="button"
+                    className="copy-button"
+                    onClick={() => {
+                      void copyServerDetailText(serverConnectCommand, 'connect')
+                    }}
+                    aria-label={`Copy Rust console command ${serverConnectCommand}`}
+                  >
+                    {copiedServerDetailField === 'connect' ? 'Copied' : 'Copy'}
                   </button>
                 </dd>
               </div>

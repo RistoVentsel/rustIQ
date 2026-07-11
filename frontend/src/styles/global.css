@@ -2492,10 +2492,22 @@ select {
 .server-detail-address {
   justify-content: space-between;
   width: 100%;
+  flex-wrap: wrap;
 }
 
-.server-detail-address span {
+.server-detail-address span,
+.server-detail-command {
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.server-detail-command {
+  color: var(--text);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+  font-size: 0.94rem;
+  line-height: 1.45;
 }
 
 .copy-button {

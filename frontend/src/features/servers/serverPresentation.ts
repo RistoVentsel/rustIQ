@@ -7,12 +7,35 @@ import {
   type ServerStatus,
 } from '../../api'
 
+type ServerQueryEndpoint = Pick<ServerListItem | ServerDetails, 'host' | 'queryPort'>
+type ServerConnectEndpoint = Pick<
+  ServerListItem | ServerDetails,
+  'address' | 'host' | 'gamePort' | 'queryPort'
+>
+
 export function getServerDisplayName(server: Pick<ServerListItem, 'name' | 'host' | 'queryPort'>) {
   return server.name ?? `${server.host}:${server.queryPort}`
 }
 
-export function formatAddress(server: Pick<ServerListItem, 'host' | 'queryPort'>) {
+export function formatAddress(server: ServerQueryEndpoint) {
   return `${server.host}:${server.queryPort}`
+}
+
+export function formatConnectAddress(server: ServerConnectEndpoint) {
+  if (server.gamePort !== null && server.gamePort !== undefined) {
+    return `${server.host}:${server.gamePort}`
+  }
+
+  const address = server.address?.trim()
+  if (address) {
+    return address
+  }
+
+  return formatAddress(server)
+}
+
+export function formatClientConnectCommand(server: ServerConnectEndpoint) {
+  return `client.connect ${formatConnectAddress(server)}`
 }
 
 export function formatCountry(country: string | null | undefined) {
