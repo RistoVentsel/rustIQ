@@ -24,7 +24,7 @@ export function RustKnowledgePage() {
           <p className="page-eyebrow">Rust Knowledge</p>
           <h2 className="page-heading">Field notes for better wipe decisions</h2>
           <p className="page-text">
-            Visual RustIQ guides for progression routes, plant genetics, base systems, keybinds, and the latest patch notes.
+            Visual RustIQ guides for tips and tricks, progression routes, plant genetics, base systems, keybinds, and the latest patch notes.
           </p>
           <div className="knowledge-hero-panel__stats" aria-label="Knowledge guide stats">
             <span>{knowledgeGuides.length} guides</span>
@@ -80,7 +80,7 @@ export function RustKnowledgePage() {
             <span>1</span>
             <div>
               <h3>Pick the decision you are making</h3>
-              <p>Planning progression, farming plants, setting keybinds, checking base systems, or reading the latest patch notes.</p>
+              <p>Learning quick survival habits, planning progression, farming plants, setting keybinds, checking base systems, or reading the latest patch notes.</p>
             </div>
           </article>
           <article>

@@ -129,6 +129,7 @@ export function MinigamesPage() {
   return (
     <div className="page-stack minigames-page">
       <MinigamesPageHeader />
+      <MinigameTodayPanel />
       <MinigameCardGrid />
     </div>
   )
@@ -159,6 +160,32 @@ function MinigamesPageHeader() {
         Server knowledge, wipe timing, and Rust trivia in a daily format.
       </p>
     </div>
+  )
+}
+
+function MinigameTodayPanel() {
+  return (
+    <section className="minigame-today" aria-label="Today's minigame lineup">
+      <div className="minigame-today__hero">
+        <img src="/rust-minigame-guess-server.png" alt="" />
+        <div className="minigame-today__overlay">
+          <span className="minigame-option__status">Playable now</span>
+          <h3>Start with the daily server puzzle</h3>
+          <p>
+            Work from a live ranked server pool, use comparison clues, and keep
+            guessing until the server clicks.
+          </p>
+          <div className="minigame-today__actions">
+            <Link to="/minigames/guess-the-server" className="button-link">
+              Play Guess the Server
+            </Link>
+            <Link to="/minigames/higher-lower" className="button-link button-link--secondary">
+              Play Higher / Lower
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 

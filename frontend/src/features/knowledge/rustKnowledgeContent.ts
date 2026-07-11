@@ -252,6 +252,107 @@ export const knowledgeGuides: KnowledgeGuide[] = [
     ],
   },
   {
+    id: 'rust-tips-tricks',
+    label: 'Tips & tricks',
+    title: 'Rust Tips & Tricks',
+    summary: 'Micro-tips that save kits, expose doorcampers, clean up visibility, and make looting faster.',
+    description: 'A focused list of practical Rust tricks: doorcamper comfort checks, watergun flame denial, loot discipline, lean combat settings, and hover-loot control.',
+    readTime: '4 min read',
+    rustIqAngle: 'Turn small player habits and settings into a checklist that reduces avoidable deaths and wasted loot time.',
+    image: '/rust-knowledge-tips-tricks.png',
+    visualLabel: 'Field Tricks',
+    visualStat: '7 practical tips',
+    keyTakeaways: [
+      'Use comfort, water, and settings as small information advantages.',
+      'Loot high-value items first and leave before the third party arrives.',
+      'Hover loot and low-visual-noise settings matter because seconds matter.',
+    ],
+    sections: [
+      {
+        title: 'Base and raid micro-tricks',
+        intro: 'Small deployables and DLC tools can create real information or denial value.',
+        items: [
+          {
+            title: 'Put a campfire near your exit.',
+            detail: 'A lit Camp Fire near the door can act like a cheap doorcamper check. If you are alone and comfort rises above 50, another player may be close to the exit.',
+            sourceLabel: 'Camp Fire',
+            sourceUrl: 'https://wiki.facepunch.com/rust/item/campfire',
+          },
+          {
+            title: 'Try a watergun against fire raids.',
+            detail: 'If someone is flamethrowing, satcheling, or propane bombing a wooden wall or door, keep a Water Pistol or Water Gun inside and try spraying the flames or fuse from your side.',
+            sourceLabel: 'Water Pistol',
+            sourceUrl: 'https://wiki.facepunch.com/rust/item/pistol.water',
+          },
+        ],
+      },
+      {
+        title: 'Loot discipline',
+        intro: 'The trick is not looting more; it is leaving with the right value.',
+        items: [
+          {
+            title: 'Take the best items and leave.',
+            detail: 'When you kill someone loaded, grab the best kit pieces, weapons, meds, explosives, sulfur, scrap, or rare components first and move. Getting some value out beats dying while sorting every slot.',
+            sourceLabel: 'Scrap value',
+            sourceUrl: 'https://wiki.facepunch.com/rust/item/scrap',
+          },
+          {
+            title: 'Learn value before you need it.',
+            detail: 'Know the priority order before the fight ends: guns and ammo, meds, explosives and raid mats, sulfur, scrap, tech trash, keycards, and compact high-tier components. Do not evaluate every item while exposed.',
+            sourceLabel: 'Tech Trash',
+            sourceUrl: 'https://wiki.facepunch.com/rust/item/techparts',
+          },
+        ],
+      },
+      {
+        title: 'Options that remove noise',
+        intro: 'These settings are about making fights readable and looting faster.',
+        items: [
+          {
+            title: 'Set FOV to 90.',
+            detail: 'Use 90 FOV for more peripheral information. The extra overview is useful when moving through doors, checking flanks, or tracking multiple players.',
+            sourceLabel: 'Settings commands',
+            sourceUrl: 'https://steamcommunity.com/sharedfiles/filedetails/?id=3180714936',
+          },
+          {
+            title: 'Disable Head Bob and Hurt Flash.',
+            detail: 'Turn off Head Bob to remove camera wobble, especially when damaged. Turn off Hurt Flash so damage feedback does not cover the fight with extra screen noise.',
+            sourceLabel: 'Settings commands',
+            sourceUrl: 'https://steamcommunity.com/sharedfiles/filedetails/?id=3180714936',
+          },
+          {
+            title: 'Cut clutter: Max Gibs 0, Creation Effects off, RGB off.',
+            detail: 'If you do not want extra debris and effects while upgrading or fighting around builds, set Max Gibs to 0, disable Creation Effects, and turn RGB lighting off. Censorship is preference.',
+            sourceLabel: 'Settings commands',
+            sourceUrl: 'https://steamcommunity.com/sharedfiles/filedetails/?id=3180714936',
+          },
+        ],
+      },
+      {
+        title: 'Controls',
+        intro: 'One control bind changes how quickly you clear bodies and boxes.',
+        items: [
+          {
+            title: 'Bind Hover Loot somewhere easy.',
+            detail: 'Hover Loot lets you hold the assigned key and drag across item slots to loot faster. Put it on an easy key, not something awkward, because it is one of the highest-impact control settings.',
+            sourceLabel: 'Keybinds',
+            sourceUrl: 'https://wiki.facepunch.com/rust/Keybinds',
+          },
+        ],
+      },
+    ],
+    sources: [
+      { label: 'Camp Fire', url: 'https://wiki.facepunch.com/rust/item/campfire' },
+      { label: 'Campfire comfort tip', url: 'https://www.corrosionhour.com/rust-items/camp-fire/' },
+      { label: 'Water Pistol', url: 'https://wiki.facepunch.com/rust/item/pistol.water' },
+      { label: 'Watergun extinguish tip', url: 'https://wiki.rustclash.com/item/water-gun' },
+      { label: 'Scrap', url: 'https://wiki.facepunch.com/rust/item/scrap' },
+      { label: 'Tech Trash', url: 'https://wiki.facepunch.com/rust/item/techparts' },
+      { label: 'Settings commands', url: 'https://steamcommunity.com/sharedfiles/filedetails/?id=3180714936' },
+      { label: 'Keybinds', url: 'https://wiki.facepunch.com/rust/Keybinds' },
+    ],
+  },
+  {
     id: 'farming-plant-genetics',
     label: 'Farming',
     title: 'Plant Genetics & Crossbreeding',
