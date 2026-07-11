@@ -39,6 +39,7 @@ export function AppShell() {
       ? location.pathname === '/' || location.pathname.startsWith('/servers')
       : location.pathname === to || location.pathname.startsWith(`${to}/`)
   )
+  const isServerRoute = location.pathname === '/' || location.pathname.startsWith('/servers')
 
   return (
     <div className="app-shell">
@@ -89,7 +90,7 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className={location.pathname === '/' ? 'app-main app-main--wide' : 'app-main'}>
+      <main className={isServerRoute ? 'app-main app-main--wide' : 'app-main'}>
         <Outlet />
       </main>
     </div>
