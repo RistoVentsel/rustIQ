@@ -183,7 +183,7 @@ select {
 }
 
 .app-main--wide {
-  width: min(1260px, calc(100% - 48px));
+  width: min(1120px, calc(100% - 48px));
 }
 
 .app-header__inner {
@@ -483,9 +483,9 @@ select {
 .server-list-table__header,
 .server-list-card {
   display: grid;
-  grid-template-columns: 40px 52px minmax(220px, 1fr) minmax(84px, 0.3fr) minmax(96px, 0.28fr) minmax(74px, 0.24fr) minmax(96px, 0.3fr) minmax(96px, 0.3fr) 108px;
-  column-gap: 12px;
-  row-gap: 10px;
+  grid-template-columns: 34px 46px minmax(190px, 1fr) minmax(76px, 0.28fr) minmax(86px, 0.26fr) minmax(66px, 0.22fr) minmax(84px, 0.28fr) minmax(84px, 0.28fr) 88px;
+  column-gap: 10px;
+  row-gap: 8px;
   align-items: center;
   min-width: 0;
 }
@@ -496,9 +496,9 @@ select {
 }
 
 .server-list-table__header {
-  padding: 4px 8px 12px;
+  padding: 4px 6px 10px;
   color: var(--accent-strong);
-  font-size: 0.86rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
@@ -528,8 +528,8 @@ select {
 }
 
 .server-list-card {
-  min-height: 68px;
-  padding: 12px 10px;
+  min-height: 58px;
+  padding: 9px 8px;
   border: 1px solid var(--soft-row-border);
   border-radius: 0;
   background: var(--row-bg);
@@ -547,14 +547,14 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  min-height: 30px;
+  width: 30px;
+  min-height: 28px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 1.12rem;
+  font-size: 1rem;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -581,7 +581,7 @@ select {
 
 .server-list-card__identity {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -592,7 +592,7 @@ select {
 .server-list-card__name {
   margin: 0;
   color: var(--server-name);
-  font-size: 0.92rem;
+  font-size: 0.84rem;
   font-weight: 500;
   overflow-wrap: anywhere;
 }
@@ -600,17 +600,17 @@ select {
 .server-list-card__address {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 0.74rem;
   overflow-wrap: anywhere;
 }
 
 .server-list-card__address span {
-  margin-left: 8px;
+  margin-left: 6px;
 }
 
 .server-list-card__cell {
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -625,14 +625,14 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 48px;
-  min-height: 28px;
-  padding: 0 8px;
+  min-width: 40px;
+  min-height: 24px;
+  padding: 0 7px;
   border: 1px solid rgba(245, 158, 11, 0.42);
   border-radius: 999px;
   background: rgba(245, 158, 11, 0.12);
   color: #fbbf24;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 800;
 }
 
@@ -2148,11 +2148,11 @@ select {
 .server-location {
   position: relative;
   display: inline-flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  min-width: 98px;
-  min-height: 36px;
-  padding: 5px 28px 5px 7px;
+  min-width: 82px;
+  min-height: 30px;
+  padding: 4px 22px 4px 6px;
   border: 1px solid var(--location-border);
   border-radius: 999px;
   background:
@@ -2165,9 +2165,9 @@ select {
 .server-location::before {
   content: '';
   position: absolute;
-  inset: 5px auto auto 7px;
-  width: 22px;
-  height: 22px;
+  inset: 5px auto auto 6px;
+  width: 19px;
+  height: 19px;
   border-radius: 999px;
   background: var(--focus-bg);
   filter: blur(4px);
@@ -2178,9 +2178,9 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 30px;
-  min-height: 24px;
-  padding: 0 7px;
+  min-width: 26px;
+  min-height: 22px;
+  padding: 0 6px;
   border-radius: 999px;
   background: var(--location-initial-bg);
   color: var(--location-initial-text);
@@ -2191,8 +2191,8 @@ select {
 
 .server-location__flag {
   position: relative;
-  width: 28px;
-  height: 20px;
+  width: 24px;
+  height: 17px;
   border-radius: 4px;
   box-shadow: 0 0 0 1px var(--border);
   object-fit: cover;
@@ -2205,8 +2205,8 @@ select {
 
 .server-location__pulse {
   position: absolute;
-  right: 8px;
-  top: 8px;
+  right: 7px;
+  top: 7px;
   width: 6px;
   height: 6px;
   border-radius: 999px;
