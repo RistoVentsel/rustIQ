@@ -1,12 +1,22 @@
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 
+import { getLatestPatchNotes, type PatchNote } from '../api'
 import { SectionCard } from '../components/SectionCard'
-import { knowledgeGuides } from '../features/knowledge/rustKnowledgeContent'
+import { formatPatchNoteDate, latestPatchNotesQueryKey } from '../features/knowledge/patchNotesPresentation'
+import { knowledgeGuides, patchNotesGuideId } from '../features/knowledge/rustKnowledgeContent'
 
 const featuredGuide = knowledgeGuides.find((guide) => guide.featured) ?? knowledgeGuides[0]
 const regularGuides = knowledgeGuides.filter((guide) => guide.id !== featuredGuide.id)
 
 export function RustKnowledgePage() {
+  const patchNotesQuery = useQuery({
+    queryKey: latestPatchNotesQueryKey,
+    queryFn: ({ signal }) => getLatestPatchNotes(signal),
+    staleTime: 15 * 60 * 1000,
+  })
+  const patchNotes = patchNotesQuery.data ?? []
+
   return (
     <div className="page-stack knowledge-page">
       <section className="knowledge-hero-panel">
@@ -14,7 +24,7 @@ export function RustKnowledgePage() {
           <p className="page-eyebrow">Rust Knowledge</p>
           <h2 className="page-heading">Field notes for better wipe decisions</h2>
           <p className="page-text">
-            Visual RustIQ guides for server choice, progression routes, plant genetics, base systems, patch changes, and server ops.
+            Visual RustIQ guides for progression routes, plant genetics, base systems, keybinds, and the latest patch notes.
           </p>
           <div className="knowledge-hero-panel__stats" aria-label="Knowledge guide stats">
             <span>{knowledgeGuides.length} guides</span>
@@ -38,15 +48,11 @@ export function RustKnowledgePage() {
           className="knowledge-home-card knowledge-home-card--featured"
         >
           <GuideCardMedia guide={featuredGuide} />
-          <div className="knowledge-home-card__content">
-            <span className="knowledge-home-card__label">{featuredGuide.label}</span>
-            <h3>{featuredGuide.title}</h3>
-            <p>{featuredGuide.summary}</p>
-            <div className="knowledge-home-card__meta">
-              <span>{featuredGuide.readTime}</span>
-              <span>{featuredGuide.keyTakeaways.length} key ideas</span>
-            </div>
-          </div>
+          <GuideCardContent
+            guide={featuredGuide}
+            isPatchNotesLoading={patchNotesQuery.isLoading}
+            patchNotes={patchNotes}
+          />
         </Link>
 
         {regularGuides.map((guide) => (
@@ -56,15 +62,11 @@ export function RustKnowledgePage() {
             className="knowledge-home-card"
           >
             <GuideCardMedia guide={guide} />
-            <div className="knowledge-home-card__content">
-              <span className="knowledge-home-card__label">{guide.label}</span>
-              <h3>{guide.title}</h3>
-              <p>{guide.summary}</p>
-              <div className="knowledge-home-card__meta">
-                <span>{guide.readTime}</span>
-                <span>{guide.sections.length || 1} sections</span>
-              </div>
-            </div>
+            <GuideCardContent
+              guide={guide}
+              isPatchNotesLoading={patchNotesQuery.isLoading}
+              patchNotes={patchNotes}
+            />
           </Link>
         ))}
       </section>
@@ -78,7 +80,7 @@ export function RustKnowledgePage() {
             <span>1</span>
             <div>
               <h3>Pick the decision you are making</h3>
-              <p>Joining a server, planning progression, farming plants, choosing a route, or checking a patch change.</p>
+              <p>Planning progression, farming plants, setting keybinds, checking base systems, or reading the latest patch notes.</p>
             </div>
           </article>
           <article>
@@ -98,6 +100,67 @@ export function RustKnowledgePage() {
         </div>
       </SectionCard>
     </div>
+  )
+}
+
+function GuideCardContent({
+  guide,
+  isPatchNotesLoading,
+  patchNotes,
+}: {
+  guide: typeof knowledgeGuides[number]
+  isPatchNotesLoading: boolean
+  patchNotes: PatchNote[]
+}) {
+  const isPatchNotesGuide = guide.id === patchNotesGuideId
+
+  return (
+    <div className="knowledge-home-card__content">
+      <span className="knowledge-home-card__label">{guide.label}</span>
+      <h3>{guide.title}</h3>
+      {isPatchNotesGuide ? (
+        <PatchNoteCardPreview
+          isLoading={isPatchNotesLoading}
+          patchNotes={patchNotes}
+          summary={guide.summary}
+        />
+      ) : (
+        <p>{guide.summary}</p>
+      )}
+      <div className="knowledge-home-card__meta">
+        <span>{guide.readTime}</span>
+        <span>{isPatchNotesGuide ? 'Official feed' : `${guide.sections.length || 1} sections`}</span>
+      </div>
+    </div>
+  )
+}
+
+function PatchNoteCardPreview({
+  isLoading,
+  patchNotes,
+  summary,
+}: {
+  isLoading: boolean
+  patchNotes: PatchNote[]
+  summary: string
+}) {
+  if (isLoading) {
+    return <p>Loading latest patch notes.</p>
+  }
+
+  if (patchNotes.length === 0) {
+    return <p>{summary}</p>
+  }
+
+  return (
+    <ol className="knowledge-patch-preview" aria-label="Latest Rust patch notes">
+      {patchNotes.slice(0, 3).map((patchNote) => (
+        <li key={patchNote.url}>
+          <span>{formatPatchNoteDate(patchNote.publishedAtUtc)}</span>
+          <strong>{patchNote.title}</strong>
+        </li>
+      ))}
+    </ol>
   )
 }
 

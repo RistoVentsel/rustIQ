@@ -1,6 +1,8 @@
+import type { ReactNode } from 'react'
+
 type StateNoticeProps = {
   title: string
-  description?: string
+  description?: ReactNode
   detail?: string
   tone?: 'info' | 'success' | 'warning' | 'error'
 }

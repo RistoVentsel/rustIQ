@@ -38,6 +38,8 @@ export type KnowledgeGuide = {
   sources: KnowledgeSource[]
 }
 
+export const patchNotesGuideId = 'latest-patch-notes'
+
 export type PlantGene = {
   gene: string
   name: string
@@ -277,66 +279,6 @@ export const knowledgeGuides: KnowledgeGuide[] = [
     ],
   },
   {
-    id: 'wipe-timing-server-fit',
-    label: 'Server choice',
-    title: 'Wipe Timing & Server Fit',
-    summary: 'How wipe schedules, tags, and game modes change what a server feels like before you join.',
-    description: 'A server with the wrong wipe timing can waste a whole session. Read the wipe schedule, tags, and mode first so you know whether you are joining a fresh race, a settled economy, or last-day chaos.',
-    readTime: '4 min read',
-    rustIqAngle: 'Score servers by wipe age, advertised schedule, tags, and whether the next 24 hours will become endgame chaos.',
-    image: '/rust-knowledge-wipe-timing.png',
-    visualLabel: 'Server Read',
-    visualStat: 'Wipe rhythm',
-    keyTakeaways: [
-      'The Missile Silo timer points at wipe timing and endgame event timing.',
-      'Monthly, weekly, and biweekly tags imply different default rhythms.',
-      'Hardcore removes several information and safety systems.',
-    ],
-    sections: [
-      {
-        title: 'Wipe signals',
-        intro: 'Wipe information is more than a date. It predicts population spikes, progression pressure, and risk.',
-        items: [
-          {
-            title: 'The Missile Silo timer is not flavor text.',
-            detail: 'It counts down to the next server wipe and is also used to schedule last-day endgame events like road Bradleys.',
-            sourceLabel: 'Wipe timer',
-            sourceUrl: 'https://wiki.facepunch.com/rust/server-wipe-timer',
-          },
-          {
-            title: 'Wipe tags imply default timing.',
-            detail: 'Monthly, weekly, and biweekly timer formats default around Thursday 19:00 London time unless the server overrides them.',
-            sourceLabel: 'Wipe timer',
-            sourceUrl: 'https://wiki.facepunch.com/rust/server-wipe-timer',
-          },
-        ],
-      },
-      {
-        title: 'Server fit',
-        intro: 'Tags and game modes explain the rules you are actually buying into.',
-        items: [
-          {
-            title: 'Server tags are compressed intelligence.',
-            detail: 'The browser supports wipe schedule, difficulty, PvE, roleplay, training, tutorial, modded framework, and region tags.',
-            sourceLabel: 'Server tags',
-            sourceUrl: 'https://wiki.facepunch.com/rust/server-browser-tags',
-          },
-          {
-            title: 'Hardcore changes the information game.',
-            detail: 'Hardcore removes or limits systems like the map, compass, team system, global chat, Rust+, safe zones, and BP persistence.',
-            sourceLabel: 'Gamemodes',
-            sourceUrl: 'https://wiki.facepunch.com/rust/server-gamemodes',
-          },
-        ],
-      },
-    ],
-    sources: [
-      { label: 'Server Wipe Timer', url: 'https://wiki.facepunch.com/rust/server-wipe-timer' },
-      { label: 'Server Browser Tags', url: 'https://wiki.facepunch.com/rust/server-browser-tags' },
-      { label: 'Server Gamemodes', url: 'https://wiki.facepunch.com/rust/server-gamemodes' },
-    ],
-  },
-  {
     id: 'progression-monuments',
     label: 'Progression',
     title: 'Fragments, Workbenches & Monument Pressure',
@@ -396,65 +338,6 @@ export const knowledgeGuides: KnowledgeGuide[] = [
     ],
   },
   {
-    id: 'map-resource-loops',
-    label: 'Map sense',
-    title: 'Topology, Travel & Quiet Resource Loops',
-    summary: 'Read the island by terrain layers, roads, towers, ocean loot, and low-drama farming routes.',
-    description: 'The map quietly tells you where resources, travel options, and risk are likely to exist. Knowing those systems helps you build routes that do not depend on winning every monument fight.',
-    readTime: '4 min read',
-    rustIqAngle: 'Add map-intel filters for low-risk components, ocean routes, freshwater, node-heavy terrain, and fast travel.',
-    image: '/rust-knowledge-map-loops.png',
-    visualLabel: 'Route Planning',
-    visualStat: 'Low-drama loops',
-    keyTakeaways: [
-      'Topology controls practical resource expectations.',
-      'Roads and rails create steady component loops.',
-      'Ocean loot can support quieter progression.',
-    ],
-    sections: [
-      {
-        title: 'Terrain reads',
-        intro: 'Topology is the hidden layer behind a lot of resource logic.',
-        items: [
-          {
-            title: 'Topology predicts resources before you arrive.',
-            detail: 'Map layers decide things like fresh water, node spawns, animal roaming, roadside junk, lake food, and swamp sulfur pickups.',
-            sourceLabel: 'Topology',
-            sourceUrl: 'https://wiki.facepunch.com/rust/Topology',
-          },
-        ],
-      },
-      {
-        title: 'Routes',
-        intro: 'A good route is repeatable, not just lucky.',
-        items: [
-          {
-            title: 'Roads and rails are component arteries.',
-            detail: 'Ring roads and railroads branch into monuments, while road junk piles, barrels, crates, and toolboxes create steady component loops.',
-            sourceLabel: 'The Map',
-            sourceUrl: 'https://wiki.facepunch.com/rust/map',
-          },
-          {
-            title: 'Transmission towers are built-in rotations.',
-            detail: 'Transmission towers spawn in sequence and can be used as zipline travel paths across parts of the island.',
-            sourceLabel: 'The Map',
-            sourceUrl: 'https://wiki.facepunch.com/rust/map',
-          },
-          {
-            title: 'Ocean farming is more than Oil Rig.',
-            detail: 'Underwater rocks, shipwreck bottles, and flotsam can provide components away from the most obvious monument fights.',
-            sourceLabel: 'The Map',
-            sourceUrl: 'https://wiki.facepunch.com/rust/map',
-          },
-        ],
-      },
-    ],
-    sources: [
-      { label: 'Topology', url: 'https://wiki.facepunch.com/rust/Topology' },
-      { label: 'The Map', url: 'https://wiki.facepunch.com/rust/map' },
-    ],
-  },
-  {
     id: 'base-systems-automation',
     label: 'Base ops',
     title: 'Base Systems, Farming & Automation',
@@ -509,121 +392,25 @@ export const knowledgeGuides: KnowledgeGuide[] = [
     ],
   },
   {
-    id: 'patch-watch-2026',
-    label: 'Patch watch',
-    title: '2026 Systems Players May Have Missed',
-    summary: 'Recent systems that affect where players live, trade, raid, and group up.',
-    description: 'Rust changes fast. This page highlights recent systems worth knowing before judging server choice or wipe strategy.',
-    readTime: '4 min read',
-    rustIqAngle: 'Give RustIQ a current-patch lane so players can see what changed before committing to a wipe.',
+    id: patchNotesGuideId,
+    label: 'Patch notes',
+    title: 'Latest Rust Patch Notes',
+    summary: 'The three newest official Rust update posts from Facepunch.',
+    description: 'The newest official Rust patch notes, pulled from the Facepunch Rust news feed.',
+    readTime: 'Latest 3',
+    rustIqAngle: 'Keep RustIQ current by reading the newest three official Rust update posts from Facepunch.',
     image: '/rust-knowledge-patch-watch.png',
-    visualLabel: 'Patch Watch',
-    visualStat: '2026 systems',
+    visualLabel: 'Patch Notes',
+    visualStat: 'Latest 3',
     keyTakeaways: [
-      'Apartment rooms are convenient but not absolute safety.',
-      'Softcore has different gather and raid-window rules.',
-      'Clans add structure beyond normal teams.',
+      'Newest official Rust update posts stay visible here.',
+      'When a newer post is published, the oldest of the three drops out.',
+      'Each note links back to the Facepunch source.',
     ],
-    sections: [
-      {
-        title: 'Apartment economy',
-        intro: 'The Apartment Complex creates quick starts, rent pressure, and new theft angles.',
-        items: [
-          {
-            title: 'Apartments are temporary homes with rent risk.',
-            detail: 'The Apartment Complex lets players rent rooms with scrap, but unpaid rent triggers eviction and item seizure.',
-            sourceLabel: 'Common Ground',
-            sourceUrl: 'https://rust.facepunch.com/news/common-ground',
-          },
-          {
-            title: 'The master key makes apartments unsafe by design.',
-            detail: 'A master key can unlock occupied apartment rooms for five minutes, so rented storage is convenient but not absolute safety.',
-            sourceLabel: 'Common Ground',
-            sourceUrl: 'https://rust.facepunch.com/news/common-ground',
-          },
-        ],
-      },
-      {
-        title: 'Rules and groups',
-        intro: 'The same server label can now hide very different day-to-day rules.',
-        items: [
-          {
-            title: 'Softcore now has real rule differences.',
-            detail: 'Softcore gained 2x resource gather and default raid windows from 6 PM to 9 PM server local time.',
-            sourceLabel: 'Common Ground',
-            sourceUrl: 'https://rust.facepunch.com/news/common-ground',
-          },
-          {
-            title: 'Clans are more than larger teams.',
-            detail: 'The clan system adds roles, permissions, clan chat, announcements, map visibility for nearby members, and Clan Tables.',
-            sourceLabel: 'Common Ground',
-            sourceUrl: 'https://rust.facepunch.com/news/common-ground',
-          },
-        ],
-      },
-    ],
+    sections: [],
     sources: [
-      { label: 'Common Ground', url: 'https://rust.facepunch.com/news/common-ground' },
-    ],
-  },
-  {
-    id: 'console-server-ops',
-    label: 'Power user',
-    title: 'Console, Admin & Server-Ops Clues',
-    summary: 'Server-side facts that explain wipes, save files, browser trust, and useful console behavior.',
-    description: 'These notes are useful for admins, curious players, and RustIQ diagnostics. They explain why server data can be stale, wrong, or intentionally structured.',
-    readTime: '4 min read',
-    rustIqAngle: 'Use these as source notes for future admin-facing RustIQ diagnostics and server trust signals.',
-    image: '/rust-knowledge-server-ops.png',
-    visualLabel: 'Server Ops',
-    visualStat: 'Trust signals',
-    keyTakeaways: [
-      'The F1 console can search command names and descriptions.',
-      'Blueprint and save state live in separate server files.',
-      'Browser location spoofing became harder in 2026.',
-    ],
-    sections: [
-      {
-        title: 'Console and files',
-        intro: 'Knowing where state lives helps explain wipe behavior.',
-        items: [
-          {
-            title: 'The F1 console can search itself.',
-            detail: 'The find command searches commands, variables, and descriptions, which is faster than memorizing exact convar names.',
-            sourceLabel: 'Commands',
-            sourceUrl: 'https://wiki.facepunch.com/rust/useful_commands',
-          },
-          {
-            title: 'Blueprints and map state are separate server files.',
-            detail: 'player.blueprints stores learned blueprints, while save files hold map data, buildings, deployables, and other entities.',
-            sourceLabel: 'Server files',
-            sourceUrl: 'https://wiki.facepunch.com/rust/Getting-Started_w-Server',
-          },
-          {
-            title: 'Forced wipes advance protocol expectations.',
-            detail: 'The wiki warns against renaming old save files to bypass forced wipe behavior because protocol versioning changes.',
-            sourceLabel: 'Server files',
-            sourceUrl: 'https://wiki.facepunch.com/rust/Getting-Started_w-Server',
-          },
-        ],
-      },
-      {
-        title: 'Browser trust',
-        intro: 'Server browser data is part of server choice, so spoof resistance matters.',
-        items: [
-          {
-            title: 'Server browser location spoofing got harder.',
-            detail: 'The May 2026 browser update estimates server country and coordinates from IP data so nearby sorting is harder to fake.',
-            sourceLabel: 'Browser update',
-            sourceUrl: 'https://rust.facepunch.com/news/upgrade-hard-raid-harder',
-          },
-        ],
-      },
-    ],
-    sources: [
-      { label: 'Useful Console Commands', url: 'https://wiki.facepunch.com/rust/useful_commands' },
-      { label: 'Getting started with your Rust server', url: 'https://wiki.facepunch.com/rust/Getting-Started_w-Server' },
-      { label: 'Upgrade hard, raid harder', url: 'https://rust.facepunch.com/news/upgrade-hard-raid-harder' },
+      { label: 'Facepunch Rust News', url: 'https://rust.facepunch.com/news' },
+      { label: 'Facepunch Rust News RSS', url: 'https://rust.facepunch.com/rss/news' },
     ],
   },
 ]

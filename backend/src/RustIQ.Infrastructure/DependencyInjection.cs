@@ -2,12 +2,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using RustIQ.Application.News;
 using RustIQ.Application.Maps;
 using RustIQ.Application.Realtime;
 using RustIQ.Application.ServerQuery;
 using RustIQ.Application.Servers;
 using RustIQ.Infrastructure.Data;
 using RustIQ.Infrastructure.Maps;
+using RustIQ.Infrastructure.News;
 using RustIQ.Infrastructure.ServerQuery;
 using RustIQ.Infrastructure.Servers;
 
@@ -63,6 +65,12 @@ public static class DependencyInjection
         services.AddHttpClient<IRustServerMapMetadataClient, BattleMetricsRustServerMapMetadataClient>(client =>
         {
             client.BaseAddress = new Uri("https://api.battlemetrics.com/");
+        });
+        services.AddHttpClient<IRustPatchNoteClient, FacepunchRustPatchNoteClient>(client =>
+        {
+            client.BaseAddress = new Uri("https://rust.facepunch.com/");
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/rss+xml");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("RustIQ/1.0");
         });
 
         return services;

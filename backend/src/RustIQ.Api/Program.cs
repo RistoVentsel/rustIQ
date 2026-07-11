@@ -161,6 +161,7 @@ app.UseCors(DevCorsPolicy);
 app.UseRateLimiter();
 
 app.MapServerEndpoints();
+app.MapPatchNoteEndpoints();
 app.MapHub<ServerUpdatesHub>("/hubs/servers");
 
 app.Run();

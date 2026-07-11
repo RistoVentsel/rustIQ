@@ -1,4 +1,5 @@
 export { ApiError } from './http'
+export { getLatestPatchNotes } from './patchNotes'
 export {
   getServerById,
   getServerMap,
@@ -17,6 +18,7 @@ export type {
   CurrentPlayer,
   CurrentPlayersResponse,
   PagedResult,
+  PatchNote,
   RustServerType,
   ServerStatus,
   ServerDetails,

@@ -73,6 +73,14 @@ export type CurrentPlayersResponse = {
   players: CurrentPlayer[]
 }
 
+export type PatchNote = {
+  title: string
+  summary: string
+  url: string
+  imageUrl: string | null
+  publishedAtUtc: string
+}
+
 export type ServerListItem = {
   id: string
   battleMetricsServerId: number | null

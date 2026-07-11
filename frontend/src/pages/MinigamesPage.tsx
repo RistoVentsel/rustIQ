@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { ApiError, getServers, type ServerListItem } from '../api'
@@ -63,6 +63,13 @@ type HigherLowerRoundResult = {
   rightValue: number
 }
 
+type HigherLowerRoundReveal = {
+  left: ServerListItem
+  right: ServerListItem
+  result: HigherLowerRoundResult
+  nextState: StoredHigherLowerState
+}
+
 const gameCards = [
   {
     title: 'Guess the Server',
@@ -111,6 +118,7 @@ const difficulties: Array<{ value: GuessDifficulty, label: string, poolSize: num
 const progressiveHintCount = 4
 const cooldownMs = 24 * 60 * 60 * 1000
 const higherLowerWinStreak = 10
+const higherLowerRevealDelayMs = 1600
 const higherLowerMetrics: Array<{ value: HigherLowerMetric, label: string, detail: string }> = [
   { value: 'averagePlayers', label: 'Average pop', detail: 'Ranked average players' },
   { value: 'currentPlayers', label: 'Live players', detail: 'Current online count' },
@@ -242,6 +250,8 @@ function MinigameExperience({
     normalizeStoredGuessState(readStoredGuessState('easy'), getDailyDateKey(), nowMs, 'easy'))
   const [higherLowerState, setHigherLowerState] = useState<StoredHigherLowerState>(() =>
     normalizeStoredHigherLowerState(readStoredHigherLowerState('averagePlayers'), getDailyDateKey(), nowMs, 'averagePlayers'))
+  const [higherLowerReveal, setHigherLowerReveal] = useState<HigherLowerRoundReveal | null>(null)
+  const higherLowerRevealTimeoutRef = useRef<number | null>(null)
 
   const rankedServersQuery = useQuery({
     queryKey: ['minigames', 'ranked-servers'],
@@ -324,11 +334,37 @@ function MinigameExperience({
     ),
     [higherLowerPool, higherLowerMetric, higherLowerState],
   )
+  const higherLowerIsRevealing = Boolean(higherLowerReveal)
   const higherLowerIsCooldownActive = Boolean(
     higherLowerState.nextAvailableAtUtc && Date.parse(higherLowerState.nextAvailableAtUtc) > nowMs,
   )
   const higherLowerIsClosed = higherLowerIsCooldownActive || Boolean(higherLowerState.completedAtUtc)
+  const higherLowerHistoryPair = useMemo(() => {
+    const latestRound = higherLowerState.history[0]
+
+    if (!latestRound) {
+      return null
+    }
+
+    const left = higherLowerPool.find((server) => server.id === latestRound.leftId)
+    const right = higherLowerPool.find((server) => server.id === latestRound.rightId)
+
+    return left && right ? { left, right } : null
+  }, [higherLowerPool, higherLowerState.history])
+  const higherLowerDisplayPair = higherLowerReveal
+    ? { left: higherLowerReveal.left, right: higherLowerReveal.right }
+    : higherLowerIsClosed && higherLowerHistoryPair
+      ? higherLowerHistoryPair
+      : higherLowerPair
+  const higherLowerVisibleStreak = higherLowerReveal ? higherLowerReveal.nextState.streak : higherLowerState.streak
+  const higherLowerVisibleBestStreak = higherLowerReveal ? higherLowerReveal.nextState.bestStreak : higherLowerState.bestStreak
   const selectedHigherLowerMetric = higherLowerMetrics.find((item) => item.value === higherLowerMetric) ?? higherLowerMetrics[0]
+  const higherLowerRevealTone = higherLowerReveal
+    ? higherLowerReveal.result.correct ? 'correct' : 'wrong'
+    : null
+  const higherLowerRevealDescription = higherLowerReveal
+    ? getHigherLowerRevealDescription(higherLowerReveal.result, higherLowerReveal.left, higherLowerReveal.right)
+    : ''
   const answerDisplayName = answer ? getServerDisplayName(answer) : 'Unknown'
   const rankedServersErrorDetail =
     rankedServersQuery.error instanceof ApiError
@@ -345,6 +381,13 @@ function MinigameExperience({
     window.localStorage.setItem(getHigherLowerStorageKey(higherLowerMetric), JSON.stringify(nextState))
   }, [higherLowerMetric])
 
+  const clearHigherLowerRevealTimer = useCallback(() => {
+    if (higherLowerRevealTimeoutRef.current !== null) {
+      window.clearTimeout(higherLowerRevealTimeoutRef.current)
+      higherLowerRevealTimeoutRef.current = null
+    }
+  }, [])
+
   useEffect(() => {
     const nextState = normalizeStoredGuessState(readStoredGuessState(difficulty), dailyDateKey, Date.now(), difficulty)
     setStoredState(nextState)
@@ -355,9 +398,15 @@ function MinigameExperience({
   }, [difficulty, dailyDateKey])
 
   useEffect(() => {
+    clearHigherLowerRevealTimer()
+    setHigherLowerReveal(null)
     const nextState = normalizeStoredHigherLowerState(readStoredHigherLowerState(higherLowerMetric), dailyDateKey, Date.now(), higherLowerMetric)
     setHigherLowerState(nextState)
-  }, [higherLowerMetric, dailyDateKey])
+  }, [clearHigherLowerRevealTimer, higherLowerMetric, dailyDateKey])
+
+  useEffect(() => () => {
+    clearHigherLowerRevealTimer()
+  }, [clearHigherLowerRevealTimer])
 
   useEffect(() => {
     const nextAvailableMs = storedState.nextAvailableAtUtc ? Date.parse(storedState.nextAvailableAtUtc) : null
@@ -456,7 +505,7 @@ function MinigameExperience({
   }
 
   function submitHigherLowerChoice(choice: HigherLowerChoice) {
-    if (!higherLowerPair || higherLowerIsClosed) {
+    if (!higherLowerPair || higherLowerIsClosed || higherLowerIsRevealing) {
       return
     }
 
@@ -486,19 +535,33 @@ function MinigameExperience({
     const completedAtUtc = !isCorrect || nextStreak >= higherLowerWinStreak
       ? new Date().toISOString()
       : undefined
-
-    updateHigherLowerState({
+    const nextState = {
       ...higherLowerState,
       dateKey: dailyDateKey,
       puzzleKey: getHigherLowerPuzzleKey(higherLowerState, higherLowerMetric),
-      roundIndex: higherLowerState.roundIndex + 1,
+      roundIndex: completedAtUtc ? higherLowerState.roundIndex : higherLowerState.roundIndex + 1,
       streak: nextStreak,
       bestStreak: nextBestStreak,
       history: nextHistory,
       solved: isCorrect && nextStreak >= higherLowerWinStreak,
       completedAtUtc,
       nextAvailableAtUtc: completedAtUtc ? new Date(Date.now() + cooldownMs).toISOString() : undefined,
+    }
+    const result = nextHistory[0]
+
+    setHigherLowerReveal({
+      left: higherLowerPair.left,
+      right: higherLowerPair.right,
+      result,
+      nextState,
     })
+
+    clearHigherLowerRevealTimer()
+    higherLowerRevealTimeoutRef.current = window.setTimeout(() => {
+      updateHigherLowerState(nextState)
+      setHigherLowerReveal(null)
+      higherLowerRevealTimeoutRef.current = null
+    }, higherLowerRevealDelayMs)
   }
 
   return (
@@ -608,13 +671,12 @@ function MinigameExperience({
 
             {isGameClosed ? (
               <StateNotice
-                title={storedState.solved ? 'Solved for this cooldown' : 'Cooldown active'}
+                title={storedState.solved ? 'Solved' : storedState.revealedAnswer ? 'Answer revealed' : 'Cooldown active'}
                 description={
-                  storedState.solved
-                    ? `Answer: ${answerDisplayName}. This difficulty unlocks again ${formatCooldown(storedState.nextAvailableAtUtc, nowMs)}.`
-                    : storedState.revealedAnswer
-                    ? `Revealed answer: ${answerDisplayName}. This difficulty unlocks again ${formatCooldown(storedState.nextAvailableAtUtc, nowMs)}.`
-                    : `Answer: ${answerDisplayName}. This difficulty unlocks again ${formatCooldown(storedState.nextAvailableAtUtc, nowMs)}.`
+                  <span className="guess-server-answer-notice">
+                    <span>{storedState.revealedAnswer ? 'Revealed answer' : 'Answer'}</span>
+                    <strong>{answerDisplayName}</strong>
+                  </span>
                 }
                 tone={storedState.solved ? 'success' : 'warning'}
               />
@@ -711,6 +773,7 @@ function MinigameExperience({
                 key={item.value}
                 type="button"
                 className={item.value === higherLowerMetric ? 'higher-lower-mode higher-lower-mode--active' : 'higher-lower-mode'}
+                disabled={higherLowerIsRevealing}
                 onClick={() => setHigherLowerMetric(item.value)}
               >
                 <span>{item.label}</span>
@@ -747,8 +810,8 @@ function MinigameExperience({
           />
         ) : null}
 
-        {higherLowerPair && higherLowerPool.length >= 12 ? (
-          <div className="higher-lower-game">
+        {higherLowerDisplayPair && higherLowerPool.length >= 12 ? (
+          <div className={higherLowerRevealTone ? `higher-lower-game higher-lower-game--${higherLowerRevealTone}` : 'higher-lower-game'}>
             <div className="higher-lower-header">
               <div>
                 <span className="minigame-option__status">{selectedHigherLowerMetric.label}</span>
@@ -760,18 +823,18 @@ function MinigameExperience({
               <div className="guess-server-game__stats" aria-label="Higher Lower status">
                 <div>
                   <span>Streak</span>
-                  <strong>{higherLowerState.streak}/{higherLowerWinStreak}</strong>
+                  <strong>{higherLowerVisibleStreak}/{higherLowerWinStreak}</strong>
                 </div>
                 <div>
                   <span>Best</span>
-                  <strong>{higherLowerState.bestStreak}</strong>
+                  <strong>{higherLowerVisibleBestStreak}</strong>
                 </div>
               </div>
             </div>
 
             <div className="higher-lower-board">
               <HigherLowerServerCard
-                server={higherLowerPair.left}
+                server={higherLowerDisplayPair.left}
                 metric={higherLowerMetric}
                 label="Anchor"
                 isValueHidden={false}
@@ -783,20 +846,36 @@ function MinigameExperience({
               </div>
 
               <HigherLowerServerCard
-                server={higherLowerPair.right}
+                server={higherLowerDisplayPair.right}
                 metric={higherLowerMetric}
                 label="Challenger"
-                isValueHidden={!higherLowerIsClosed}
+                isValueHidden={!higherLowerIsClosed && !higherLowerIsRevealing}
+                resultTone={higherLowerRevealTone ?? undefined}
               />
             </div>
 
-            {higherLowerIsClosed ? (
+            {higherLowerReveal ? (
+              <div
+                className={`higher-lower-feedback higher-lower-feedback--${higherLowerRevealTone}`}
+                role="status"
+                aria-live="polite"
+              >
+                <img
+                  src={higherLowerReveal.result.correct ? '/rust-minigame-emote-correct.png' : '/rust-minigame-emote-wrong.png'}
+                  alt=""
+                />
+                <div>
+                  <strong>{higherLowerReveal.result.correct ? 'Correct' : 'Incorrect'}</strong>
+                  <span>{higherLowerRevealDescription}</span>
+                </div>
+              </div>
+            ) : higherLowerIsClosed ? (
               <StateNotice
                 title={higherLowerState.solved ? 'Streak cleared' : 'Run ended'}
                 description={
                   higherLowerState.solved
-                    ? `You cleared ${higherLowerWinStreak} in a row. This mode unlocks again ${formatCooldown(higherLowerState.nextAvailableAtUtc, nowMs)}.`
-                    : `Best streak: ${higherLowerState.bestStreak}. This mode unlocks again ${formatCooldown(higherLowerState.nextAvailableAtUtc, nowMs)}.`
+                    ? `You cleared ${higherLowerWinStreak} in a row.`
+                    : `Best streak: ${higherLowerState.bestStreak}.`
                 }
                 tone={higherLowerState.solved ? 'success' : 'warning'}
               />
@@ -853,22 +932,34 @@ function HigherLowerServerCard({
   metric,
   label,
   isValueHidden,
+  resultTone,
 }: {
   server: ServerListItem
   metric: HigherLowerMetric
   label: string
   isValueHidden: boolean
+  resultTone?: 'correct' | 'wrong'
 }) {
   const metricValue = getHigherLowerMetricValue(server, metric)
+  const cardClassName = [
+    'higher-lower-server',
+    resultTone ? `higher-lower-server--${resultTone}` : null,
+  ].filter(Boolean).join(' ')
+  const valueClassName = [
+    'higher-lower-server__value',
+    isValueHidden ? 'higher-lower-server__value--hidden' : null,
+    resultTone ? 'higher-lower-server__value--revealed' : null,
+    resultTone ? `higher-lower-server__value--${resultTone}` : null,
+  ].filter(Boolean).join(' ')
 
   return (
-    <article className="higher-lower-server">
+    <article className={cardClassName}>
       <div className="higher-lower-server__topline">
         <span>{label}</span>
         {server.popularityRank ? <strong>#{server.popularityRank}</strong> : null}
       </div>
       <h3>{getServerDisplayName(server)}</h3>
-      <div className={isValueHidden ? 'higher-lower-server__value higher-lower-server__value--hidden' : 'higher-lower-server__value'}>
+      <div className={valueClassName}>
         <span>{getHigherLowerMetricLabel(metric)}</span>
         <strong>{isValueHidden ? '???' : formatHigherLowerMetricValue(metricValue, metric)}</strong>
       </div>
@@ -912,6 +1003,14 @@ function HigherLowerHistoryRow({
   )
 }
 
+function getHigherLowerRevealDescription(
+  round: HigherLowerRoundResult,
+  left: ServerListItem,
+  right: ServerListItem,
+) {
+  return `${getServerDisplayName(right)} was ${formatHigherLowerMetricValue(round.rightValue, round.metric)}. ${getServerDisplayName(left)} was ${formatHigherLowerMetricValue(round.leftValue, round.metric)}.`
+}
+
 function GuessResultRow({
   guess,
   answer,
@@ -929,7 +1028,7 @@ function GuessResultRow({
   const clues = buildGuessClues(guess, answer, nowMs)
 
   return (
-    <article className={isCorrect ? 'guess-result guess-result--correct' : 'guess-result'}>
+    <article className={isCorrect ? 'guess-result guess-result--correct' : 'guess-result guess-result--wrong'}>
       <div className="guess-result__header">
         <span>#{attemptNumber}</span>
         <img
@@ -1377,6 +1476,9 @@ function buildGuessClues(
   nowMs: number,
 ): Record<ClueKind, GuessClue> {
   const rankComparison = compareRank(guess, answer)
+  const playersComparison = compareNumber(guess.rankedAveragePlayers, answer.rankedAveragePlayers, 'Avg pop')
+  const maxPlayersComparison = compareNumber(guess.maxPlayers, answer.maxPlayers, 'Max')
+  const wipeComparison = compareWipe(guess.lastWipeAtUtc, answer.lastWipeAtUtc, nowMs)
 
   return {
     region: {
@@ -1391,15 +1493,18 @@ function buildGuessClues(
     },
     players: {
       label: 'Players',
-      value: compareNumber(guess.rankedAveragePlayers, answer.rankedAveragePlayers, 'Avg pop'),
+      value: playersComparison,
+      tone: getTone(playersComparison, 'Avg pop: correct'),
     },
     maxPlayers: {
       label: 'Max',
-      value: compareNumber(guess.maxPlayers, answer.maxPlayers, 'Max'),
+      value: maxPlayersComparison,
+      tone: getTone(maxPlayersComparison, 'Max: correct'),
     },
     wipe: {
       label: 'Wipe',
-      value: compareWipe(guess.lastWipeAtUtc, answer.lastWipeAtUtc, nowMs),
+      value: wipeComparison,
+      tone: getTone(wipeComparison, 'Same day'),
     },
     rank: {
       label: 'Rank',

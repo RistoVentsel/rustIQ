@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 
+import { getLatestPatchNotes } from '../api'
 import { SectionCard } from '../components/SectionCard'
+import { StateNotice } from '../components/StateNotice'
+import { formatPatchNoteDate, latestPatchNotesQueryKey } from '../features/knowledge/patchNotesPresentation'
 import {
   breedingRules,
   breedingWorkflow,
@@ -9,6 +13,7 @@ import {
   idealGeneBuilds,
   keybindCommands,
   plantGenes,
+  patchNotesGuideId,
   type KnowledgeGuide,
 } from '../features/knowledge/rustKnowledgeContent'
 
@@ -39,6 +44,8 @@ export function RustKnowledgeTopicPage() {
         <KeybindGuide guide={guide} />
       ) : guide.id === 'farming-plant-genetics' ? (
         <PlantGeneticsGuide guide={guide} />
+      ) : guide.id === patchNotesGuideId ? (
+        <PatchNotesGuide guide={guide} />
       ) : (
         <StandardGuide guide={guide} />
       )}
@@ -120,6 +127,73 @@ function StandardGuide({ guide }: { guide: KnowledgeGuide }) {
           </div>
         </SectionCard>
       ))}
+
+      <GuideSources guide={guide} />
+    </>
+  )
+}
+
+function PatchNotesGuide({ guide }: { guide: KnowledgeGuide }) {
+  const patchNotesQuery = useQuery({
+    queryKey: latestPatchNotesQueryKey,
+    queryFn: ({ signal }) => getLatestPatchNotes(signal),
+    staleTime: 15 * 60 * 1000,
+  })
+  const patchNotes = patchNotesQuery.data ?? []
+
+  return (
+    <>
+      <SectionCard
+        title="Latest Patch Notes"
+        description="The newest official Rust update posts from Facepunch."
+      >
+        {patchNotesQuery.isLoading ? (
+          <StateNotice
+            title="Loading patch notes"
+            description="Reading the official Rust feed."
+          />
+        ) : null}
+
+        {patchNotesQuery.isError ? (
+          <StateNotice
+            tone="warning"
+            title="Patch notes unavailable"
+            description="The official Rust feed could not be loaded right now."
+            detail={patchNotesQuery.error instanceof Error ? patchNotesQuery.error.message : undefined}
+          />
+        ) : null}
+
+        {!patchNotesQuery.isLoading && !patchNotesQuery.isError && patchNotes.length === 0 ? (
+          <StateNotice
+            tone="warning"
+            title="No patch notes found"
+            description="The official Rust feed returned no entries."
+          />
+        ) : null}
+
+        {patchNotes.length > 0 ? (
+          <div className="patch-note-list">
+            {patchNotes.slice(0, 3).map((patchNote) => (
+              <article
+                key={patchNote.url}
+                className={patchNote.imageUrl ? 'patch-note-item' : 'patch-note-item patch-note-item--text-only'}
+              >
+                {patchNote.imageUrl ? (
+                  <img src={patchNote.imageUrl} alt="" loading="lazy" />
+                ) : null}
+                <div>
+                  <span>{formatPatchNoteDate(patchNote.publishedAtUtc)}</span>
+                  <h3>{patchNote.title}</h3>
+                  <p>{patchNote.summary}</p>
+                  <a href={patchNote.url} target="_blank" rel="noreferrer">
+                    Read patch note
+                  </a>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </SectionCard>
 
       <GuideSources guide={guide} />
     </>
