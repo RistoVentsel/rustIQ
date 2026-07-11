@@ -518,8 +518,8 @@ select {
 .server-list-table__header,
 .server-list-card {
   display: grid;
-  grid-template-columns: 34px 46px minmax(190px, 1fr) minmax(76px, 0.28fr) minmax(86px, 0.26fr) minmax(66px, 0.22fr) minmax(84px, 0.28fr) minmax(84px, 0.28fr) 88px;
-  column-gap: 10px;
+  grid-template-columns: 62px 52px minmax(190px, 1fr) minmax(76px, 0.28fr) minmax(86px, 0.26fr) minmax(66px, 0.22fr) minmax(84px, 0.28fr) minmax(84px, 0.28fr) 88px;
+  column-gap: 12px;
   row-gap: 8px;
   align-items: center;
   min-width: 0;
@@ -535,6 +535,17 @@ select {
   color: var(--accent-strong);
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.server-list-table__header > * {
+  white-space: nowrap;
+}
+
+.server-list-table__header > :nth-child(1),
+.server-list-card > :nth-child(1),
+.server-list-table__header > :nth-child(2),
+.server-list-card > :nth-child(2) {
+  justify-self: center;
 }
 
 .server-list-table__sort {
