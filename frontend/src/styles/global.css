@@ -183,7 +183,7 @@ select {
 }
 
 .app-main--wide {
-  width: min(1500px, calc(100% - 48px));
+  width: min(1260px, calc(100% - 48px));
 }
 
 .app-header__inner {
@@ -483,16 +483,16 @@ select {
 .server-list-table__header,
 .server-list-card {
   display: grid;
-  grid-template-columns: 48px 64px minmax(260px, 1fr) minmax(96px, 0.34fr) minmax(118px, 0.32fr) minmax(88px, 0.28fr) minmax(112px, 0.34fr) minmax(112px, 0.34fr) 124px;
-  column-gap: 16px;
-  row-gap: 12px;
+  grid-template-columns: 40px 52px minmax(220px, 1fr) minmax(84px, 0.3fr) minmax(96px, 0.28fr) minmax(74px, 0.24fr) minmax(96px, 0.3fr) minmax(96px, 0.3fr) 108px;
+  column-gap: 12px;
+  row-gap: 10px;
   align-items: center;
   min-width: 0;
 }
 
 .server-list-table__header > :nth-child(3),
 .server-list-card > :nth-child(3) {
-  margin-left: 10px;
+  margin-left: 4px;
 }
 
 .server-list-table__header {
@@ -524,12 +524,12 @@ select {
 }
 
 .server-list-table__sort--rank {
-  margin-left: 8px;
+  margin-left: 0;
 }
 
 .server-list-card {
-  min-height: 74px;
-  padding: 16px 10px;
+  min-height: 68px;
+  padding: 12px 10px;
   border: 1px solid var(--soft-row-border);
   border-radius: 0;
   background: var(--row-bg);
@@ -676,7 +676,8 @@ select {
 .minigame-today__hero {
   position: relative;
   overflow: hidden;
-  min-height: 230px;
+  height: clamp(300px, 34vw, 390px);
+  min-height: 0;
   border: 1px solid rgba(245, 158, 11, 0.38);
   border-radius: 8px;
   background: var(--row-bg);
@@ -684,9 +685,10 @@ select {
 }
 
 .minigame-today__hero img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  min-height: inherit;
   object-fit: cover;
   filter: saturate(0.98) contrast(1.08) brightness(0.78);
 }
