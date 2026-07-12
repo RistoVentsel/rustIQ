@@ -1,3 +1,5 @@
+import type { Language } from '../../i18n/language'
+
 export type KnowledgeSource = {
   label: string
   url: string
@@ -516,6 +518,467 @@ export const knowledgeGuides: KnowledgeGuide[] = [
   },
 ]
 
-export function getKnowledgeGuide(topicId: string | undefined) {
-  return knowledgeGuides.find((guide) => guide.id === topicId)
+const keybindCommandsRu: KeybindCommand[] = [
+  {
+    command: 'bind f1 consoletoggle;combatlog',
+    description: 'Запускает combatlog при открытии консоли.',
+  },
+  {
+    command: 'bind x forward;sprint',
+    description: 'Автобег до ручного нажатия движения вперед.',
+  },
+  {
+    command: 'bind z duck',
+    description: 'Переключает приседание до следующего ручного нажатия.',
+  },
+  {
+    command: 'bind [leftshift+f11] attack',
+    description: 'Постоянная автоатака до ручного нажатия ЛКМ.',
+  },
+  {
+    command: 'bind [rightshift+f11] attack;duck',
+    description: 'Автоатака и переключение приседания.',
+  },
+  {
+    command: 'bind mouse1 "+attack2;+input.sensitivity .45;input.sensitivity .2"',
+    description: 'Снижает чувствительность при прицеливании.',
+  },
+  {
+    command: 'bind mouse1 +lighttoggle;+attack2',
+    description: 'Включает фонарь или лазер при прицеливании.',
+  },
+  {
+    command: 'bind mousewheelup "craft.add -2072273936 2"',
+    description: 'Крафтит бинты при прокрутке вверх.',
+  },
+  {
+    command: 'bind f10 client.disconnect',
+    description: 'Отключает вас от текущего сервера.',
+  },
+  {
+    command: 'bind 7 chat.say "Hello everyone!"',
+    description: 'Отправляет сообщение в общий чат.',
+  },
+  {
+    command: 'bind 8 chat.teamsay "Hey Team!!"',
+    description: 'Отправляет сообщение в командный чат.',
+  },
+  {
+    command: 'bind h "craft.add -2072273936 1"',
+    description: 'Автоматически крафтит 1 бинт.',
+  },
+]
+
+const plantGenesRu: PlantGene[] = [
+  {
+    gene: 'G',
+    name: 'Рост',
+    tone: 'positive',
+    role: 'Ускоряет жизненный цикл растения, чтобы урожай быстрее доходил до полезных стадий.',
+    inPractice: 'Больше G означает больше продукции за реальный час. Поэтому GGGYYY популярен у активных фермеров, которые часто собирают и пересаживают.',
+    commonMistake: 'Не путайте скорость со здоровьем. Быстрое растение все равно будет плохим при слабом свете, воде, почве или температуре.',
+  },
+  {
+    gene: 'Y',
+    name: 'Урожайность',
+    tone: 'positive',
+    role: 'Увеличивает результат сбора и улучшает выход клонов при клонировании.',
+    inPractice: 'Больше Y означает меньше грядок и меньше ручной работы для того же объема. GGYYYY медленнее GGGYYY, но удобнее для масштабной фермы.',
+    commonMistake: 'Не гонитесь только за Y. Растение с большим урожаем, но слишком медленным ростом, может проиграть сбалансированному G/Y-клону за вайп.',
+  },
+  {
+    gene: 'H',
+    name: 'Выносливость',
+    tone: 'positive',
+    role: 'Повышает устойчивость к плохим условиям роста, особенно к проблемам температуры.',
+    inPractice: 'H полезен в холодных местах, временных фермах, плохом освещении или нестабильных условиях. В контролируемой комнате со 100% условиями H обычно хуже G или Y.',
+    commonMistake: 'Не считайте H обязательным геном идеального клона. Это страховка, а не производственный ген.',
+  },
+  {
+    gene: 'W',
+    name: 'Вода',
+    tone: 'negative',
+    role: 'Увеличивает расход воды.',
+    inPractice: 'W усложняет поддержание идеального диапазона воды и может перегрузить ферму, которая работала с более чистыми клонами.',
+    commonMistake: 'Один W у донора может выиграть слот, если не перебить его несколькими одинаковыми положительными генами в этом же слоте.',
+  },
+  {
+    gene: 'X',
+    name: 'Пусто',
+    tone: 'neutral',
+    role: 'Не дает бонусов к росту, урожайности или выносливости.',
+    inPractice: 'X не так болезнен, как W, но тратит один из шести слотов. Селекция в основном заменяет X и W на G или Y.',
+    commonMistake: 'Не оставляйте X только потому, что остальной клон выглядит сильным. Один пустой слот остается потерянной продукцией, пока вы его не выведете.',
+  },
+]
+
+const breedingRulesRu: PlantGuideItem[] = [
+  {
+    title: 'У каждого растения шесть фиксированных позиций генов.',
+    detail: 'Семя получает шесть генов при посадке. Клон сохраняет точную последовательность родителя. Порядок важен: G в первом слоте не исправит плохой ген в четвертом.',
+  },
+  {
+    title: 'Скрещивание происходит на стадии Crossbreeding.',
+    detail: 'Когда растение достигает этой стадии, оно проверяет соседние растения того же вида в той же грядке. В большой грядке центральный слот может получать влияние до восьми соседей.',
+  },
+  {
+    title: 'Влияют только одинаковые типы растений.',
+    detail: 'Конопля влияет на коноплю, тыква на тыкву, а цвета ягод считаются отдельно. Синяя ягода не исправит зеленую. Соседние грядки между собой не скрещиваются.',
+  },
+  {
+    title: 'Целевое растение обычно расходное.',
+    detail: 'Растение, которое вы переписываете, не должно быть ценным клоном. Поставьте расходное растение в лучший целевой слот, а хорошие клоны вокруг используйте как доноров.',
+  },
+  {
+    title: 'Каждый слот гена считается отдельно.',
+    detail: 'Для первого слота растение сравнивает первый слот доноров, для второго - второй и так далее. Два наполовину хороших клона помогут только если нужные буквы стоят в нужных позициях.',
+  },
+  {
+    title: 'Негативные гены тяжелее одиночных положительных.',
+    detail: 'Калькуляторы сообщества обычно считают зеленые гены легче, чем W или X. На практике один W может победить один G, но два одинаковых G могут его перебить.',
+  },
+  {
+    title: 'Разные положительные буквы не складываются вместе.',
+    detail: 'G и Y в одном слоте - это разные кандидаты, а не общий положительный голос. Чтобы продавить слот, нужны повторяющиеся одинаковые буквы именно в этой позиции.',
+  },
+  {
+    title: 'Тайминг защищает растения-доноры.',
+    detail: 'Дайте цели почти дойти до Crossbreeding перед посадкой доноров. Если доноры дойдут первыми, их может переписать цель или другие доноры.',
+  },
+]
+
+const breedingWorkflowRu: PlantGuideItem[] = [
+  {
+    title: 'Соберите пул семян.',
+    detail: 'Начните с большого количества семян нужной культуры. Посадите их, проверьте шесть генов и оставьте варианты с большим числом G/Y и малым числом W/X.',
+  },
+  {
+    title: 'Клонируйте перспективные растения.',
+    detail: 'Когда взаимодействие позволит, берите клоны с растений, у которых полезные гены стоят в полезных позициях. Записывайте точную последовательность слотов.',
+  },
+  {
+    title: 'Выберите целевой слот.',
+    detail: 'По возможности используйте центр большой грядки, потому что он касается большего числа соседей. Цель может быть плохой: она существует, чтобы быть переписанной.',
+  },
+  {
+    title: 'Окружите цель донорами под конкретные слоты.',
+    detail: 'Ставьте доноров так, чтобы нужные буквы повторялись в одной и той же позиции гена. Вы продавливаете шесть отдельных колонок.',
+  },
+  {
+    title: 'Проверьте скрещенную цель.',
+    detail: 'Если цель стала лучше, клонируйте ее перед новыми экспериментами. Если не получилось, уничтожьте или соберите ее и попробуйте снова.',
+  },
+  {
+    title: 'Масштабируйтесь только после стабильного клона.',
+    detail: 'Когда получили GGGYYY, GGYYYY или другой чистый производственный клон, перестаньте рисковать оригиналом. Клонируйте, дублируйте и держите запас.',
+  },
+]
+
+const idealGeneBuildsRu: PlantGuideItem[] = [
+  {
+    title: 'GGGYYY',
+    detail: 'Лучший общий производственный вариант: быстрый рост и сильная урожайность. Хорошо подходит, если вы активно собираете и пересаживаете.',
+  },
+  {
+    title: 'GGYYYY',
+    detail: 'Немного медленнее, но больше урожая и клонов. Хорошо для больших ферм, где важны трудозатраты и количество клонов.',
+  },
+  {
+    title: 'GGGGYY',
+    detail: 'Очень быстро, но урожай ниже. Полезно, когда скорость важнее результата за один сбор.',
+  },
+  {
+    title: 'Клоны с H',
+    detail: 'Полезны при плохой температуре или временных несовершенных фермах. Обычно не оптимальны в полностью контролируемой фермерской комнате.',
+  },
+]
+
+const knowledgeGuidesRu: KnowledgeGuide[] = [
+  {
+    id: 'keybinds',
+    label: 'Бинды',
+    title: 'Бинды',
+    summary: 'Готовые F1-команды для combatlog, автобега, приседания, ADS-чувствительности, чата, крафта бинтов и отключения.',
+    description: 'Чтобы выполнить эти действия, откройте консоль Rust через F1. Нажмите F1 на клавиатуре, затем вставьте команду в синее поле.',
+    readTime: '3 мин чтения',
+    rustIqAngle: 'Держите практичные команды игрока в одном готовом справочнике для быстрого старта вайпа.',
+    image: '/rust-knowledge-server-ops.png',
+    visualLabel: 'F1 консоль',
+    visualStat: `${keybindCommandsRu.length} биндов`,
+    keyTakeaways: [
+      'Откройте F1-консоль перед запуском любой bind-команды.',
+      'Каждую команду ниже можно копировать напрямую.',
+      'Некоторые бинды переключают действие, пока вы вручную не нажмете соответствующую кнопку снова.',
+    ],
+    sections: [],
+    sources: [
+      { label: 'Facepunch Useful Console Commands', url: 'https://wiki.facepunch.com/rust/useful_commands' },
+    ],
+  },
+  {
+    id: 'rust-tips-tricks',
+    label: 'Советы',
+    title: 'Советы и трюки Rust',
+    summary: 'Микро-советы, которые сохраняют киты, выявляют дверных кемперов, улучшают видимость и ускоряют лут.',
+    description: 'Короткий список практичных Rust-трюков: проверка дверного кемпера через комфорт, тушение огня водой, дисциплина лута, боевые настройки и Hover Loot.',
+    readTime: '4 мин чтения',
+    rustIqAngle: 'Превратите небольшие привычки и настройки в чеклист, который уменьшает лишние смерти и потерю времени на лут.',
+    image: '/rust-knowledge-tips-tricks.png',
+    visualLabel: 'Полевые трюки',
+    visualStat: '7 практичных советов',
+    keyTakeaways: [
+      'Используйте комфорт, воду и настройки как небольшие информационные преимущества.',
+      'Сначала забирайте самые ценные предметы и уходите до появления третьей стороны.',
+      'Hover loot и чистые визуальные настройки важны, потому что секунды решают.',
+    ],
+    sections: [
+      {
+        title: 'Микро-трюки базы и рейда',
+        intro: 'Малые размещаемые предметы и DLC-инструменты могут дать реальную информацию или защиту.',
+        items: [
+          {
+            title: 'Поставьте костер рядом с выходом.',
+            detail: 'Зажженный Camp Fire у двери может быть дешевой проверкой дверного кемпера. Если вы один, а комфорт растет выше 50, другой игрок может быть рядом с выходом.',
+            sourceLabel: 'Camp Fire',
+            sourceUrl: 'https://wiki.facepunch.com/rust/item/campfire',
+          },
+          {
+            title: 'Пробуйте водяной пистолет против огненных рейдов.',
+            detail: 'Если кто-то рейдит деревянную стену или дверь огнеметом, сачелями или пропановыми баллонами, держите Water Pistol или Water Gun внутри и пробуйте тушить пламя или фитиль со своей стороны.',
+            sourceLabel: 'Water Pistol',
+            sourceUrl: 'https://wiki.facepunch.com/rust/item/pistol.water',
+          },
+        ],
+      },
+      {
+        title: 'Дисциплина лута',
+        intro: 'Смысл не в том, чтобы лутать больше, а в том, чтобы уйти с правильной ценностью.',
+        items: [
+          {
+            title: 'Заберите лучшее и уходите.',
+            detail: 'Когда убили загруженного игрока, сначала хватайте лучшие части кита, оружие, медицину, взрывчатку, серу, скрап или редкие компоненты и двигайтесь. Получить часть ценности лучше, чем умереть, сортируя каждый слот.',
+            sourceLabel: 'Scrap value',
+            sourceUrl: 'https://wiki.facepunch.com/rust/item/scrap',
+          },
+          {
+            title: 'Выучите ценность заранее.',
+            detail: 'Знайте приоритет еще до конца боя: оружие и патроны, медицина, взрывчатка и рейдовые материалы, сера, скрап, tech trash, карточки и компактные high-tier компоненты. Не оценивайте каждый предмет на открытом месте.',
+            sourceLabel: 'Tech Trash',
+            sourceUrl: 'https://wiki.facepunch.com/rust/item/techparts',
+          },
+        ],
+      },
+      {
+        title: 'Настройки, убирающие шум',
+        intro: 'Эти настройки делают бои читабельнее и лут быстрее.',
+        items: [
+          {
+            title: 'Поставьте FOV на 90.',
+            detail: 'Используйте 90 FOV для большего бокового обзора. Это помогает проходить двери, проверять фланги и следить за несколькими игроками.',
+            sourceLabel: 'Settings commands',
+            sourceUrl: 'https://steamcommunity.com/sharedfiles/filedetails/?id=3180714936',
+          },
+          {
+            title: 'Отключите Head Bob и Hurt Flash.',
+            detail: 'Выключите Head Bob, чтобы убрать тряску камеры, особенно при уроне. Выключите Hurt Flash, чтобы эффекты урона не закрывали бой лишним шумом.',
+            sourceLabel: 'Settings commands',
+            sourceUrl: 'https://steamcommunity.com/sharedfiles/filedetails/?id=3180714936',
+          },
+          {
+            title: 'Уберите мусор: Max Gibs 0, Creation Effects off, RGB off.',
+            detail: 'Если не нужны лишние обломки и эффекты при улучшении или боях у построек, поставьте Max Gibs 0, отключите Creation Effects и RGB-подсветку. Censorship - дело вкуса.',
+            sourceLabel: 'Settings commands',
+            sourceUrl: 'https://steamcommunity.com/sharedfiles/filedetails/?id=3180714936',
+          },
+        ],
+      },
+      {
+        title: 'Управление',
+        intro: 'Один bind управления меняет скорость зачистки тел и ящиков.',
+        items: [
+          {
+            title: 'Назначьте Hover Loot на удобную клавишу.',
+            detail: 'Hover Loot позволяет удерживать назначенную клавишу и проводить по слотам предметов, чтобы лутать быстрее. Поставьте его на удобную кнопку, потому что это одна из самых важных настроек управления.',
+            sourceLabel: 'Keybinds',
+            sourceUrl: 'https://wiki.facepunch.com/rust/Keybinds',
+          },
+        ],
+      },
+    ],
+    sources: knowledgeGuides.find((guide) => guide.id === 'rust-tips-tricks')?.sources ?? [],
+  },
+  {
+    id: 'farming-plant-genetics',
+    label: 'Ферма',
+    title: 'Генетика растений и скрещивание',
+    summary: 'Понятный гайд по G, Y, H, W, X, целевым клонам и тому, как реально работает селекция по слотам.',
+    description: 'Фермерство в Rust становится проще, когда гены перестают быть загадкой. Этот гайд разбивает растения на шесть колонок, объясняет каждую букву и дает рабочий путь от случайных семян к стабильным клонам.',
+    readTime: '8 мин чтения',
+    rustIqAngle: 'Калькулятор клонов Rust помогает проверять гены, сравнивать целевые клоны и планировать лучшие скрещивания.',
+    image: '/rust-knowledge-farming.png',
+    visualLabel: 'Лаборатория клонов',
+    visualStat: '6 слотов генов',
+    featured: true,
+    keyTakeaways: [
+      'G и Y - главные производственные гены.',
+      'H - ген стабильности, полезен в основном при несовершенных условиях.',
+      'W и X - слоты, которые обычно выводят из клона.',
+      'Скрещивание решается по каждой позиции гена, а не по растению целиком.',
+    ],
+    sections: [],
+    sources: knowledgeGuides.find((guide) => guide.id === 'farming-plant-genetics')?.sources ?? [],
+  },
+  {
+    id: 'progression-monuments',
+    label: 'Прогресс',
+    title: 'Фрагменты, верстаки и давление монументов',
+    summary: 'Современный прогресс зависит не только от скрапа, но и от контроля маршрутов.',
+    description: 'Blueprint fragments изменили ценность монументов, puzzle rooms и высокоуровневых событий. Самый быстрый путь вверх по ветке технологий теперь зависит от правильного маршрута в правильное время.',
+    readTime: '5 мин чтения',
+    rustIqAngle: 'Превратите данные монументов в маршрутные карточки для соло, дуо и групп, которые идут к Tier 2 или Tier 3.',
+    image: '/rust-knowledge-progression.png',
+    visualLabel: 'Маршрут монументов',
+    visualStat: 'T2 / T3 рывок',
+    keyTakeaways: [
+      'Прогресс Workbench Level 2 и 3 связан с фрагментами.',
+      'Маршруты с green и blue puzzle могут быть эффективны в начале.',
+      'Advanced fragments идут из опасных ценных мест и через запасную конвертацию.',
+    ],
+    sections: [
+      {
+        title: 'Маршруты фрагментов',
+        intro: 'Прогресс верстаков снова выталкивает игроков в мир вместо сидения на базе со скрапом.',
+        items: [
+          {
+            title: 'Прогресс Workbench Level 2 и 3 переехал в монументы.',
+            detail: 'Level 2 требует Basic Blueprint Fragments, а Level 3 - Advanced Blueprint Fragments, что толкает игроков в puzzle- и event-маршруты.',
+            sourceLabel: 'Meta Shift',
+            sourceUrl: 'https://rust.facepunch.com/news/meta-shift',
+          },
+          {
+            title: 'Полная green plus blue puzzle-цепочка ускоряет ранний прогресс.',
+            detail: 'Basic fragments гарантированы в green puzzle rooms и blue-card puzzle paths, поэтому порядок маршрута важнее случайного лута.',
+            sourceLabel: 'Meta Shift',
+            sourceUrl: 'https://rust.facepunch.com/news/meta-shift',
+          },
+          {
+            title: 'У Advanced fragments есть запасной путь.',
+            detail: 'High-end ящики и события - прямой путь, но игроки также могут конвертировать Basic fragments в Advanced fragments.',
+            sourceLabel: 'Meta Shift',
+            sourceUrl: 'https://rust.facepunch.com/news/meta-shift',
+          },
+        ],
+      },
+      {
+        title: 'Давление монументов',
+        intro: 'Раз фрагменты важны, игра теперь системно наказывает некоторые старые схемы кемпа.',
+        items: [
+          {
+            title: 'У кемпа puzzle-зон появился системный контрмеханизм.',
+            detail: 'Keycard-монументы могут накапливать сильную радиацию вокруг puzzle-лута, поэтому слишком близкий кемп может испортить позицию.',
+            sourceLabel: 'Pivot Or Die',
+            sourceUrl: 'https://rust.facepunch.com/news/pivot-or-die',
+          },
+        ],
+      },
+    ],
+    sources: knowledgeGuides.find((guide) => guide.id === 'progression-monuments')?.sources ?? [],
+  },
+  {
+    id: 'base-systems-automation',
+    label: 'База',
+    title: 'Системы базы, ферма и автоматизация',
+    summary: 'Малые системы базы, которые решают, останется ли база полезной весь вайп.',
+    description: 'Эта страница отделяет базовые операции от генетики растений: привилегия строительства, фермерская комната, вода, ценность верстака и готовность к автоматизации.',
+    readTime: '4 мин чтения',
+    rustIqAngle: 'Создавайте чеклисты по риску upkeep, урожайности фермы, редким улучшениям верстака и готовности к автоматизации.',
+    image: '/rust-knowledge-base-ops.png',
+    visualLabel: 'Операции базы',
+    visualStat: 'Проверки upkeep',
+    keyTakeaways: [
+      'Авторизация Tool Cupboard определяет, кто может строить рядом.',
+      'Группы грядок по 3 или 6 упрощают свет и разбрызгиватели.',
+      'Улучшения верстака делают сам верстак более ценной целью.',
+    ],
+    sections: [
+      {
+        title: 'Привилегия строительства и фермерские комнаты',
+        intro: 'Система базы хороша только если тиммейты могут ей пользоваться и она остается снабженной.',
+        items: [
+          {
+            title: 'Авторизация в Tool Cupboard - обещание радиусом 50 метров.',
+            detail: 'Авторизация в шкафу дает привилегию строительства в его радиусе, и каждый тиммейт, который должен строить, тоже должен авторизоваться.',
+            sourceLabel: 'Tool Cupboard',
+            sourceUrl: 'https://wiki.facepunch.com/rust/item/cupboard.tool',
+          },
+          {
+            title: 'Эффективные фермы любят группы грядок по 3 или 6.',
+            detail: 'Механики потолочного света и разбрызгивателей делают такие раскладки проще для воды и света без лишних деталей.',
+            sourceLabel: 'Farming basics',
+            sourceUrl: 'https://wiki.facepunch.com/rust/Farming_Basics',
+          },
+        ],
+      },
+      {
+        title: 'Ценность верстака',
+        intro: 'Ваш верстак может стать больше, чем станцией крафта.',
+        items: [
+          {
+            title: 'Улучшения верстака - редкая физическая ценность.',
+            detail: 'Система улучшений 2026 добавляет некрафтовые улучшения верстаков с бонусами, из-за чего сам верстак становится целью для лута.',
+            sourceLabel: 'Workbench upgrades',
+            sourceUrl: 'https://rust.facepunch.com/news/upgrade-hard-raid-harder',
+          },
+        ],
+      },
+    ],
+    sources: knowledgeGuides.find((guide) => guide.id === 'base-systems-automation')?.sources ?? [],
+  },
+  {
+    id: patchNotesGuideId,
+    label: 'Патчи',
+    title: 'Последние патчноуты Rust',
+    summary: 'Три самых новых официальных поста обновлений Rust от Facepunch.',
+    description: 'Самые новые официальные патчноуты Rust из новостной ленты Facepunch.',
+    readTime: 'Последние 3',
+    rustIqAngle: 'Держите RustIQ актуальным через три самых новых официальных поста обновлений Rust от Facepunch.',
+    image: '/rust-knowledge-patch-watch.png',
+    visualLabel: 'Патчноуты',
+    visualStat: 'Последние 3',
+    keyTakeaways: [
+      'Самые новые официальные обновления Rust видны здесь.',
+      'Когда выходит новый пост, самый старый из трех исчезает из списка.',
+      'Каждая заметка ведет обратно на источник Facepunch.',
+    ],
+    sections: [],
+    sources: knowledgeGuides.find((guide) => guide.id === patchNotesGuideId)?.sources ?? [],
+  },
+]
+
+export function getKnowledgeGuides(language: Language = 'en') {
+  return language === 'ru' ? knowledgeGuidesRu : knowledgeGuides
+}
+
+export function getKnowledgeGuide(topicId: string | undefined, language: Language = 'en') {
+  return getKnowledgeGuides(language).find((guide) => guide.id === topicId)
+}
+
+export function getKeybindCommands(language: Language = 'en') {
+  return language === 'ru' ? keybindCommandsRu : keybindCommands
+}
+
+export function getPlantGenes(language: Language = 'en') {
+  return language === 'ru' ? plantGenesRu : plantGenes
+}
+
+export function getBreedingRules(language: Language = 'en') {
+  return language === 'ru' ? breedingRulesRu : breedingRules
+}
+
+export function getBreedingWorkflow(language: Language = 'en') {
+  return language === 'ru' ? breedingWorkflowRu : breedingWorkflow
+}
+
+export function getIdealGeneBuilds(language: Language = 'en') {
+  return language === 'ru' ? idealGeneBuildsRu : idealGeneBuilds
 }

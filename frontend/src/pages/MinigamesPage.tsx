@@ -11,7 +11,10 @@ import {
   getServerDisplayName,
 } from '../features/servers/serverPresentation'
 import { useNow } from '../hooks'
+import type { Language } from '../i18n/language'
+import { useLanguage } from '../i18n/useLanguage'
 
+type GameCardId = 'guessServer' | 'higherLower' | 'guessItem' | 'recipeGuess'
 type GuessDifficulty = 'easy' | 'medium' | 'hard'
 type ClueKind = 'region' | 'type' | 'players' | 'maxPlayers' | 'wipe' | 'rank'
 type HigherLowerMetric = 'averagePlayers' | 'currentPlayers' | 'rank'
@@ -70,60 +73,518 @@ type HigherLowerRoundReveal = {
   nextState: StoredHigherLowerState
 }
 
-const gameCards = [
+const gameCardBase = [
   {
-    title: 'Guess the Server',
-    status: 'Playable',
-    description: 'Identify a ranked Rust server from comparison clues.',
+    id: 'guessServer',
     image: '/rust-minigame-guess-server.png',
     emote: '/rust-minigame-emote-mystery.png',
-    meta: 'Top 250 pool',
     path: '/minigames/guess-the-server',
   },
   {
-    title: 'Higher / Lower',
-    status: 'Playable',
-    description: 'Pick which server has the higher population, peak, or rank.',
+    id: 'higherLower',
     image: '/rust-minigame-higher-lower.png',
     emote: '/rust-minigame-emote-streak.png',
-    meta: 'Population reads',
     path: '/minigames/higher-lower',
   },
   {
-    title: 'Guess the Item',
-    status: 'Coming soon',
-    description: 'Use workbench, category, cost, and recycle clues.',
+    id: 'guessItem',
     image: '/rust-minigame-guess-item.png',
     emote: '/rust-minigame-emote-hint.png',
-    meta: 'Item logic',
     path: '/minigames/guess-the-item',
   },
   {
-    title: 'Recipe Guess',
-    status: 'Coming soon',
-    description: 'See ingredients and name the item they craft.',
+    id: 'recipeGuess',
     image: '/rust-minigame-recipe-guess.png',
     emote: '/rust-minigame-emote-correct.png',
-    meta: 'Craft clues',
     path: '/minigames/recipe-guess',
   },
-] as const
+] satisfies Array<{ id: GameCardId, image: string, emote: string, path: string }>
 
-const difficulties: Array<{ value: GuessDifficulty, label: string, poolSize: number }> = [
-  { value: 'easy', label: 'Easy', poolSize: 50 },
-  { value: 'medium', label: 'Medium', poolSize: 100 },
-  { value: 'hard', label: 'Hard', poolSize: 250 },
+const difficultyOptions: Array<{ value: GuessDifficulty, poolSize: number }> = [
+  { value: 'easy', poolSize: 50 },
+  { value: 'medium', poolSize: 100 },
+  { value: 'hard', poolSize: 250 },
 ]
 
 const progressiveHintCount = 4
 const cooldownMs = 24 * 60 * 60 * 1000
 const higherLowerWinStreak = 10
 const higherLowerRevealDelayMs = 1600
-const higherLowerMetrics: Array<{ value: HigherLowerMetric, label: string, detail: string }> = [
-  { value: 'averagePlayers', label: 'Average pop', detail: 'Ranked average players' },
-  { value: 'currentPlayers', label: 'Live players', detail: 'Current online count' },
-  { value: 'rank', label: 'Rank', detail: 'Lower number wins' },
+const higherLowerMetricOptions: Array<{ value: HigherLowerMetric }> = [
+  { value: 'averagePlayers' },
+  { value: 'currentPlayers' },
+  { value: 'rank' },
 ]
+
+const minigameCopy: Record<Language, {
+  cards: Record<GameCardId, { title: string, status: string, description: string, meta: string }>
+  difficulties: Record<GuessDifficulty, string>
+  higherLowerMetrics: Record<HigherLowerMetric, { label: string, detail: string }>
+  pageEyebrow: string
+  pageHeading: string
+  pageIntro: string
+  todayLabel: string
+  playableNow: string
+  todayTitle: string
+  todayDescription: string
+  playGuessServer: string
+  playHigherLower: string
+  optionsLabel: string
+  backToMinigames: string
+  minigameEyebrow: string
+  available: string
+  soon: string
+  now: string
+  inMinutes: (minutes: number) => string
+  inHoursMinutes: (hours: number, minutes: number) => string
+  rankedServersError: string
+  guess: {
+    title: string
+    description: string
+    difficultyLabel: string
+    top: (poolSize: number) => string
+    loadingTitle: string
+    loadingDescription: string
+    loadErrorTitle: string
+    loadErrorDescription: string
+    warmupTitle: string
+    warmupDescription: (required: number, current: number) => string
+    dailyPuzzle: (poolSize: number) => string
+    possibleServers: (poolSize: number) => string
+    puzzleStatus: string
+    attempts: string
+    hints: string
+    signal: string
+    liveRankFeed: string
+    startingHintLabel: string
+    startingHintAria: string
+    revealedHintsLabel: string
+    hintNumber: (index: number) => string
+    solved: string
+    answerRevealed: string
+    cooldownActive: string
+    revealedAnswer: string
+    answer: string
+    yourGuess: string
+    placeholder: string
+    submit: string
+    revealServer: string
+    chooseServer: string
+    alreadyTried: string
+    historyLabel: string
+    emptyHistory: string
+  }
+  higherLower: {
+    title: string
+    description: string
+    metricLabel: string
+    loadingTitle: string
+    loadingDescription: string
+    loadErrorTitle: string
+    loadErrorDescription: string
+    warmupTitle: string
+    warmupDescription: (metric: string, current: number) => string
+    round: (round: number) => string
+    compareInstruction: string
+    statusLabel: string
+    streak: string
+    best: string
+    anchor: string
+    challenger: string
+    correct: string
+    incorrect: string
+    streakCleared: string
+    runEnded: string
+    cleared: (target: number) => string
+    bestStreak: (best: number) => string
+    actionsLabel: string
+    higher: string
+    higherDetail: string
+    lower: string
+    lowerDetail: string
+    historyLabel: string
+    emptyHistory: string
+    previousAnchor: string
+    previousChallenger: string
+    historyLine: (choice: HigherLowerChoice, leftName: string, metricLabel: string) => string
+    revealDescription: (rightName: string, rightValue: string, leftName: string, leftValue: string) => string
+    maxPlayers: (maxPlayers: number) => string
+  }
+  labels: {
+    unknown: string
+    correct: string
+    answerRanksHigher: string
+    answerRanksLower: string
+    averagePopulationAround: (floor: number, ceiling: number) => string
+    averagePopulationWarming: string
+    region: string
+    serverType: string
+    capacity: string
+    wipeTiming: string
+    rankRange: string
+    serverRegion: (region: string) => string
+    serverTypeIs: (serverType: string) => string
+    maxPlayerCount: (maxPlayers: number) => string
+    rankedBetween: (floor: number, ceiling: number) => string
+    wipeUnknown: string
+    wipedToday: string
+    wipedOneDayAgo: string
+    wipedDaysAgo: (days: number) => string
+    type: string
+    players: string
+    max: string
+    wipe: string
+    rank: string
+    avgPop: string
+    sameDay: string
+    newer: (days: number) => string
+    older: (days: number) => string
+    valueCorrect: (label: string) => string
+    valueHigher: (label: string) => string
+    valueLower: (label: string) => string
+  }
+}> = {
+  en: {
+    cards: {
+      guessServer: {
+        title: 'Guess the Server',
+        status: 'Playable',
+        description: 'Identify a ranked Rust server from comparison clues.',
+        meta: 'Top 250 pool',
+      },
+      higherLower: {
+        title: 'Higher / Lower',
+        status: 'Playable',
+        description: 'Pick which server has the higher population, peak, or rank.',
+        meta: 'Population reads',
+      },
+      guessItem: {
+        title: 'Guess the Item',
+        status: 'Coming soon',
+        description: 'Use workbench, category, cost, and recycle clues.',
+        meta: 'Item logic',
+      },
+      recipeGuess: {
+        title: 'Recipe Guess',
+        status: 'Coming soon',
+        description: 'See ingredients and name the item they craft.',
+        meta: 'Craft clues',
+      },
+    },
+    difficulties: {
+      easy: 'Easy',
+      medium: 'Medium',
+      hard: 'Hard',
+    },
+    higherLowerMetrics: {
+      averagePlayers: { label: 'Average pop', detail: 'Ranked average players' },
+      currentPlayers: { label: 'Live players', detail: 'Current online count' },
+      rank: { label: 'Rank', detail: 'Lower number wins' },
+    },
+    pageEyebrow: 'Minigames',
+    pageHeading: 'Daily RustIQ challenges',
+    pageIntro: 'Server knowledge, wipe timing, and Rust trivia in a daily format.',
+    todayLabel: "Today's minigame lineup",
+    playableNow: 'Playable now',
+    todayTitle: 'Start with the daily server puzzle',
+    todayDescription: 'Work from a live ranked server pool, use comparison clues, and keep guessing until the server clicks.',
+    playGuessServer: 'Play Guess the Server',
+    playHigherLower: 'Play Higher / Lower',
+    optionsLabel: 'Minigame options',
+    backToMinigames: 'Back to minigames',
+    minigameEyebrow: 'Minigame',
+    available: 'Available',
+    soon: 'soon',
+    now: 'now',
+    inMinutes: (minutes) => `in ${minutes}m`,
+    inHoursMinutes: (hours, minutes) => `in ${hours}h ${minutes}m`,
+    rankedServersError: 'Unexpected error while loading ranked servers.',
+    guess: {
+      title: 'Guess the Server',
+      description: 'The answer is selected from the RustIQ Top 50, Top 100, or Top 250. Each difficulty has its own 24 hour cooldown.',
+      difficultyLabel: 'Guess the Server difficulty',
+      top: (poolSize) => `Top ${poolSize}`,
+      loadingTitle: 'Loading ranked servers',
+      loadingDescription: 'Reading the stored Top 250 ranking from the server list API.',
+      loadErrorTitle: 'Could not load ranked servers',
+      loadErrorDescription: 'The game needs the RustIQ ranking pool before it can start.',
+      warmupTitle: 'Ranking pool is still warming up',
+      warmupDescription: (required, current) => `This difficulty needs ${required} ranked servers. Current ranked pool: ${current}.`,
+      dailyPuzzle: (poolSize) => `Daily Top ${poolSize} puzzle`,
+      possibleServers: (poolSize) => `${poolSize} possible servers. Guesses do not run out.`,
+      puzzleStatus: 'Puzzle status',
+      attempts: 'Attempts',
+      hints: 'Hints',
+      signal: 'Signal',
+      liveRankFeed: 'Live rank feed',
+      startingHintLabel: 'Starting hint',
+      startingHintAria: 'Starting hint',
+      revealedHintsLabel: 'Revealed hints',
+      hintNumber: (index) => `Hint ${index}`,
+      solved: 'Solved',
+      answerRevealed: 'Answer revealed',
+      cooldownActive: 'Cooldown active',
+      revealedAnswer: 'Revealed answer',
+      answer: 'Answer',
+      yourGuess: 'Your guess',
+      placeholder: 'Start typing a ranked server name',
+      submit: 'Guess',
+      revealServer: 'Reveal server',
+      chooseServer: 'Choose a server from the dropdown.',
+      alreadyTried: 'You already tried that server.',
+      historyLabel: 'Guess history',
+      emptyHistory: 'Each wrong guess reveals one more hint. After all hints are revealed, you can keep guessing or reveal the server.',
+    },
+    higherLower: {
+      title: 'Higher / Lower',
+      description: 'Pick whether the challenger is higher or lower than the anchor server. Reach a streak of 10 before one wrong answer.',
+      metricLabel: 'Higher Lower metric',
+      loadingTitle: 'Loading comparison pool',
+      loadingDescription: 'Higher / Lower uses the same ranked server data as the daily server puzzle.',
+      loadErrorTitle: 'Could not load comparison pool',
+      loadErrorDescription: 'The game needs ranked servers before it can build matchups.',
+      warmupTitle: 'Comparison pool is still warming up',
+      warmupDescription: (metric, current) => `This mode needs at least 12 servers with ${metric.toLowerCase()} data. Current pool: ${current}.`,
+      round: (round) => `Round ${round}`,
+      compareInstruction: 'Compare the hidden challenger against the revealed anchor server.',
+      statusLabel: 'Higher Lower status',
+      streak: 'Streak',
+      best: 'Best',
+      anchor: 'Anchor',
+      challenger: 'Challenger',
+      correct: 'Correct',
+      incorrect: 'Incorrect',
+      streakCleared: 'Streak cleared',
+      runEnded: 'Run ended',
+      cleared: (target) => `You cleared ${target} in a row.`,
+      bestStreak: (best) => `Best streak: ${best}.`,
+      actionsLabel: 'Choose challenger comparison',
+      higher: 'Higher',
+      higherDetail: 'Challenger is above the anchor',
+      lower: 'Lower',
+      lowerDetail: 'Challenger is below the anchor',
+      historyLabel: 'Higher Lower history',
+      emptyHistory: 'Your last comparisons will appear here after each choice.',
+      previousAnchor: 'Previous anchor',
+      previousChallenger: 'Previous challenger',
+      historyLine: (choice, leftName, metricLabel) => `${choice === 'higher' ? 'Higher' : 'Lower'} than ${leftName} on ${metricLabel.toLowerCase()}.`,
+      revealDescription: (rightName, rightValue, leftName, leftValue) => `${rightName} was ${rightValue}. ${leftName} was ${leftValue}.`,
+      maxPlayers: (maxPlayers) => `${maxPlayers} max`,
+    },
+    labels: {
+      unknown: 'Unknown',
+      correct: 'Correct',
+      answerRanksHigher: 'Answer ranks higher',
+      answerRanksLower: 'Answer ranks lower',
+      averagePopulationAround: (floor, ceiling) => `Average population is around ${floor}-${ceiling}.`,
+      averagePopulationWarming: 'Average population data is still warming up for this server.',
+      region: 'Region',
+      serverType: 'Server type',
+      capacity: 'Capacity',
+      wipeTiming: 'Wipe timing',
+      rankRange: 'Rank range',
+      serverRegion: (region) => `The server region is ${region}.`,
+      serverTypeIs: (serverType) => `The server type is ${serverType}.`,
+      maxPlayerCount: (maxPlayers) => `The max player count is ${maxPlayers}.`,
+      rankedBetween: (floor, ceiling) => `The answer is ranked between #${floor} and #${ceiling}.`,
+      wipeUnknown: 'Wipe timing is unknown for this server.',
+      wipedToday: 'The server wiped today.',
+      wipedOneDayAgo: 'The server wiped about 1 day ago.',
+      wipedDaysAgo: (days) => `The server wiped about ${days} days ago.`,
+      type: 'Type',
+      players: 'Players',
+      max: 'Max',
+      wipe: 'Wipe',
+      rank: 'Rank',
+      avgPop: 'Avg pop',
+      sameDay: 'Same day',
+      newer: (days) => `Newer (${days}d)`,
+      older: (days) => `Older (${days}d)`,
+      valueCorrect: (label) => `${label}: correct`,
+      valueHigher: (label) => `${label}: higher`,
+      valueLower: (label) => `${label}: lower`,
+    },
+  },
+  ru: {
+    cards: {
+      guessServer: {
+        title: 'Угадай сервер',
+        status: 'Доступно',
+        description: 'Определите рейтинговый сервер Rust по подсказкам сравнения.',
+        meta: 'Пул Top 250',
+      },
+      higherLower: {
+        title: 'Больше / меньше',
+        status: 'Доступно',
+        description: 'Выберите, у какого сервера выше онлайн, пик или ранг.',
+        meta: 'Данные онлайна',
+      },
+      guessItem: {
+        title: 'Угадай предмет',
+        status: 'Скоро',
+        description: 'Используйте подсказки по верстаку, категории, стоимости и переработке.',
+        meta: 'Логика предметов',
+      },
+      recipeGuess: {
+        title: 'Угадай рецепт',
+        status: 'Скоро',
+        description: 'Посмотрите ингредиенты и назовите предмет, который они создают.',
+        meta: 'Подсказки крафта',
+      },
+    },
+    difficulties: {
+      easy: 'Легко',
+      medium: 'Средне',
+      hard: 'Сложно',
+    },
+    higherLowerMetrics: {
+      averagePlayers: { label: 'Средний онлайн', detail: 'Рейтинговое среднее игроков' },
+      currentPlayers: { label: 'Live-игроки', detail: 'Текущий онлайн' },
+      rank: { label: 'Ранг', detail: 'Меньшее число выигрывает' },
+    },
+    pageEyebrow: 'Мини-игры',
+    pageHeading: 'Ежедневные задания RustIQ',
+    pageIntro: 'Знание серверов, вайпы и Rust-тривия в ежедневном формате.',
+    todayLabel: 'Линейка мини-игр на сегодня',
+    playableNow: 'Доступно сейчас',
+    todayTitle: 'Начните с ежедневной серверной загадки',
+    todayDescription: 'Используйте актуальный пул рейтинговых серверов, подсказки сравнения и угадывайте, пока сервер не станет очевидным.',
+    playGuessServer: 'Играть в Угадай сервер',
+    playHigherLower: 'Играть в Больше / меньше',
+    optionsLabel: 'Варианты мини-игр',
+    backToMinigames: 'Назад к мини-играм',
+    minigameEyebrow: 'Мини-игра',
+    available: 'Доступно',
+    soon: 'скоро',
+    now: 'сейчас',
+    inMinutes: (minutes) => `через ${minutes} мин`,
+    inHoursMinutes: (hours, minutes) => `через ${hours} ч ${minutes} мин`,
+    rankedServersError: 'Неожиданная ошибка при загрузке рейтинговых серверов.',
+    guess: {
+      title: 'Угадай сервер',
+      description: 'Ответ выбирается из RustIQ Top 50, Top 100 или Top 250. У каждой сложности свой перерыв на 24 часа.',
+      difficultyLabel: 'Сложность Угадай сервер',
+      top: (poolSize) => `Top ${poolSize}`,
+      loadingTitle: 'Загрузка рейтинговых серверов',
+      loadingDescription: 'Читаем сохраненный рейтинг Top 250 из API списка серверов.',
+      loadErrorTitle: 'Не удалось загрузить рейтинговые серверы',
+      loadErrorDescription: 'Игре нужен рейтинговый пул RustIQ перед стартом.',
+      warmupTitle: 'Рейтинговый пул еще прогревается',
+      warmupDescription: (required, current) => `Для этой сложности нужно ${required} рейтинговых серверов. Сейчас в пуле: ${current}.`,
+      dailyPuzzle: (poolSize) => `Ежедневная загадка Top ${poolSize}`,
+      possibleServers: (poolSize) => `${poolSize} возможных серверов. Попытки не заканчиваются.`,
+      puzzleStatus: 'Статус загадки',
+      attempts: 'Попытки',
+      hints: 'Подсказки',
+      signal: 'Сигнал',
+      liveRankFeed: 'Live-рейтинг',
+      startingHintLabel: 'Стартовая подсказка',
+      startingHintAria: 'Стартовая подсказка',
+      revealedHintsLabel: 'Открытые подсказки',
+      hintNumber: (index) => `Подсказка ${index}`,
+      solved: 'Решено',
+      answerRevealed: 'Ответ открыт',
+      cooldownActive: 'Перерыв активен',
+      revealedAnswer: 'Открытый ответ',
+      answer: 'Ответ',
+      yourGuess: 'Ваш вариант',
+      placeholder: 'Начните вводить название рейтингового сервера',
+      submit: 'Угадать',
+      revealServer: 'Показать сервер',
+      chooseServer: 'Выберите сервер из выпадающего списка.',
+      alreadyTried: 'Вы уже пробовали этот сервер.',
+      historyLabel: 'История попыток',
+      emptyHistory: 'Каждая неверная попытка открывает еще одну подсказку. После всех подсказок можно продолжать угадывать или открыть сервер.',
+    },
+    higherLower: {
+      title: 'Больше / меньше',
+      description: 'Выберите, выше или ниже претендент относительно опорного сервера. Наберите серию из 10 до одной ошибки.',
+      metricLabel: 'Метрика Больше / меньше',
+      loadingTitle: 'Загрузка пула сравнения',
+      loadingDescription: 'Больше / меньше использует те же рейтинговые данные серверов, что и ежедневная серверная загадка.',
+      loadErrorTitle: 'Не удалось загрузить пул сравнения',
+      loadErrorDescription: 'Игре нужны рейтинговые серверы, чтобы строить пары.',
+      warmupTitle: 'Пул сравнения еще прогревается',
+      warmupDescription: (metric, current) => `Для режима нужно минимум 12 серверов с данными "${metric.toLowerCase()}". Сейчас в пуле: ${current}.`,
+      round: (round) => `Раунд ${round}`,
+      compareInstruction: 'Сравните скрытого претендента с открытым опорным сервером.',
+      statusLabel: 'Статус Больше / меньше',
+      streak: 'Серия',
+      best: 'Лучший',
+      anchor: 'Опорный',
+      challenger: 'Претендент',
+      correct: 'Верно',
+      incorrect: 'Неверно',
+      streakCleared: 'Серия пройдена',
+      runEnded: 'Попытка завершена',
+      cleared: (target) => `Вы прошли ${target} подряд.`,
+      bestStreak: (best) => `Лучшая серия: ${best}.`,
+      actionsLabel: 'Выберите сравнение претендента',
+      higher: 'Больше',
+      higherDetail: 'Претендент выше опорного',
+      lower: 'Меньше',
+      lowerDetail: 'Претендент ниже опорного',
+      historyLabel: 'История Больше / меньше',
+      emptyHistory: 'Последние сравнения появятся здесь после каждого выбора.',
+      previousAnchor: 'Предыдущий опорный сервер',
+      previousChallenger: 'Предыдущий претендент',
+      historyLine: (choice, leftName, metricLabel) => `${choice === 'higher' ? 'Больше' : 'Меньше'}, чем ${leftName}, по метрике ${metricLabel.toLowerCase()}.`,
+      revealDescription: (rightName, rightValue, leftName, leftValue) => `${rightName}: ${rightValue}. ${leftName}: ${leftValue}.`,
+      maxPlayers: (maxPlayers) => `${maxPlayers} макс.`,
+    },
+    labels: {
+      unknown: 'Неизвестно',
+      correct: 'Верно',
+      answerRanksHigher: 'Ответ выше в рейтинге',
+      answerRanksLower: 'Ответ ниже в рейтинге',
+      averagePopulationAround: (floor, ceiling) => `Средний онлайн примерно ${floor}-${ceiling}.`,
+      averagePopulationWarming: 'Данные среднего онлайна для этого сервера еще прогреваются.',
+      region: 'Регион',
+      serverType: 'Тип сервера',
+      capacity: 'Вместимость',
+      wipeTiming: 'Вайп',
+      rankRange: 'Диапазон ранга',
+      serverRegion: (region) => `Регион сервера: ${region}.`,
+      serverTypeIs: (serverType) => `Тип сервера: ${serverType}.`,
+      maxPlayerCount: (maxPlayers) => `Максимум игроков: ${maxPlayers}.`,
+      rankedBetween: (floor, ceiling) => `Ответ находится между #${floor} и #${ceiling}.`,
+      wipeUnknown: 'Время вайпа для этого сервера неизвестно.',
+      wipedToday: 'Сервер вайпнулся сегодня.',
+      wipedOneDayAgo: 'Сервер вайпнулся примерно 1 день назад.',
+      wipedDaysAgo: (days) => `Сервер вайпнулся примерно ${days} дн. назад.`,
+      type: 'Тип',
+      players: 'Игроки',
+      max: 'Макс.',
+      wipe: 'Вайп',
+      rank: 'Ранг',
+      avgPop: 'Ср. онлайн',
+      sameDay: 'Тот же день',
+      newer: (days) => `Новее (${days} дн.)`,
+      older: (days) => `Старше (${days} дн.)`,
+      valueCorrect: (label) => `${label}: верно`,
+      valueHigher: (label) => `${label}: выше`,
+      valueLower: (label) => `${label}: ниже`,
+    },
+  },
+}
+
+function getGameCards(language: Language) {
+  return gameCardBase.map((game) => ({
+    ...game,
+    ...minigameCopy[language].cards[game.id],
+  }))
+}
+
+function getDifficultyLabel(difficulty: GuessDifficulty, language: Language) {
+  return minigameCopy[language].difficulties[difficulty]
+}
+
+function getHigherLowerMetricDefinition(metric: HigherLowerMetric, language: Language) {
+  return {
+    value: metric,
+    ...minigameCopy[language].higherLowerMetrics[metric],
+  }
+}
 
 export function MinigamesPage() {
   return (
@@ -144,43 +605,48 @@ export function HigherLowerMinigamePage() {
 }
 
 export function GuessItemMinigamePage() {
-  return <ComingSoonMinigamePage gameTitle="Guess the Item" />
+  return <ComingSoonMinigamePage gameId="guessItem" />
 }
 
 export function RecipeGuessMinigamePage() {
-  return <ComingSoonMinigamePage gameTitle="Recipe Guess" />
+  return <ComingSoonMinigamePage gameId="recipeGuess" />
 }
 
 function MinigamesPageHeader() {
+  const { language } = useLanguage()
+  const copy = minigameCopy[language]
+
   return (
     <div className="page-copy">
-      <p className="page-eyebrow">Minigames</p>
-      <h2 className="page-heading">Daily RustIQ challenges</h2>
+      <p className="page-eyebrow">{copy.pageEyebrow}</p>
+      <h2 className="page-heading">{copy.pageHeading}</h2>
       <p className="page-text">
-        Server knowledge, wipe timing, and Rust trivia in a daily format.
+        {copy.pageIntro}
       </p>
     </div>
   )
 }
 
 function MinigameTodayPanel() {
+  const { language } = useLanguage()
+  const copy = minigameCopy[language]
+
   return (
-    <section className="minigame-today" aria-label="Today's minigame lineup">
+    <section className="minigame-today" aria-label={copy.todayLabel}>
       <div className="minigame-today__hero">
         <img src="/rust-minigame-guess-server.png" alt="" />
         <div className="minigame-today__overlay">
-          <span className="minigame-option__status">Playable now</span>
-          <h3>Start with the daily server puzzle</h3>
+          <span className="minigame-option__status">{copy.playableNow}</span>
+          <h3>{copy.todayTitle}</h3>
           <p>
-            Work from a live ranked server pool, use comparison clues, and keep
-            guessing until the server clicks.
+            {copy.todayDescription}
           </p>
           <div className="minigame-today__actions">
             <Link to="/minigames/guess-the-server" className="button-link">
-              Play Guess the Server
+              {copy.playGuessServer}
             </Link>
             <Link to="/minigames/higher-lower" className="button-link button-link--secondary">
-              Play Higher / Lower
+              {copy.playHigherLower}
             </Link>
           </div>
         </div>
@@ -190,8 +656,12 @@ function MinigameTodayPanel() {
 }
 
 function MinigameCardGrid() {
+  const { language } = useLanguage()
+  const copy = minigameCopy[language]
+  const gameCards = getGameCards(language)
+
   return (
-    <section className="minigame-options" aria-label="Minigame options">
+    <section className="minigame-options" aria-label={copy.optionsLabel}>
       {gameCards.map((game) => {
         const cardContent = (
           <>
@@ -211,7 +681,8 @@ function MinigameCardGrid() {
             </div>
           </>
         )
-        const className = game.status === 'Playable'
+        const isPlayable = game.id === 'guessServer' || game.id === 'higherLower'
+        const className = isPlayable
           ? 'minigame-option minigame-option--active'
           : 'minigame-option'
 
@@ -230,11 +701,13 @@ function MinigameCardGrid() {
 }
 
 function ComingSoonMinigamePage({
-  gameTitle,
+  gameId,
 }: {
-  gameTitle: string
+  gameId: GameCardId
 }) {
-  const game = gameCards.find((item) => item.title === gameTitle)
+  const { language } = useLanguage()
+  const copy = minigameCopy[language]
+  const game = getGameCards(language).find((item) => item.id === gameId)
 
   if (!game) {
     return null
@@ -242,7 +715,7 @@ function ComingSoonMinigamePage({
 
   return (
     <div className="page-stack minigames-page">
-      <Link to="/minigames" className="knowledge-back-link">Back to minigames</Link>
+      <Link to="/minigames" className="knowledge-back-link">{copy.backToMinigames}</Link>
       <section className="minigame-coming-soon">
         <div className="minigame-coming-soon__media" aria-hidden="true">
           <img src={game.image} alt="" />
@@ -251,7 +724,7 @@ function ComingSoonMinigamePage({
           </span>
         </div>
         <div className="minigame-coming-soon__copy">
-          <p className="page-eyebrow">Minigame</p>
+          <p className="page-eyebrow">{copy.minigameEyebrow}</p>
           <h2 className="page-heading">{game.title}</h2>
           <p className="page-text">{game.description}</p>
           <span className="minigame-option__status">{game.status}</span>
@@ -266,6 +739,8 @@ function MinigameExperience({
 }: {
   activeGame: 'guess' | 'higherLower'
 }) {
+  const { language } = useLanguage()
+  const copy = minigameCopy[language]
   const nowMs = useNow()
   const [difficulty, setDifficulty] = useState<GuessDifficulty>('easy')
   const [guessInput, setGuessInput] = useState('')
@@ -300,13 +775,13 @@ function MinigameExperience({
   })
 
   const dailyDateKey = getDailyDateKey()
-  const selectedDifficulty = difficulties.find((item) => item.value === difficulty) ?? difficulties[0]
+  const selectedDifficulty = difficultyOptions.find((item) => item.value === difficulty) ?? difficultyOptions[0]
   const difficultyStatuses = useMemo(
-    () => Object.fromEntries(difficulties.map((item) => [
+    () => Object.fromEntries(difficultyOptions.map((item) => [
       item.value,
-      getDifficultyStatus(item.value, dailyDateKey, nowMs),
+      getDifficultyStatus(item.value, dailyDateKey, nowMs, language),
     ])) as Record<GuessDifficulty, DifficultyStatus>,
-    [dailyDateKey, nowMs],
+    [dailyDateKey, language, nowMs],
   )
   const candidatePool = useMemo(
     () => (rankedServersQuery.data ?? []).slice(0, selectedDifficulty.poolSize),
@@ -321,8 +796,8 @@ function MinigameExperience({
     [difficulty, storedState],
   )
   const answerHints = useMemo(
-    () => answer ? getAnswerHints(answer, selectedDifficulty.poolSize, getPuzzleKey(storedState, difficulty)) : [],
-    [answer, selectedDifficulty.poolSize, difficulty, storedState],
+    () => answer ? getAnswerHints(answer, selectedDifficulty.poolSize, getPuzzleKey(storedState, difficulty), language) : [],
+    [answer, selectedDifficulty.poolSize, difficulty, language, storedState],
   )
   const revealedHints = answerHints.slice(0, storedState.revealedHintCount ?? 0)
   const hasRevealedAllHints = (storedState.revealedHintCount ?? 0) >= progressiveHintCount
@@ -342,11 +817,11 @@ function MinigameExperience({
     [candidatePool, guessInput, storedState.attempts],
   )
   const higherLowerMetricStatuses = useMemo(
-    () => Object.fromEntries(higherLowerMetrics.map((item) => [
+    () => Object.fromEntries(higherLowerMetricOptions.map((item) => [
       item.value,
-      getHigherLowerMetricStatus(item.value, dailyDateKey, nowMs),
+      getHigherLowerMetricStatus(item.value, dailyDateKey, nowMs, language),
     ])) as Record<HigherLowerMetric, DifficultyStatus>,
-    [dailyDateKey, nowMs],
+    [dailyDateKey, language, nowMs],
   )
   const higherLowerPool = useMemo(
     () => getHigherLowerPool(rankedServersQuery.data ?? [], higherLowerMetric),
@@ -385,18 +860,18 @@ function MinigameExperience({
       : higherLowerPair
   const higherLowerVisibleStreak = higherLowerReveal ? higherLowerReveal.nextState.streak : higherLowerState.streak
   const higherLowerVisibleBestStreak = higherLowerReveal ? higherLowerReveal.nextState.bestStreak : higherLowerState.bestStreak
-  const selectedHigherLowerMetric = higherLowerMetrics.find((item) => item.value === higherLowerMetric) ?? higherLowerMetrics[0]
+  const selectedHigherLowerMetric = getHigherLowerMetricDefinition(higherLowerMetric, language)
   const higherLowerRevealTone = higherLowerReveal
     ? higherLowerReveal.result.correct ? 'correct' : 'wrong'
     : null
   const higherLowerRevealDescription = higherLowerReveal
-    ? getHigherLowerRevealDescription(higherLowerReveal.result, higherLowerReveal.left, higherLowerReveal.right)
+    ? getHigherLowerRevealDescription(higherLowerReveal.result, higherLowerReveal.left, higherLowerReveal.right, language)
     : ''
-  const answerDisplayName = answer ? getServerDisplayName(answer) : 'Unknown'
+  const answerDisplayName = answer ? getServerDisplayName(answer) : copy.labels.unknown
   const rankedServersErrorDetail =
     rankedServersQuery.error instanceof ApiError
       ? `${rankedServersQuery.error.message} (${rankedServersQuery.error.url})`
-      : 'Unexpected error while loading ranked servers.'
+      : copy.rankedServersError
 
   const updateStoredState = useCallback((nextState: StoredGuessState) => {
     setStoredState(nextState)
@@ -463,12 +938,12 @@ function MinigameExperience({
     const guessedServer = resolveGuessedServer(candidatePool, guessInput, selectedGuessId)
 
     if (!guessedServer) {
-      setGuessError('Choose a server from the dropdown.')
+      setGuessError(copy.guess.chooseServer)
       return
     }
 
     if (storedState.attempts.includes(guessedServer.id)) {
-      setGuessError('You already tried that server.')
+      setGuessError(copy.guess.alreadyTried)
       return
     }
 
@@ -593,15 +1068,15 @@ function MinigameExperience({
 
   return (
     <div className="page-stack minigames-page">
-      <Link to="/minigames" className="knowledge-back-link">Back to minigames</Link>
+      <Link to="/minigames" className="knowledge-back-link">{copy.backToMinigames}</Link>
 
       {activeGame === 'guess' ? (
         <SectionCard
-          title="Guess the Server"
-          description="The answer is selected from the RustIQ Top 50, Top 100, or Top 250. Each difficulty has its own 24 hour cooldown."
+          title={copy.guess.title}
+          description={copy.guess.description}
         >
-        <div className="difficulty-selector" aria-label="Guess the Server difficulty">
-          {difficulties.map((item) => (
+        <div className="difficulty-selector" aria-label={copy.guess.difficultyLabel}>
+          {difficultyOptions.map((item) => (
             (() => {
               const status = difficultyStatuses[item.value]
 
@@ -612,8 +1087,8 @@ function MinigameExperience({
                   className={item.value === difficulty ? 'difficulty-button difficulty-button--active' : 'difficulty-button'}
                   onClick={() => setDifficulty(item.value)}
                 >
-                  <span>{item.label}</span>
-                  <small>Top {item.poolSize}</small>
+                  <span>{getDifficultyLabel(item.value, language)}</span>
+                  <small>{copy.guess.top(item.poolSize)}</small>
                   <strong className={status.isLocked ? 'difficulty-button__timer difficulty-button__timer--locked' : 'difficulty-button__timer'}>
                     {status.label}
                   </strong>
@@ -625,15 +1100,15 @@ function MinigameExperience({
 
         {rankedServersQuery.isLoading ? (
           <StateNotice
-            title="Loading ranked servers"
-            description="Reading the stored Top 250 ranking from the server list API."
+            title={copy.guess.loadingTitle}
+            description={copy.guess.loadingDescription}
           />
         ) : null}
 
         {rankedServersQuery.isError ? (
           <StateNotice
-            title="Could not load ranked servers"
-            description="The game needs the RustIQ ranking pool before it can start."
+            title={copy.guess.loadErrorTitle}
+            description={copy.guess.loadErrorDescription}
             detail={rankedServersErrorDetail}
             tone="error"
           />
@@ -641,8 +1116,8 @@ function MinigameExperience({
 
         {!rankedServersQuery.isLoading && !rankedServersQuery.isError && candidatePool.length < selectedDifficulty.poolSize ? (
           <StateNotice
-            title="Ranking pool is still warming up"
-            description={`This difficulty needs ${selectedDifficulty.poolSize} ranked servers. Current ranked pool: ${candidatePool.length}.`}
+            title={copy.guess.warmupTitle}
+            description={copy.guess.warmupDescription(selectedDifficulty.poolSize, candidatePool.length)}
             tone="warning"
           />
         ) : null}
@@ -651,44 +1126,44 @@ function MinigameExperience({
           <div className="guess-server-game">
             <div className="guess-server-game__status">
               <div>
-                <span className="minigame-option__status">{selectedDifficulty.label}</span>
-                <h3>Daily Top {selectedDifficulty.poolSize} puzzle</h3>
+                <span className="minigame-option__status">{getDifficultyLabel(selectedDifficulty.value, language)}</span>
+                <h3>{copy.guess.dailyPuzzle(selectedDifficulty.poolSize)}</h3>
                 <p className="page-text">
-                  {selectedDifficulty.poolSize} possible servers. Guesses do not run out.
+                  {copy.guess.possibleServers(selectedDifficulty.poolSize)}
                 </p>
               </div>
-              <div className="guess-server-game__stats" aria-label="Puzzle status">
+              <div className="guess-server-game__stats" aria-label={copy.guess.puzzleStatus}>
                 <div>
-                  <span>Attempts</span>
+                  <span>{copy.guess.attempts}</span>
                   <strong>{storedState.attempts.length}</strong>
                 </div>
                 <div>
-                  <span>Hints</span>
+                  <span>{copy.guess.hints}</span>
                   <strong>{1 + (storedState.revealedHintCount ?? 0)}/{1 + progressiveHintCount}</strong>
                 </div>
               </div>
               <div className="guess-server-game__visual" aria-hidden="true">
                 <img src="/rust-minigame-guess-server.png" alt="" />
                 <div>
-                  <span>Signal</span>
-                  <strong>Live rank feed</strong>
+                  <span>{copy.guess.signal}</span>
+                  <strong>{copy.guess.liveRankFeed}</strong>
                 </div>
               </div>
             </div>
 
-            <div className="guess-server-hint" aria-label="Starting hint">
+            <div className="guess-server-hint" aria-label={copy.guess.startingHintAria}>
               <img className="guess-server-hint__emote" src="/rust-minigame-emote-hint.png" alt="" />
               <div>
-                <span className="guess-server-hint__eyebrow">Starting hint</span>
-                <h4>{getStartingHint(answer)}</h4>
+                <span className="guess-server-hint__eyebrow">{copy.guess.startingHintLabel}</span>
+                <h4>{getStartingHint(answer, language)}</h4>
               </div>
             </div>
 
             {revealedHints.length > 0 ? (
-              <div className="guess-server-revealed-hints" aria-label="Revealed hints">
+              <div className="guess-server-revealed-hints" aria-label={copy.guess.revealedHintsLabel}>
                 {revealedHints.map((hint, index) => (
                   <div key={hint.label} className="guess-server-revealed-hint">
-                    <span>Hint {index + 2}</span>
+                    <span>{copy.guess.hintNumber(index + 2)}</span>
                     <strong>{hint.label}</strong>
                     <p>{hint.value}</p>
                   </div>
@@ -698,10 +1173,10 @@ function MinigameExperience({
 
             {isGameClosed ? (
               <StateNotice
-                title={storedState.solved ? 'Solved' : storedState.revealedAnswer ? 'Answer revealed' : 'Cooldown active'}
+                title={storedState.solved ? copy.guess.solved : storedState.revealedAnswer ? copy.guess.answerRevealed : copy.guess.cooldownActive}
                 description={
                   <span className="guess-server-answer-notice">
-                    <span>{storedState.revealedAnswer ? 'Revealed answer' : 'Answer'}</span>
+                    <span>{storedState.revealedAnswer ? copy.guess.revealedAnswer : copy.guess.answer}</span>
                     <strong>{answerDisplayName}</strong>
                   </span>
                 }
@@ -711,7 +1186,7 @@ function MinigameExperience({
               <div className="guess-server-actions">
                 <form className="guess-server-form" onSubmit={submitGuess}>
                   <label className="guess-server-input">
-                    <span>Your guess</span>
+                    <span>{copy.guess.yourGuess}</span>
                     <input
                       type="search"
                       value={guessInput}
@@ -723,7 +1198,7 @@ function MinigameExperience({
                       }}
                       onFocus={() => setIsSuggestionsOpen(true)}
                       onBlur={() => window.setTimeout(() => setIsSuggestionsOpen(false), 120)}
-                      placeholder="Start typing a ranked server name"
+                      placeholder={copy.guess.placeholder}
                       autoComplete="off"
                     />
                     {isSuggestionsOpen && suggestions.length > 0 ? (
@@ -737,7 +1212,7 @@ function MinigameExperience({
                             onClick={() => selectSuggestion(server)}
                           >
                             <span>#{server.popularityRank} {getServerDisplayName(server)}</span>
-                            <small>{formatCountry(server.country)} | {getRustServerTypeLabel(server.serverType)}</small>
+                            <small>{formatCountry(server.country, language)} | {getRustServerTypeLabel(server.serverType, language)}</small>
                           </button>
                         ))}
                       </div>
@@ -745,7 +1220,7 @@ function MinigameExperience({
                   </label>
 
                   <button type="submit" className="button-link">
-                    Guess
+                    {copy.guess.submit}
                   </button>
                 </form>
 
@@ -755,7 +1230,7 @@ function MinigameExperience({
                     className="button-link button-link--secondary"
                     onClick={revealAnswer}
                   >
-                    Reveal server
+                    {copy.guess.revealServer}
                   </button>
                 ) : null}
               </div>
@@ -765,9 +1240,9 @@ function MinigameExperience({
               <p className="guess-server-error">{guessError}</p>
             ) : null}
 
-            <div className="guess-server-clues" aria-label="Guess history">
+            <div className="guess-server-clues" aria-label={copy.guess.historyLabel}>
               {attemptedServers.length === 0 ? (
-                <p className="page-text">Each wrong guess reveals one more hint. After all hints are revealed, you can keep guessing or reveal the server.</p>
+                <p className="page-text">{copy.guess.emptyHistory}</p>
               ) : (
                 attemptedServers.map((server, index) => (
                   <GuessResultRow
@@ -777,6 +1252,7 @@ function MinigameExperience({
                     attemptNumber={index + 1}
                     nowMs={nowMs}
                     clueOrder={clueOrder}
+                    language={language}
                   />
                 ))
               )}
@@ -788,12 +1264,13 @@ function MinigameExperience({
 
       {activeGame === 'higherLower' ? (
         <SectionCard
-          title="Higher / Lower"
-          description="Pick whether the challenger is higher or lower than the anchor server. Reach a streak of 10 before one wrong answer."
+          title={copy.higherLower.title}
+          description={copy.higherLower.description}
         >
-        <div className="higher-lower-modes" aria-label="Higher Lower metric">
-          {higherLowerMetrics.map((item) => {
+        <div className="higher-lower-modes" aria-label={copy.higherLower.metricLabel}>
+          {higherLowerMetricOptions.map((item) => {
             const status = higherLowerMetricStatuses[item.value]
+            const metricDefinition = getHigherLowerMetricDefinition(item.value, language)
 
             return (
               <button
@@ -803,8 +1280,8 @@ function MinigameExperience({
                 disabled={higherLowerIsRevealing}
                 onClick={() => setHigherLowerMetric(item.value)}
               >
-                <span>{item.label}</span>
-                <small>{item.detail}</small>
+                <span>{metricDefinition.label}</span>
+                <small>{metricDefinition.detail}</small>
                 <strong className={status.isLocked ? 'difficulty-button__timer difficulty-button__timer--locked' : 'difficulty-button__timer'}>
                   {status.label}
                 </strong>
@@ -815,15 +1292,15 @@ function MinigameExperience({
 
         {rankedServersQuery.isLoading ? (
           <StateNotice
-            title="Loading comparison pool"
-            description="Higher / Lower uses the same ranked server data as the daily server puzzle."
+            title={copy.higherLower.loadingTitle}
+            description={copy.higherLower.loadingDescription}
           />
         ) : null}
 
         {rankedServersQuery.isError ? (
           <StateNotice
-            title="Could not load comparison pool"
-            description="The game needs ranked servers before it can build matchups."
+            title={copy.higherLower.loadErrorTitle}
+            description={copy.higherLower.loadErrorDescription}
             detail={rankedServersErrorDetail}
             tone="error"
           />
@@ -831,8 +1308,8 @@ function MinigameExperience({
 
         {!rankedServersQuery.isLoading && !rankedServersQuery.isError && higherLowerPool.length < 12 ? (
           <StateNotice
-            title="Comparison pool is still warming up"
-            description={`This mode needs at least 12 servers with ${selectedHigherLowerMetric.label.toLowerCase()} data. Current pool: ${higherLowerPool.length}.`}
+            title={copy.higherLower.warmupTitle}
+            description={copy.higherLower.warmupDescription(selectedHigherLowerMetric.label, higherLowerPool.length)}
             tone="warning"
           />
         ) : null}
@@ -842,18 +1319,18 @@ function MinigameExperience({
             <div className="higher-lower-header">
               <div>
                 <span className="minigame-option__status">{selectedHigherLowerMetric.label}</span>
-                <h3>Round {higherLowerState.roundIndex + 1}</h3>
+                <h3>{copy.higherLower.round(higherLowerState.roundIndex + 1)}</h3>
                 <p className="page-text">
-                  Compare the hidden challenger against the revealed anchor server.
+                  {copy.higherLower.compareInstruction}
                 </p>
               </div>
-              <div className="guess-server-game__stats" aria-label="Higher Lower status">
+              <div className="guess-server-game__stats" aria-label={copy.higherLower.statusLabel}>
                 <div>
-                  <span>Streak</span>
+                  <span>{copy.higherLower.streak}</span>
                   <strong>{higherLowerVisibleStreak}/{higherLowerWinStreak}</strong>
                 </div>
                 <div>
-                  <span>Best</span>
+                  <span>{copy.higherLower.best}</span>
                   <strong>{higherLowerVisibleBestStreak}</strong>
                 </div>
               </div>
@@ -863,8 +1340,9 @@ function MinigameExperience({
               <HigherLowerServerCard
                 server={higherLowerDisplayPair.left}
                 metric={higherLowerMetric}
-                label="Anchor"
+                label={copy.higherLower.anchor}
                 isValueHidden={false}
+                language={language}
               />
 
               <div className="higher-lower-versus" aria-hidden="true">
@@ -875,9 +1353,10 @@ function MinigameExperience({
               <HigherLowerServerCard
                 server={higherLowerDisplayPair.right}
                 metric={higherLowerMetric}
-                label="Challenger"
+                label={copy.higherLower.challenger}
                 isValueHidden={!higherLowerIsClosed && !higherLowerIsRevealing}
                 resultTone={higherLowerRevealTone ?? undefined}
+                language={language}
               />
             </div>
 
@@ -892,22 +1371,22 @@ function MinigameExperience({
                   alt=""
                 />
                 <div>
-                  <strong>{higherLowerReveal.result.correct ? 'Correct' : 'Incorrect'}</strong>
+                  <strong>{higherLowerReveal.result.correct ? copy.higherLower.correct : copy.higherLower.incorrect}</strong>
                   <span>{higherLowerRevealDescription}</span>
                 </div>
               </div>
             ) : higherLowerIsClosed ? (
               <StateNotice
-                title={higherLowerState.solved ? 'Streak cleared' : 'Run ended'}
+                title={higherLowerState.solved ? copy.higherLower.streakCleared : copy.higherLower.runEnded}
                 description={
                   higherLowerState.solved
-                    ? `You cleared ${higherLowerWinStreak} in a row.`
-                    : `Best streak: ${higherLowerState.bestStreak}.`
+                    ? copy.higherLower.cleared(higherLowerWinStreak)
+                    : copy.higherLower.bestStreak(higherLowerState.bestStreak)
                 }
                 tone={higherLowerState.solved ? 'success' : 'warning'}
               />
             ) : (
-              <div className="higher-lower-actions" aria-label="Choose challenger comparison">
+              <div className="higher-lower-actions" aria-label={copy.higherLower.actionsLabel}>
                 <button
                   type="button"
                   className="higher-lower-choice higher-lower-choice--higher"
@@ -915,8 +1394,8 @@ function MinigameExperience({
                 >
                   <span className="higher-lower-choice__arrow" aria-hidden="true">↑</span>
                   <span>
-                    <strong>Higher</strong>
-                    <small>Challenger is above the anchor</small>
+                    <strong>{copy.higherLower.higher}</strong>
+                    <small>{copy.higherLower.higherDetail}</small>
                   </span>
                 </button>
                 <button
@@ -926,22 +1405,23 @@ function MinigameExperience({
                 >
                   <span className="higher-lower-choice__arrow" aria-hidden="true">↓</span>
                   <span>
-                    <strong>Lower</strong>
-                    <small>Challenger is below the anchor</small>
+                    <strong>{copy.higherLower.lower}</strong>
+                    <small>{copy.higherLower.lowerDetail}</small>
                   </span>
                 </button>
               </div>
             )}
 
-            <div className="higher-lower-history" aria-label="Higher Lower history">
+            <div className="higher-lower-history" aria-label={copy.higherLower.historyLabel}>
               {higherLowerState.history.length === 0 ? (
-                <p className="page-text">Your last comparisons will appear here after each choice.</p>
+                <p className="page-text">{copy.higherLower.emptyHistory}</p>
               ) : (
                 higherLowerState.history.map((round, index) => (
                   <HigherLowerHistoryRow
                     key={`${round.leftId}:${round.rightId}:${index}`}
                     round={round}
                     servers={higherLowerPool}
+                    language={language}
                   />
                 ))
               )}
@@ -960,13 +1440,16 @@ function HigherLowerServerCard({
   label,
   isValueHidden,
   resultTone,
+  language,
 }: {
   server: ServerListItem
   metric: HigherLowerMetric
   label: string
   isValueHidden: boolean
   resultTone?: 'correct' | 'wrong'
+  language: Language
 }) {
+  const copy = minigameCopy[language]
   const metricValue = getHigherLowerMetricValue(server, metric)
   const cardClassName = [
     'higher-lower-server',
@@ -987,13 +1470,13 @@ function HigherLowerServerCard({
       </div>
       <h3>{getServerDisplayName(server)}</h3>
       <div className={valueClassName}>
-        <span>{getHigherLowerMetricLabel(metric)}</span>
-        <strong>{isValueHidden ? '???' : formatHigherLowerMetricValue(metricValue, metric)}</strong>
+        <span>{getHigherLowerMetricLabel(metric, language)}</span>
+        <strong>{isValueHidden ? '???' : formatHigherLowerMetricValue(metricValue, metric, language)}</strong>
       </div>
       <div className="higher-lower-server__meta">
-        <span>{formatCountry(server.country)}</span>
-        <span>{getRustServerTypeLabel(server.serverType)}</span>
-        <span>{server.maxPlayers} max</span>
+        <span>{formatCountry(server.country, language)}</span>
+        <span>{getRustServerTypeLabel(server.serverType, language)}</span>
+        <span>{copy.higherLower.maxPlayers(server.maxPlayers)}</span>
       </div>
     </article>
   )
@@ -1002,14 +1485,17 @@ function HigherLowerServerCard({
 function HigherLowerHistoryRow({
   round,
   servers,
+  language,
 }: {
   round: HigherLowerRoundResult
   servers: ServerListItem[]
+  language: Language
 }) {
+  const copy = minigameCopy[language]
   const left = servers.find((server) => server.id === round.leftId)
   const right = servers.find((server) => server.id === round.rightId)
-  const leftName = left ? getServerDisplayName(left) : 'Previous anchor'
-  const rightName = right ? getServerDisplayName(right) : 'Previous challenger'
+  const leftName = left ? getServerDisplayName(left) : copy.higherLower.previousAnchor
+  const rightName = right ? getServerDisplayName(right) : copy.higherLower.previousChallenger
 
   return (
     <article className={round.correct ? 'higher-lower-history-row higher-lower-history-row--correct' : 'higher-lower-history-row'}>
@@ -1020,11 +1506,11 @@ function HigherLowerHistoryRow({
       <div>
         <strong>{rightName}</strong>
         <p>
-          {round.choice === 'higher' ? 'Higher' : 'Lower'} than {leftName} on {getHigherLowerMetricLabel(round.metric).toLowerCase()}.
+          {copy.higherLower.historyLine(round.choice, leftName, getHigherLowerMetricLabel(round.metric, language))}
         </p>
       </div>
       <span>
-        {formatHigherLowerMetricValue(round.leftValue, round.metric)} / {formatHigherLowerMetricValue(round.rightValue, round.metric)}
+        {formatHigherLowerMetricValue(round.leftValue, round.metric, language)} / {formatHigherLowerMetricValue(round.rightValue, round.metric, language)}
       </span>
     </article>
   )
@@ -1034,8 +1520,16 @@ function getHigherLowerRevealDescription(
   round: HigherLowerRoundResult,
   left: ServerListItem,
   right: ServerListItem,
+  language: Language,
 ) {
-  return `${getServerDisplayName(right)} was ${formatHigherLowerMetricValue(round.rightValue, round.metric)}. ${getServerDisplayName(left)} was ${formatHigherLowerMetricValue(round.leftValue, round.metric)}.`
+  const copy = minigameCopy[language]
+
+  return copy.higherLower.revealDescription(
+    getServerDisplayName(right),
+    formatHigherLowerMetricValue(round.rightValue, round.metric, language),
+    getServerDisplayName(left),
+    formatHigherLowerMetricValue(round.leftValue, round.metric, language),
+  )
 }
 
 function GuessResultRow({
@@ -1044,15 +1538,17 @@ function GuessResultRow({
   attemptNumber,
   nowMs,
   clueOrder,
+  language,
 }: {
   guess: ServerListItem
   answer: ServerListItem
   attemptNumber: number
   nowMs: number
   clueOrder: ClueKind[]
+  language: Language
 }) {
   const isCorrect = guess.id === answer.id
-  const clues = buildGuessClues(guess, answer, nowMs)
+  const clues = buildGuessClues(guess, answer, nowMs, language)
 
   return (
     <article className={isCorrect ? 'guess-result guess-result--correct' : 'guess-result guess-result--wrong'}>
@@ -1130,14 +1626,16 @@ function getDifficultyStatus(
   difficulty: GuessDifficulty,
   dateKey: string,
   nowMs: number,
+  language: Language,
 ): DifficultyStatus {
+  const copy = minigameCopy[language]
   const state = normalizeStoredGuessState(readStoredGuessState(difficulty), dateKey, nowMs, difficulty)
   const nextAvailableMs = state.nextAvailableAtUtc ? Date.parse(state.nextAvailableAtUtc) : null
   const isLocked = Boolean(state.completedAtUtc && nextAvailableMs && nextAvailableMs > nowMs)
 
   return {
     isLocked,
-    label: isLocked ? formatCooldown(state.nextAvailableAtUtc, nowMs) : 'Available',
+    label: isLocked ? formatCooldown(state.nextAvailableAtUtc, nowMs, language) : copy.available,
   }
 }
 
@@ -1145,14 +1643,16 @@ function getHigherLowerMetricStatus(
   metric: HigherLowerMetric,
   dateKey: string,
   nowMs: number,
+  language: Language,
 ): DifficultyStatus {
+  const copy = minigameCopy[language]
   const state = normalizeStoredHigherLowerState(readStoredHigherLowerState(metric), dateKey, nowMs, metric)
   const nextAvailableMs = state.nextAvailableAtUtc ? Date.parse(state.nextAvailableAtUtc) : null
   const isLocked = Boolean(state.completedAtUtc && nextAvailableMs && nextAvailableMs > nowMs)
 
   return {
     isLocked,
-    label: isLocked ? formatCooldown(state.nextAvailableAtUtc, nowMs) : 'Available',
+    label: isLocked ? formatCooldown(state.nextAvailableAtUtc, nowMs, language) : copy.available,
   }
 }
 
@@ -1332,27 +1832,20 @@ function getHigherLowerCorrectChoice(
   return rightValue > leftValue ? 'higher' : 'lower'
 }
 
-function getHigherLowerMetricLabel(metric: HigherLowerMetric) {
-  switch (metric) {
-    case 'averagePlayers':
-      return 'Average pop'
-    case 'currentPlayers':
-      return 'Live players'
-    case 'rank':
-      return 'Rank'
-  }
+function getHigherLowerMetricLabel(metric: HigherLowerMetric, language: Language = 'en') {
+  return minigameCopy[language].higherLowerMetrics[metric].label
 }
 
-function formatHigherLowerMetricValue(value: number | null, metric: HigherLowerMetric) {
+function formatHigherLowerMetricValue(value: number | null, metric: HigherLowerMetric, language: Language = 'en') {
   if (value === null) {
-    return 'Unknown'
+    return minigameCopy[language].labels.unknown
   }
 
   if (metric === 'rank') {
     return `#${Math.round(value)}`
   }
 
-  return Math.round(value).toLocaleString()
+  return Math.round(value).toLocaleString(language === 'ru' ? 'ru-RU' : 'en')
 }
 
 function hashString(value: string) {
@@ -1398,94 +1891,102 @@ function normalizeGuess(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
-function compareRank(guess: ServerListItem, answer: ServerListItem) {
+function compareRank(guess: ServerListItem, answer: ServerListItem, language: Language) {
+  const labels = minigameCopy[language].labels
+
   if (guess.popularityRank === answer.popularityRank) {
-    return 'Correct'
+    return labels.correct
   }
 
   if (!guess.popularityRank || !answer.popularityRank) {
-    return 'Unknown'
+    return labels.unknown
   }
 
-  return answer.popularityRank < guess.popularityRank ? 'Answer ranks higher' : 'Answer ranks lower'
+  return answer.popularityRank < guess.popularityRank ? labels.answerRanksHigher : labels.answerRanksLower
 }
 
-function getStartingHint(answer: ServerListItem) {
+function getStartingHint(answer: ServerListItem, language: Language) {
+  const labels = minigameCopy[language].labels
   const averagePlayers = answer.rankedAveragePlayers
 
   if (averagePlayers !== null && averagePlayers !== undefined) {
     const populationFloor = Math.floor(averagePlayers / 50) * 50
     const populationCeiling = populationFloor + 49
 
-    return `Average population is around ${populationFloor}-${populationCeiling}.`
+    return labels.averagePopulationAround(populationFloor, populationCeiling)
   }
 
-  return `Average population data is still warming up for this server.`
+  return labels.averagePopulationWarming
 }
 
 function getAnswerHints(
   answer: ServerListItem,
   poolSize: number,
   puzzleKey: string,
+  language: Language,
 ): GuessClue[] {
+  const labels = minigameCopy[language].labels
   const shuffledHints = shuffleWithSeed<GuessClue>([
     {
-      label: 'Region',
-      value: `The server region is ${formatCountry(answer.country)}.`,
+      label: labels.region,
+      value: labels.serverRegion(formatCountry(answer.country, language)),
     },
     {
-      label: 'Server type',
-      value: `The server type is ${getRustServerTypeLabel(answer.serverType)}.`,
+      label: labels.serverType,
+      value: labels.serverTypeIs(getRustServerTypeLabel(answer.serverType, language)),
     },
     {
-      label: 'Capacity',
-      value: `The max player count is ${answer.maxPlayers}.`,
+      label: labels.capacity,
+      value: labels.maxPlayerCount(answer.maxPlayers),
     },
     {
-      label: 'Wipe timing',
-      value: getWipeHint(answer.lastWipeAtUtc),
+      label: labels.wipeTiming,
+      value: getWipeHint(answer.lastWipeAtUtc, language),
     },
   ], hashString(`${puzzleKey}:answer-hints`))
 
   return [
     ...shuffledHints.slice(0, progressiveHintCount - 1),
     {
-      label: 'Rank range',
-      value: getRankRangeHint(answer, poolSize),
+      label: labels.rankRange,
+      value: getRankRangeHint(answer, poolSize, language),
     },
   ]
 }
 
-function getRankRangeHint(answer: ServerListItem, poolSize: number) {
+function getRankRangeHint(answer: ServerListItem, poolSize: number, language: Language) {
+  const labels = minigameCopy[language].labels
   const rank = answer.popularityRank ?? poolSize
   const rankBucketSize = poolSize <= 50 ? 10 : poolSize <= 100 ? 20 : 50
   const rankFloor = Math.floor((rank - 1) / rankBucketSize) * rankBucketSize + 1
   const rankCeiling = Math.min(rankFloor + rankBucketSize - 1, poolSize)
 
-  return `The answer is ranked between #${rankFloor} and #${rankCeiling}.`
+  return labels.rankedBetween(rankFloor, rankCeiling)
 }
 
-function getWipeHint(lastWipeAtUtc: string | null) {
+function getWipeHint(lastWipeAtUtc: string | null, language: Language) {
+  const labels = minigameCopy[language].labels
+
   if (!lastWipeAtUtc) {
-    return 'Wipe timing is unknown for this server.'
+    return labels.wipeUnknown
   }
 
   const parsedWipe = Date.parse(lastWipeAtUtc)
   if (Number.isNaN(parsedWipe)) {
-    return 'Wipe timing is unknown for this server.'
+    return labels.wipeUnknown
   }
 
   const ageDays = Math.max(0, Math.round((Date.now() - parsedWipe) / (24 * 60 * 60 * 1000)))
 
   if (ageDays === 0) {
-    return 'The server wiped today.'
+    return labels.wipedToday
   }
 
   if (ageDays === 1) {
-    return 'The server wiped about 1 day ago.'
+    return labels.wipedOneDayAgo
   }
 
-  return `The server wiped about ${ageDays} days ago.`
+  return labels.wipedDaysAgo(ageDays)
 }
 
 function getClueOrder(puzzleKey: string): ClueKind[] {
@@ -1501,42 +2002,44 @@ function buildGuessClues(
   guess: ServerListItem,
   answer: ServerListItem,
   nowMs: number,
+  language: Language,
 ): Record<ClueKind, GuessClue> {
-  const rankComparison = compareRank(guess, answer)
-  const playersComparison = compareNumber(guess.rankedAveragePlayers, answer.rankedAveragePlayers, 'Avg pop')
-  const maxPlayersComparison = compareNumber(guess.maxPlayers, answer.maxPlayers, 'Max')
-  const wipeComparison = compareWipe(guess.lastWipeAtUtc, answer.lastWipeAtUtc, nowMs)
+  const labels = minigameCopy[language].labels
+  const rankComparison = compareRank(guess, answer, language)
+  const playersComparison = compareNumber(guess.rankedAveragePlayers, answer.rankedAveragePlayers, labels.avgPop, language)
+  const maxPlayersComparison = compareNumber(guess.maxPlayers, answer.maxPlayers, labels.max, language)
+  const wipeComparison = compareWipe(guess.lastWipeAtUtc, answer.lastWipeAtUtc, nowMs, language)
 
   return {
     region: {
-      label: 'Region',
-      value: formatCountry(guess.country),
+      label: labels.region,
+      value: formatCountry(guess.country, language),
       tone: guess.country === answer.country ? 'correct' : 'wrong',
     },
     type: {
-      label: 'Type',
-      value: getRustServerTypeLabel(guess.serverType),
+      label: labels.type,
+      value: getRustServerTypeLabel(guess.serverType, language),
       tone: guess.serverType === answer.serverType ? 'correct' : 'wrong',
     },
     players: {
-      label: 'Players',
+      label: labels.players,
       value: playersComparison,
-      tone: getTone(playersComparison, 'Avg pop: correct'),
+      tone: getTone(playersComparison, labels.valueCorrect(labels.avgPop), labels.unknown),
     },
     maxPlayers: {
-      label: 'Max',
+      label: labels.max,
       value: maxPlayersComparison,
-      tone: getTone(maxPlayersComparison, 'Max: correct'),
+      tone: getTone(maxPlayersComparison, labels.valueCorrect(labels.max), labels.unknown),
     },
     wipe: {
-      label: 'Wipe',
+      label: labels.wipe,
       value: wipeComparison,
-      tone: getTone(wipeComparison, 'Same day'),
+      tone: getTone(wipeComparison, labels.sameDay, labels.unknown),
     },
     rank: {
-      label: 'Rank',
+      label: labels.rank,
       value: rankComparison,
-      tone: getTone(rankComparison, 'Correct'),
+      tone: getTone(rankComparison, labels.correct, labels.unknown),
     },
   }
 }
@@ -1560,63 +2063,71 @@ function compareNumber(
   guessValue: number | null | undefined,
   answerValue: number | null | undefined,
   label: string,
+  language: Language,
 ) {
+  const labels = minigameCopy[language].labels
+
   if (guessValue === null || guessValue === undefined || answerValue === null || answerValue === undefined) {
-    return 'Unknown'
+    return labels.unknown
   }
 
   if (Math.round(guessValue) === Math.round(answerValue)) {
-    return `${label}: correct`
+    return labels.valueCorrect(label)
   }
 
-  return answerValue > guessValue ? `${label}: higher` : `${label}: lower`
+  return answerValue > guessValue ? labels.valueHigher(label) : labels.valueLower(label)
 }
 
 function compareWipe(
   guessWipeAtUtc: string | null,
   answerWipeAtUtc: string | null,
   nowMs: number,
+  language: Language,
 ) {
+  const labels = minigameCopy[language].labels
+
   if (!guessWipeAtUtc || !answerWipeAtUtc) {
-    return 'Unknown'
+    return labels.unknown
   }
 
   const guessMs = Date.parse(guessWipeAtUtc)
   const answerMs = Date.parse(answerWipeAtUtc)
 
   if (Number.isNaN(guessMs) || Number.isNaN(answerMs)) {
-    return 'Unknown'
+    return labels.unknown
   }
 
   const dayMs = 24 * 60 * 60 * 1000
   if (Math.abs(guessMs - answerMs) < dayMs) {
-    return 'Same day'
+    return labels.sameDay
   }
 
   const answerAgeDays = Math.round((nowMs - answerMs) / dayMs)
-  return answerMs > guessMs ? `Newer (${answerAgeDays}d)` : `Older (${answerAgeDays}d)`
+  return answerMs > guessMs ? labels.newer(answerAgeDays) : labels.older(answerAgeDays)
 }
 
-function getTone(value: string, correctValue: string): 'correct' | 'wrong' | 'neutral' {
+function getTone(value: string, correctValue: string, unknownValue: string): 'correct' | 'wrong' | 'neutral' {
   if (value === correctValue) {
     return 'correct'
   }
 
-  if (value === 'Unknown') {
+  if (value === unknownValue) {
     return 'neutral'
   }
 
   return 'wrong'
 }
 
-function formatCooldown(nextAvailableAtUtc: string | undefined, nowMs: number) {
+function formatCooldown(nextAvailableAtUtc: string | undefined, nowMs: number, language: Language) {
+  const copy = minigameCopy[language]
+
   if (!nextAvailableAtUtc) {
-    return 'soon'
+    return copy.soon
   }
 
   const nextMs = Date.parse(nextAvailableAtUtc)
   if (Number.isNaN(nextMs) || nextMs <= nowMs) {
-    return 'now'
+    return copy.now
   }
 
   const totalMinutes = Math.ceil((nextMs - nowMs) / 60000)
@@ -1624,8 +2135,8 @@ function formatCooldown(nextAvailableAtUtc: string | undefined, nowMs: number) {
   const minutes = totalMinutes % 60
 
   if (hours <= 0) {
-    return `in ${minutes}m`
+    return copy.inMinutes(minutes)
   }
 
-  return `in ${hours}h ${minutes}m`
+  return copy.inHoursMinutes(hours, minutes)
 }

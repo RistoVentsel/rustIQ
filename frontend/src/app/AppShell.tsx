@@ -1,28 +1,74 @@
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 
+import { languageOptions, type Language } from '../i18n/language'
+import { useLanguage } from '../i18n/useLanguage'
+
 type Theme = 'dark' | 'light'
+type NavItemId = 'servers' | 'minigames' | 'knowledge'
 
 const navItems = [
   {
+    id: 'servers',
     to: '/',
-    label: 'Servers',
-    meta: 'Live browser',
   },
   {
+    id: 'minigames',
     to: '/minigames',
-    label: 'Minigames',
-    meta: 'Daily challenges',
   },
   {
+    id: 'knowledge',
     to: '/rust-knowledge',
-    label: 'Rust Knowledge',
-    meta: 'Guides & facts',
   },
-] as const
+] satisfies Array<{ id: NavItemId, to: string }>
+
+const appShellCopy: Record<Language, {
+  appTitle: string
+  nav: Record<NavItemId, { label: string, meta: string }>
+  theme: {
+    dark: string
+    light: string
+    switchTo: string
+  }
+  languageLabel: string
+  sponsorInquiries: string
+}> = {
+  en: {
+    appTitle: 'Server Monitor',
+    nav: {
+      servers: { label: 'Servers', meta: 'Live browser' },
+      minigames: { label: 'Minigames', meta: 'Daily challenges' },
+      knowledge: { label: 'Rust Knowledge', meta: 'Guides & facts' },
+    },
+    theme: {
+      dark: 'Dark',
+      light: 'Light',
+      switchTo: 'Switch to',
+    },
+    languageLabel: 'Language',
+    sponsorInquiries: 'Sponsor inquiries',
+  },
+  ru: {
+    appTitle: 'Монитор серверов',
+    nav: {
+      servers: { label: 'Серверы', meta: 'Онлайн-браузер' },
+      minigames: { label: 'Мини-игры', meta: 'Ежедневные задания' },
+      knowledge: { label: 'База знаний', meta: 'Гайды и факты' },
+    },
+    theme: {
+      dark: 'Темная',
+      light: 'Светлая',
+      switchTo: 'Переключить на',
+    },
+    languageLabel: 'Язык',
+    sponsorInquiries: 'Вопросы спонсорства',
+  },
+}
 
 export function AppShell() {
   const location = useLocation()
+  const { language, setLanguage } = useLanguage()
+  const copy = appShellCopy[language]
   const [theme, setTheme] = useState<Theme>(() => {
     const savedTheme = window.localStorage.getItem('rustiq-theme')
     return savedTheme === 'light' ? 'light' : 'dark'
@@ -49,7 +95,7 @@ export function AppShell() {
             <img className="app-brand__logo" src="/rustiq-logo.png" alt="rustIQ" />
             <div>
               <p className="app-eyebrow">rustIQ</p>
-              <h1 className="app-title">Server Monitor</h1>
+              <h1 className="app-title">{copy.appTitle}</h1>
             </div>
           </div>
 
@@ -57,6 +103,7 @@ export function AppShell() {
             <ul className="app-nav">
               {navItems.map((item) => {
                 const isActive = isNavItemActive(item.to)
+                const navCopy = copy.nav[item.id]
 
                 return (
                   <li key={item.to}>
@@ -65,8 +112,8 @@ export function AppShell() {
                       className={isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'}
                       aria-current={isActive ? 'page' : undefined}
                     >
-                      <span className="app-nav__label">{item.label}</span>
-                      <span className="app-nav__meta">{item.meta}</span>
+                      <span className="app-nav__label">{navCopy.label}</span>
+                      <span className="app-nav__meta">{navCopy.meta}</span>
                     </Link>
                   </li>
                 )
@@ -74,19 +121,36 @@ export function AppShell() {
             </ul>
           </nav>
 
-          <button
-            type="button"
-            className="theme-toggle"
-            onClick={() => setTheme(nextTheme)}
-            aria-label={`Switch to ${nextTheme} theme`}
-            aria-pressed={theme === 'light'}
-          >
-            <span className="theme-toggle__label">Dark</span>
-            <span className="theme-toggle__track" aria-hidden="true">
-              <span className="theme-toggle__thumb" />
-            </span>
-            <span className="theme-toggle__label">Light</span>
-          </button>
+          <div className="app-controls">
+            <div className="language-toggle" role="group" aria-label={copy.languageLabel}>
+              {languageOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={language === option.value ? 'language-toggle__button language-toggle__button--active' : 'language-toggle__button'}
+                  onClick={() => setLanguage(option.value)}
+                  aria-pressed={language === option.value}
+                  title={option.name}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={() => setTheme(nextTheme)}
+              aria-label={`${copy.theme.switchTo} ${nextTheme === 'dark' ? copy.theme.dark : copy.theme.light}`}
+              aria-pressed={theme === 'light'}
+            >
+              <span className="theme-toggle__label">{copy.theme.dark}</span>
+              <span className="theme-toggle__track" aria-hidden="true">
+                <span className="theme-toggle__thumb" />
+              </span>
+              <span className="theme-toggle__label">{copy.theme.light}</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -96,7 +160,7 @@ export function AppShell() {
 
       <footer className="app-footer">
         <p>
-          Sponsor inquiries:{' '}
+          {copy.sponsorInquiries}:{' '}
           <a href="mailto:greyezel@gmail.com">greyezel@gmail.com</a>
         </p>
       </footer>

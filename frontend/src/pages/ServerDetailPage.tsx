@@ -21,22 +21,292 @@ import {
 } from '../features/servers/serverPresentation'
 import { useServerLiveUpdates } from '../features/servers/useServerLiveUpdates'
 import { useNow } from '../hooks'
+import type { Language } from '../i18n/language'
+import { useLanguage } from '../i18n/useLanguage'
 import { formatCoarseRelativeTime, getSecondsAgo } from '../lib/time'
 
-function getLiveStatusLabel(status: ReturnType<typeof useServerLiveUpdates>) {
+const serverDetailCopy: Record<Language, {
+  liveStatus: {
+    connected: string
+    reconnecting: string
+    connecting: string
+    error: string
+    disconnected: string
+    idle: string
+  }
+  location: (country: string) => string
+  unexpectedError: string
+  unknown: string
+  unavailable: string
+  copied: string
+  copy: string
+  copyAddress: (address: string) => string
+  copyConsole: (command: string) => string
+  pageEyebrow: string
+  pageHeading: string
+  pageIntro: string
+  overviewTitle: string
+  overviewDescription: string
+  livePlayercount: string
+  back: string
+  serverDetailsNotFound: string
+  connectingLiveTitle: string
+  connectingLiveDescription: string
+  reconnectingLiveTitle: string
+  reconnectingLiveDescription: string
+  liveUnavailableTitle: string
+  liveUnavailableDescription: string
+  loadingDetailsTitle: string
+  loadingDetailsDescription: string
+  refreshFailedTitle: string
+  detailRequestFailedTitle: string
+  refreshFailedDescription: string
+  stats: {
+    players: string
+    serverType: string
+    lastSeen: string
+    lastWiped: string
+    nextWipe: string
+    location: string
+  }
+  details: {
+    connectionAddress: string
+    rustConsole: string
+    serverType: string
+    lastWiped: string
+    nextWipe: string
+    mapSummary: string
+  }
+  mapTitle: string
+  mapDescription: string
+  loadingMapTitle: string
+  loadingMapDescription: string
+  refreshingMapTitle: string
+  refreshingMapDescription: string
+  mapRefreshFailedTitle: string
+  mapUnavailableTitle: string
+  mapRefreshFailedDescription: string
+  mapDetailsUnavailableDescription: string
+  mapThumbnailUnavailableTitle: string
+  mapThumbnailUnavailableDescription: string
+  mapThumbnailAlt: string
+  mapName: string
+  seed: string
+  size: string
+  fetched: string
+  openRustMaps: string
+  mapFile: string
+  downloadMapFile: string
+  playersTitle: string
+  playersDescription: string
+  loadingPlayersTitle: string
+  loadingPlayersDescription: string
+  refreshingPlayersTitle: string
+  refreshingPlayersDescription: string
+  playerRefreshFailedTitle: string
+  playerRequestFailedTitle: string
+  playerRefreshFailedDescription: string
+  noPlayersTitle: string
+  playersUnavailableTitle: string
+  noPlayersDescription: string
+  playersUnavailableDescription: string
+  unnamedPlayer: string
+  duration: string
+}> = {
+  en: {
+    liveStatus: {
+      connected: 'Live connected',
+      reconnecting: 'Reconnecting',
+      connecting: 'Connecting',
+      error: 'Live error',
+      disconnected: 'Disconnected',
+      idle: 'Live idle',
+    },
+    location: (country) => `Location ${country}`,
+    unexpectedError: 'Unexpected error while loading server data.',
+    unknown: 'Unknown',
+    unavailable: 'Unavailable',
+    copied: 'Copied',
+    copy: 'Copy',
+    copyAddress: (address) => `Copy connection address ${address}`,
+    copyConsole: (command) => `Copy Rust console command ${command}`,
+    pageEyebrow: 'Server Detail',
+    pageHeading: 'Server details',
+    pageIntro: 'View the latest population, map, wipe schedule, and live player details for this server.',
+    overviewTitle: 'Server overview',
+    overviewDescription: 'Current status, location, wipe timing, and connection details.',
+    livePlayercount: 'Live playercount',
+    back: 'Back',
+    serverDetailsNotFound: 'Server details could not be found',
+    connectingLiveTitle: 'Connecting to live updates',
+    connectingLiveDescription: 'The page is opening its SignalR subscription for this server.',
+    reconnectingLiveTitle: 'Reconnecting live updates',
+    reconnectingLiveDescription: 'Live pushes paused temporarily. Cached server data is still visible while SignalR reconnects.',
+    liveUnavailableTitle: 'Live updates unavailable',
+    liveUnavailableDescription: 'The page could not keep the SignalR subscription active. Cached REST data is still shown below.',
+    loadingDetailsTitle: 'Loading server details',
+    loadingDetailsDescription: 'Loading the latest saved details for this server.',
+    refreshFailedTitle: 'Server refresh failed, showing cached details',
+    detailRequestFailedTitle: 'Server detail request failed',
+    refreshFailedDescription: 'The latest detail refresh failed, so the page is still using the last successful server snapshot.',
+    stats: {
+      players: 'Players',
+      serverType: 'Server type',
+      lastSeen: 'Last seen',
+      lastWiped: 'Last wiped',
+      nextWipe: 'Next wipe',
+      location: 'Location',
+    },
+    details: {
+      connectionAddress: 'Connection address',
+      rustConsole: 'Rust console',
+      serverType: 'Server type',
+      lastWiped: 'Last wiped',
+      nextWipe: 'Next wipe',
+      mapSummary: 'Map summary',
+    },
+    mapTitle: 'Map',
+    mapDescription: 'Map preview, seed, size, and RustMaps links when available.',
+    loadingMapTitle: 'Loading map details',
+    loadingMapDescription: 'Checking whether this server has a saved map preview.',
+    refreshingMapTitle: 'Refreshing map details',
+    refreshingMapDescription: 'Showing the current map while newer details load.',
+    mapRefreshFailedTitle: 'Map refresh failed, showing saved details',
+    mapUnavailableTitle: 'Map details unavailable',
+    mapRefreshFailedDescription: 'The newest map details could not be loaded, so this section is still showing the last saved version.',
+    mapDetailsUnavailableDescription: 'No map preview or RustMaps details have been saved for this server yet.',
+    mapThumbnailUnavailableTitle: 'Map thumbnail unavailable',
+    mapThumbnailUnavailableDescription: 'Showing text-only map details because no thumbnail image is available for this server.',
+    mapThumbnailAlt: 'Server map thumbnail',
+    mapName: 'Map name',
+    seed: 'Seed',
+    size: 'Size',
+    fetched: 'Fetched',
+    openRustMaps: 'Open RustMaps',
+    mapFile: 'Map file',
+    downloadMapFile: 'Download map file',
+    playersTitle: 'Current players',
+    playersDescription: 'See who is online right now when the server shares player names.',
+    loadingPlayersTitle: 'Loading current players',
+    loadingPlayersDescription: 'Checking whether the server is sharing its current player list.',
+    refreshingPlayersTitle: 'Refreshing current players',
+    refreshingPlayersDescription: 'Showing the latest player list while newer details load.',
+    playerRefreshFailedTitle: 'Player list refresh failed, showing cached players',
+    playerRequestFailedTitle: 'Current players request failed',
+    playerRefreshFailedDescription: 'The newest player list could not be loaded, so this section is still using the last successful response.',
+    noPlayersTitle: 'No players currently listed',
+    playersUnavailableTitle: 'Current player list unavailable',
+    noPlayersDescription: 'This server is not currently sharing any named players.',
+    playersUnavailableDescription: 'This server has not shared a current player list yet.',
+    unnamedPlayer: 'Unnamed player',
+    duration: 'Duration',
+  },
+  ru: {
+    liveStatus: {
+      connected: 'Live-соединение активно',
+      reconnecting: 'Переподключение',
+      connecting: 'Подключение',
+      error: 'Ошибка Live',
+      disconnected: 'Отключено',
+      idle: 'Live в ожидании',
+    },
+    location: (country) => `Локация ${country}`,
+    unexpectedError: 'Неожиданная ошибка при загрузке данных сервера.',
+    unknown: 'Неизвестно',
+    unavailable: 'Недоступно',
+    copied: 'Скопировано',
+    copy: 'Копировать',
+    copyAddress: (address) => `Копировать адрес подключения ${address}`,
+    copyConsole: (command) => `Копировать команду консоли Rust ${command}`,
+    pageEyebrow: 'Детали сервера',
+    pageHeading: 'Детали сервера',
+    pageIntro: 'Смотрите последний онлайн, карту, расписание вайпов и Live-данные игроков для этого сервера.',
+    overviewTitle: 'Обзор сервера',
+    overviewDescription: 'Текущий статус, локация, вайпы и данные подключения.',
+    livePlayercount: 'Live-онлайн',
+    back: 'Назад',
+    serverDetailsNotFound: 'Детали сервера не найдены',
+    connectingLiveTitle: 'Подключение к Live-обновлениям',
+    connectingLiveDescription: 'Страница открывает подписку SignalR для этого сервера.',
+    reconnectingLiveTitle: 'Переподключение Live-обновлений',
+    reconnectingLiveDescription: 'Live-обновления временно остановлены. Кэшированные данные сервера остаются видимыми.',
+    liveUnavailableTitle: 'Live-обновления недоступны',
+    liveUnavailableDescription: 'Страница не смогла удержать подписку SignalR. Ниже показаны кэшированные REST-данные.',
+    loadingDetailsTitle: 'Загрузка деталей сервера',
+    loadingDetailsDescription: 'Загружаем последние сохраненные детали для этого сервера.',
+    refreshFailedTitle: 'Обновление сервера не удалось, показан кэш',
+    detailRequestFailedTitle: 'Запрос деталей сервера не удался',
+    refreshFailedDescription: 'Последнее обновление деталей не удалось, поэтому страница использует последний успешный снимок сервера.',
+    stats: {
+      players: 'Игроки',
+      serverType: 'Тип сервера',
+      lastSeen: 'Последняя активность',
+      lastWiped: 'Прошлый вайп',
+      nextWipe: 'Следующий вайп',
+      location: 'Локация',
+    },
+    details: {
+      connectionAddress: 'Адрес подключения',
+      rustConsole: 'Консоль Rust',
+      serverType: 'Тип сервера',
+      lastWiped: 'Прошлый вайп',
+      nextWipe: 'Следующий вайп',
+      mapSummary: 'Сводка карты',
+    },
+    mapTitle: 'Карта',
+    mapDescription: 'Превью карты, seed, размер и ссылки RustMaps, если доступны.',
+    loadingMapTitle: 'Загрузка деталей карты',
+    loadingMapDescription: 'Проверяем, есть ли сохраненное превью карты для этого сервера.',
+    refreshingMapTitle: 'Обновление деталей карты',
+    refreshingMapDescription: 'Показываем текущую карту, пока загружаются новые данные.',
+    mapRefreshFailedTitle: 'Обновление карты не удалось, показан кэш',
+    mapUnavailableTitle: 'Детали карты недоступны',
+    mapRefreshFailedDescription: 'Новые данные карты не загрузились, поэтому раздел показывает последнюю сохраненную версию.',
+    mapDetailsUnavailableDescription: 'Для этого сервера пока нет сохраненного превью карты или данных RustMaps.',
+    mapThumbnailUnavailableTitle: 'Превью карты недоступно',
+    mapThumbnailUnavailableDescription: 'Показаны только текстовые детали карты, потому что изображения для этого сервера нет.',
+    mapThumbnailAlt: 'Превью карты сервера',
+    mapName: 'Название карты',
+    seed: 'Seed',
+    size: 'Размер',
+    fetched: 'Получено',
+    openRustMaps: 'Открыть RustMaps',
+    mapFile: 'Файл карты',
+    downloadMapFile: 'Скачать файл карты',
+    playersTitle: 'Текущие игроки',
+    playersDescription: 'Смотрите, кто сейчас онлайн, если сервер передает имена игроков.',
+    loadingPlayersTitle: 'Загрузка текущих игроков',
+    loadingPlayersDescription: 'Проверяем, передает ли сервер текущий список игроков.',
+    refreshingPlayersTitle: 'Обновление текущих игроков',
+    refreshingPlayersDescription: 'Показываем последний список игроков, пока загружаются новые данные.',
+    playerRefreshFailedTitle: 'Обновление списка игроков не удалось, показан кэш',
+    playerRequestFailedTitle: 'Запрос текущих игроков не удался',
+    playerRefreshFailedDescription: 'Новый список игроков не загрузился, поэтому раздел использует последний успешный ответ.',
+    noPlayersTitle: 'Сейчас нет списка игроков',
+    playersUnavailableTitle: 'Список текущих игроков недоступен',
+    noPlayersDescription: 'Этот сервер сейчас не передает имена игроков.',
+    playersUnavailableDescription: 'Этот сервер еще не передавал текущий список игроков.',
+    unnamedPlayer: 'Игрок без имени',
+    duration: 'Длительность',
+  },
+}
+
+function getLiveStatusLabel(status: ReturnType<typeof useServerLiveUpdates>, language: Language) {
+  const copy = serverDetailCopy[language].liveStatus
+
   switch (status) {
     case 'connected':
-      return 'Live connected'
+      return copy.connected
     case 'reconnecting':
-      return 'Reconnecting'
+      return copy.reconnecting
     case 'connecting':
-      return 'Connecting'
+      return copy.connecting
     case 'error':
-      return 'Live error'
+      return copy.error
     case 'disconnected':
-      return 'Disconnected'
+      return copy.disconnected
     default:
-      return 'Live idle'
+      return copy.idle
   }
 }
 
@@ -55,43 +325,48 @@ function getLiveStatusClassName(status: ReturnType<typeof useServerLiveUpdates>)
   }
 }
 
-function getQueryErrorDetail(error: unknown) {
+function getQueryErrorDetail(error: unknown, fallback: string) {
   return error instanceof ApiError
     ? `${error.message} (${error.url})`
-    : 'Unexpected error while loading server data.'
+    : fallback
 }
 
-function formatPlayerDuration(durationSeconds: number) {
+function formatPlayerDuration(durationSeconds: number, language: Language) {
   const totalMinutes = Math.max(0, Math.round(durationSeconds / 60))
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
+  const hourSuffix = language === 'ru' ? 'ч' : 'h'
+  const minuteSuffix = language === 'ru' ? 'мин' : 'm'
 
   if (hours > 0 && minutes > 0) {
-    return `${hours}h ${minutes}m`
+    return `${hours}${hourSuffix} ${minutes}${minuteSuffix}`
   }
 
   if (hours > 0) {
-    return `${hours}h`
+    return `${hours}${hourSuffix}`
   }
 
-  return `${minutes}m`
+  return `${minutes}${minuteSuffix}`
 }
 
 type CopiedServerDetailField = 'address' | 'connect'
 
 function ServerDetailLocation({
   server,
+  language,
 }: {
   server: Parameters<typeof formatServerLocation>[0]
+  language: Language
 }) {
-  const country = formatCountry(server.country)
+  const copy = serverDetailCopy[language]
+  const country = formatCountry(server.country, language)
   const countryCode = server.country?.trim().toLowerCase()
   const flagSrc = countryCode && /^[a-z]{2}$/.test(countryCode)
     ? `https://flagcdn.com/w40/${countryCode}.png`
     : null
 
   return (
-    <span className="server-detail-location" aria-label={`Location ${formatCountry(server.country)}`}>
+    <span className="server-detail-location" aria-label={copy.location(formatCountry(server.country, language))}>
       <span className="server-location__initials">{country}</span>
       {flagSrc ? (
         <img className="server-location__flag" src={flagSrc} alt="" loading="lazy" />
@@ -105,6 +380,8 @@ function ServerDetailLocation({
 export function ServerDetailPage() {
   const { serverId } = useParams<{ serverId: string }>()
   const navigate = useNavigate()
+  const { language } = useLanguage()
+  const copy = serverDetailCopy[language]
   const liveStatus = useServerLiveUpdates(serverId)
   const nowMs = useNow()
   const [copiedServerDetailField, setCopiedServerDetailField] = useState<CopiedServerDetailField | null>(null)
@@ -139,8 +416,8 @@ export function ServerDetailPage() {
   const serverConnectAddress = serverQuery.data ? formatConnectAddress(serverQuery.data) : ''
   const serverConnectCommand = serverQuery.data ? formatClientConnectCommand(serverQuery.data) : ''
   const serverTypeLabel = serverQuery.data
-    ? getRustServerTypeLabel(serverQuery.data.serverType)
-    : 'Unknown'
+    ? getRustServerTypeLabel(serverQuery.data.serverType, language)
+    : copy.unknown
 
   async function copyServerDetailText(text: string, field: CopiedServerDetailField) {
     await navigator.clipboard.writeText(text)
@@ -162,74 +439,74 @@ export function ServerDetailPage() {
   return (
     <div className="page-stack server-detail-page">
       <div className="page-copy">
-        <p className="page-eyebrow">Server Detail</p>
-        <h2 className="page-heading">Server details</h2>
+        <p className="page-eyebrow">{copy.pageEyebrow}</p>
+        <h2 className="page-heading">{copy.pageHeading}</h2>
         <p className="page-text">
-          View the latest population, map, wipe schedule, and live player details for this server.
+          {copy.pageIntro}
         </p>
       </div>
 
       <SectionCard
-        title="Server overview"
-        description="Current status, location, wipe timing, and connection details."
+        title={copy.overviewTitle}
+        description={copy.overviewDescription}
         actions={
           <div className="server-detail-actions">
-            <span className={getLiveStatusClassName(liveStatus)}>{getLiveStatusLabel(liveStatus)}</span>
-            <span className="status-pill status-pill--online">Live playercount</span>
+            <span className={getLiveStatusClassName(liveStatus)}>{getLiveStatusLabel(liveStatus, language)}</span>
+            <span className="status-pill status-pill--online">{copy.livePlayercount}</span>
             <button
               type="button"
               className="button-link button-link--secondary"
               onClick={navigateBackToServerList}
             >
-              Back
+              {copy.back}
             </button>
           </div>
         }
       >
         {!serverId ? (
-          <StateNotice title="Server details could not be found" tone="error" />
+          <StateNotice title={copy.serverDetailsNotFound} tone="error" />
         ) : null}
 
         {liveStatus === 'connecting' ? (
           <StateNotice
-            title="Connecting to live updates"
-            description="The page is opening its SignalR subscription for this server."
+            title={copy.connectingLiveTitle}
+            description={copy.connectingLiveDescription}
             tone="info"
           />
         ) : null}
 
         {liveStatus === 'reconnecting' ? (
           <StateNotice
-            title="Reconnecting live updates"
-            description="Live pushes paused temporarily. Cached server data is still visible while SignalR reconnects."
+            title={copy.reconnectingLiveTitle}
+            description={copy.reconnectingLiveDescription}
             tone="warning"
           />
         ) : null}
 
         {liveStatus === 'disconnected' || liveStatus === 'error' ? (
           <StateNotice
-            title="Live updates unavailable"
-            description="The page could not keep the SignalR subscription active. Cached REST data is still shown below."
+            title={copy.liveUnavailableTitle}
+            description={copy.liveUnavailableDescription}
             tone="error"
           />
         ) : null}
 
         {serverQuery.isLoading && !hasServerData ? (
           <StateNotice
-            title="Loading server details"
-            description="Loading the latest saved details for this server."
+            title={copy.loadingDetailsTitle}
+            description={copy.loadingDetailsDescription}
           />
         ) : null}
 
         {serverQuery.isError ? (
           <StateNotice
-            title={hasServerData ? 'Server refresh failed, showing cached details' : 'Server detail request failed'}
+            title={hasServerData ? copy.refreshFailedTitle : copy.detailRequestFailedTitle}
             description={
               hasServerData
-                ? 'The latest detail refresh failed, so the page is still using the last successful server snapshot.'
+                ? copy.refreshFailedDescription
                 : undefined
             }
-            detail={getQueryErrorDetail(serverQuery.error)}
+            detail={getQueryErrorDetail(serverQuery.error, copy.unexpectedError)}
             tone="error"
           />
         ) : null}
@@ -239,11 +516,11 @@ export function ServerDetailPage() {
             <ServerLayoutPreview
               name={getServerDisplayName(serverQuery.data)}
               subtitle={formatServerSubtitle(serverQuery.data)}
-              badgeLabel={getServerStatusLabel(serverQuery.data.status)}
+              badgeLabel={getServerStatusLabel(serverQuery.data.status, language)}
               stats={[
-                { label: 'Players', value: formatPlayerCount(serverQuery.data) },
+                { label: copy.stats.players, value: formatPlayerCount(serverQuery.data) },
                 {
-                  label: 'Server type',
+                  label: copy.stats.serverType,
                   value: (
                     <span className={getRustServerTypeClassName(serverQuery.data.serverType)}>
                       {serverTypeLabel}
@@ -251,18 +528,18 @@ export function ServerDetailPage() {
                   ),
                 },
                 {
-                  label: 'Last seen',
-                  value: formatCoarseRelativeTime(lastSeenSecondsAgo),
+                  label: copy.stats.lastSeen,
+                  value: formatCoarseRelativeTime(lastSeenSecondsAgo, language),
                 },
-                { label: 'Last wiped', value: formatServerTimestamp(serverQuery.data.lastWipeAtUtc) },
-                { label: 'Next wipe', value: formatServerTimestamp(serverQuery.data.nextWipeAtUtc) },
-                { label: 'Location', value: <ServerDetailLocation server={serverQuery.data} /> },
+                { label: copy.stats.lastWiped, value: formatServerTimestamp(serverQuery.data.lastWipeAtUtc, language) },
+                { label: copy.stats.nextWipe, value: formatServerTimestamp(serverQuery.data.nextWipeAtUtc, language) },
+                { label: copy.stats.location, value: <ServerDetailLocation server={serverQuery.data} language={language} /> },
               ]}
             />
 
             <dl className="server-detail-meta">
               <div className="server-detail-meta__item">
-                <dt>Connection address</dt>
+                <dt>{copy.details.connectionAddress}</dt>
                 <dd className="server-detail-address">
                   <span>{serverConnectAddress}</span>
                   <button
@@ -271,14 +548,14 @@ export function ServerDetailPage() {
                     onClick={() => {
                       void copyServerDetailText(serverConnectAddress, 'address')
                     }}
-                    aria-label={`Copy connection address ${serverConnectAddress}`}
+                    aria-label={copy.copyAddress(serverConnectAddress)}
                   >
-                    {copiedServerDetailField === 'address' ? 'Copied' : 'Copy'}
+                    {copiedServerDetailField === 'address' ? copy.copied : copy.copy}
                   </button>
                 </dd>
               </div>
               <div className="server-detail-meta__item">
-                <dt>Rust console</dt>
+                <dt>{copy.details.rustConsole}</dt>
                 <dd className="server-detail-address">
                   <code className="server-detail-command">{serverConnectCommand}</code>
                   <button
@@ -287,14 +564,14 @@ export function ServerDetailPage() {
                     onClick={() => {
                       void copyServerDetailText(serverConnectCommand, 'connect')
                     }}
-                    aria-label={`Copy Rust console command ${serverConnectCommand}`}
+                    aria-label={copy.copyConsole(serverConnectCommand)}
                   >
-                    {copiedServerDetailField === 'connect' ? 'Copied' : 'Copy'}
+                    {copiedServerDetailField === 'connect' ? copy.copied : copy.copy}
                   </button>
                 </dd>
               </div>
               <div className="server-detail-meta__item">
-                <dt>Server type</dt>
+                <dt>{copy.details.serverType}</dt>
                 <dd>
                   <span className={getRustServerTypeClassName(serverQuery.data.serverType)}>
                     {serverTypeLabel}
@@ -302,16 +579,16 @@ export function ServerDetailPage() {
                 </dd>
               </div>
               <div className="server-detail-meta__item">
-                <dt>Last wiped</dt>
-                <dd>{formatServerTimestamp(serverQuery.data.lastWipeAtUtc)}</dd>
+                <dt>{copy.details.lastWiped}</dt>
+                <dd>{formatServerTimestamp(serverQuery.data.lastWipeAtUtc, language)}</dd>
               </div>
               <div className="server-detail-meta__item">
-                <dt>Next wipe</dt>
-                <dd>{formatServerTimestamp(serverQuery.data.nextWipeAtUtc)}</dd>
+                <dt>{copy.details.nextWipe}</dt>
+                <dd>{formatServerTimestamp(serverQuery.data.nextWipeAtUtc, language)}</dd>
               </div>
               <div className="server-detail-meta__item">
-                <dt>Map summary</dt>
-                <dd>{serverQuery.data.mapMetadata?.mapName ?? serverQuery.data.map ?? 'Unavailable'}</dd>
+                <dt>{copy.details.mapSummary}</dt>
+                <dd>{serverQuery.data.mapMetadata?.mapName ?? serverQuery.data.map ?? copy.unavailable}</dd>
               </div>
             </dl>
           </div>
@@ -319,40 +596,40 @@ export function ServerDetailPage() {
       </SectionCard>
 
       <SectionCard
-        title="Map"
-        description="Map preview, seed, size, and RustMaps links when available."
+        title={copy.mapTitle}
+        description={copy.mapDescription}
       >
         {mapQuery.isLoading && mapQuery.data === undefined ? (
           <StateNotice
-            title="Loading map details"
-            description="Checking whether this server has a saved map preview."
+            title={copy.loadingMapTitle}
+            description={copy.loadingMapDescription}
           />
         ) : null}
 
         {mapQuery.isFetching && mapQuery.data !== undefined ? (
           <StateNotice
-            title="Refreshing map details"
-            description="Showing the current map while newer details load."
+            title={copy.refreshingMapTitle}
+            description={copy.refreshingMapDescription}
           />
         ) : null}
 
         {mapQuery.isError ? (
           <StateNotice
-            title={mapQuery.data !== undefined ? 'Map refresh failed, showing saved details' : 'Map details unavailable'}
+            title={mapQuery.data !== undefined ? copy.mapRefreshFailedTitle : copy.mapUnavailableTitle}
             description={
               mapQuery.data !== undefined
-                ? 'The newest map details could not be loaded, so this section is still showing the last saved version.'
+                ? copy.mapRefreshFailedDescription
                 : undefined
             }
-            detail={getQueryErrorDetail(mapQuery.error)}
+            detail={getQueryErrorDetail(mapQuery.error, copy.unexpectedError)}
             tone="error"
           />
         ) : null}
 
         {!mapQuery.isLoading && !mapQuery.isError && mapQuery.data === null ? (
           <StateNotice
-            title="Map details unavailable"
-            description="No map preview or RustMaps details have been saved for this server yet."
+            title={copy.mapUnavailableTitle}
+            description={copy.mapDetailsUnavailableDescription}
           />
         ) : null}
 
@@ -360,8 +637,8 @@ export function ServerDetailPage() {
           <div className="page-stack">
             {!mapQuery.data.thumbnailUrl ? (
               <StateNotice
-                title="Map thumbnail unavailable"
-                description="Showing text-only map details because no thumbnail image is available for this server."
+                title={copy.mapThumbnailUnavailableTitle}
+                description={copy.mapThumbnailUnavailableDescription}
               />
             ) : null}
 
@@ -375,7 +652,7 @@ export function ServerDetailPage() {
               >
                 <img
                   src={mapQuery.data.thumbnailUrl}
-                  alt={mapQuery.data.mapName ?? 'Server map thumbnail'}
+                  alt={mapQuery.data.mapName ?? copy.mapThumbnailAlt}
                   className="server-map-thumb__image"
                 />
               </a>
@@ -383,20 +660,20 @@ export function ServerDetailPage() {
 
             <dl className="server-detail-meta">
               <div className="server-detail-meta__item">
-                <dt>Map name</dt>
-                <dd>{mapQuery.data.mapName ?? 'Unavailable'}</dd>
+                <dt>{copy.mapName}</dt>
+                <dd>{mapQuery.data.mapName ?? copy.unavailable}</dd>
               </div>
               <div className="server-detail-meta__item">
-                <dt>Seed</dt>
-                <dd>{mapQuery.data.seed ?? 'Unavailable'}</dd>
+                <dt>{copy.seed}</dt>
+                <dd>{mapQuery.data.seed ?? copy.unavailable}</dd>
               </div>
               <div className="server-detail-meta__item">
-                <dt>Size</dt>
-                <dd>{mapQuery.data.size ?? 'Unavailable'}</dd>
+                <dt>{copy.size}</dt>
+                <dd>{mapQuery.data.size ?? copy.unavailable}</dd>
               </div>
               <div className="server-detail-meta__item">
-                <dt>Fetched</dt>
-                <dd>{formatServerTimestamp(mapQuery.data.fetchedAtUtc)}</dd>
+                <dt>{copy.fetched}</dt>
+                <dd>{formatServerTimestamp(mapQuery.data.fetchedAtUtc, language)}</dd>
               </div>
               <div className="server-detail-meta__item">
                 <dt>RustMaps</dt>
@@ -408,15 +685,15 @@ export function ServerDetailPage() {
                       rel="noreferrer"
                       className="map-action-link"
                     >
-                      Open RustMaps
+                      {copy.openRustMaps}
                     </a>
                   ) : (
-                    'Unavailable'
+                    copy.unavailable
                   )}
                 </dd>
               </div>
               <div className="server-detail-meta__item">
-                <dt>Map file</dt>
+                <dt>{copy.mapFile}</dt>
                 <dd>
                   {mapQuery.data.mapFileUrl ? (
                     <a
@@ -425,10 +702,10 @@ export function ServerDetailPage() {
                       rel="noreferrer"
                       className="map-action-link"
                     >
-                      Download map file
+                      {copy.downloadMapFile}
                     </a>
                   ) : (
-                    'Unavailable'
+                    copy.unavailable
                   )}
                 </dd>
               </div>
@@ -439,20 +716,20 @@ export function ServerDetailPage() {
       </SectionCard>
 
       <SectionCard
-        title="Current players"
-        description="See who is online right now when the server shares player names."
+        title={copy.playersTitle}
+        description={copy.playersDescription}
       >
         {playersQuery.isLoading && playersQuery.data === undefined ? (
           <StateNotice
-            title="Loading current players"
-            description="Checking whether the server is sharing its current player list."
+            title={copy.loadingPlayersTitle}
+            description={copy.loadingPlayersDescription}
           />
         ) : null}
 
         {playersQuery.isFetching && playersQuery.data !== undefined ? (
           <StateNotice
-            title="Refreshing current players"
-            description="Showing the latest player list while newer details load."
+            title={copy.refreshingPlayersTitle}
+            description={copy.refreshingPlayersDescription}
           />
         ) : null}
 
@@ -460,26 +737,26 @@ export function ServerDetailPage() {
           <StateNotice
             title={
               playersQuery.data !== undefined
-                ? 'Player list refresh failed, showing cached players'
-                : 'Current players request failed'
+                ? copy.playerRefreshFailedTitle
+                : copy.playerRequestFailedTitle
             }
             description={
               playersQuery.data !== undefined
-                ? 'The newest player list could not be loaded, so this section is still using the last successful response.'
+                ? copy.playerRefreshFailedDescription
                 : undefined
             }
-            detail={getQueryErrorDetail(playersQuery.error)}
+            detail={getQueryErrorDetail(playersQuery.error, copy.unexpectedError)}
             tone="error"
           />
         ) : null}
 
         {!playersQuery.isLoading && !playersQuery.isError && players.length === 0 ? (
           <StateNotice
-            title={hasPlayerSnapshot ? 'No players currently listed' : 'Current player list unavailable'}
+            title={hasPlayerSnapshot ? copy.noPlayersTitle : copy.playersUnavailableTitle}
             description={
               hasPlayerSnapshot
-                ? 'This server is not currently sharing any named players.'
-                : 'This server has not shared a current player list yet.'
+                ? copy.noPlayersDescription
+                : copy.playersUnavailableDescription
             }
           />
         ) : null}
@@ -490,12 +767,12 @@ export function ServerDetailPage() {
               {players.map((player, index) => (
                 <div key={`${player.playerName ?? 'player'}-${index}`} className="player-list__item">
                   <div className="player-list__identity">
-                    <strong>{player.playerName ?? 'Unnamed player'}</strong>
+                    <strong>{player.playerName ?? copy.unnamedPlayer}</strong>
                   </div>
                   <dl className="player-list__stats">
                     <div>
-                      <dt>Duration</dt>
-                      <dd>{formatPlayerDuration(player.durationSeconds)}</dd>
+                      <dt>{copy.duration}</dt>
+                      <dd>{formatPlayerDuration(player.durationSeconds, language)}</dd>
                     </div>
                   </dl>
                 </div>

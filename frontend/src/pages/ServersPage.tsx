@@ -16,6 +16,8 @@ import { ServerListCard } from '../features/servers/ServerListCard'
 import { getRustServerTypeLabel } from '../features/servers/serverPresentation'
 import { useFavoriteServers } from '../features/servers/useFavoriteServers'
 import { useNow } from '../hooks'
+import { formatRussianCount, type Language } from '../i18n/language'
+import { useLanguage } from '../i18n/useLanguage'
 
 const pageSizeOptions = [10, 25, 50]
 type ServerSortBy = 'players' | 'rank' | 'lastWipe' | 'nextWipe'
@@ -27,14 +29,192 @@ const serverTypeFilterOptions = [
   rustServerType.Modded,
 ] as const
 const wipeFilterOptions: Array<{ value: WipeFilter, label: string }> = [
-  { value: 'all', label: 'All wipes' },
-  { value: 'next24h', label: 'Wipes in 24h' },
-  { value: 'next7d', label: 'Wipes in 7d' },
-  { value: 'wiped24h', label: 'Wiped in 24h' },
-  { value: 'hasWipeData', label: 'Has wipe data' },
+  { value: 'all', label: 'all' },
+  { value: 'next24h', label: 'next24h' },
+  { value: 'next7d', label: 'next7d' },
+  { value: 'wiped24h', label: 'wiped24h' },
+  { value: 'hasWipeData', label: 'hasWipeData' },
 ]
 const serverListStaleTimeMs = 60 * 1000
 const serverListCacheTimeMs = 10 * 60 * 1000
+
+const wipeFilterLabels: Record<Language, Record<WipeFilter, string>> = {
+  en: {
+    all: 'All wipes',
+    next24h: 'Wipes in 24h',
+    next7d: 'Wipes in 7d',
+    wiped24h: 'Wiped in 24h',
+    hasWipeData: 'Has wipe data',
+  },
+  ru: {
+    all: 'Все вайпы',
+    next24h: 'Вайп в ближайшие 24 ч',
+    next7d: 'Вайп в ближайшие 7 дн.',
+    wiped24h: 'Вайп был за последние 24 ч',
+    hasWipeData: 'Есть данные о вайпе',
+  },
+}
+
+const serversPageCopy: Record<Language, {
+  eyebrow: string
+  heading: string
+  intro: string
+  sectionTitle: string
+  sectionDescription: string
+  pageSize: string
+  refreshing: string
+  refresh: string
+  search: string
+  searchPlaceholder: string
+  status: string
+  all: string
+  online: string
+  offline: string
+  wipeTiming: string
+  favorites: string
+  serverTypeFilters: string
+  loadingServerPopulations: string
+  waitingForBackend: string
+  loadingPage: (page: number) => string
+  fetchingSelectedPage: string
+  refreshingCachedServers: string
+  readingLatestSavedData: string
+  refreshFailedCached: string
+  serverListRequestFailed: string
+  refreshFailedDescription: string
+  requestFailedDescription: string
+  serversCount: (total: number) => string
+  pageOf: (page: number, totalPages: number) => string
+  showingOf: (visible: number, pageSize: number) => string
+  oneCachedServer: string
+  openServer: string
+  table: {
+    favorite: string
+    rank: string
+    name: string
+    serverType: string
+    players: string
+    trend: string
+    lastWipe: string
+    nextWipe: string
+    location: string
+  }
+  noFavoriteServers: string
+  noServersAvailable: string
+  favoriteDescription: string
+  noFilterMatches: string
+  startBackendPolling: string
+  previous: string
+  next: string
+  unexpectedError: string
+}> = {
+  en: {
+    eyebrow: 'Server List',
+    heading: 'Unofficial Rust server tracking',
+    intro: 'Browse server activity, wipe timing, locations, and player counts in one survival-focused view.',
+    sectionTitle: 'Servers',
+    sectionDescription: 'Find active Rust servers, compare player counts, and browse RustIQ Top 250 ranks by recent average population.',
+    pageSize: 'Page size',
+    refreshing: 'Refreshing...',
+    refresh: 'Refresh',
+    search: 'Search',
+    searchPlaceholder: 'Search by name, host, or map',
+    status: 'Status',
+    all: 'All',
+    online: 'Online',
+    offline: 'Offline',
+    wipeTiming: 'Wipe timing',
+    favorites: 'Favorites',
+    serverTypeFilters: 'Server type filters',
+    loadingServerPopulations: 'Loading server populations',
+    waitingForBackend: 'Waiting for the backend to return the latest server list.',
+    loadingPage: (page) => `Loading page ${page}`,
+    fetchingSelectedPage: 'Fetching servers for the selected page.',
+    refreshingCachedServers: 'Refreshing cached servers',
+    readingLatestSavedData: 'Reading the latest saved server data from the database.',
+    refreshFailedCached: 'Refresh failed, showing cached results',
+    serverListRequestFailed: 'Server list request failed',
+    refreshFailedDescription: 'The latest refresh did not complete, so the list below is still the last successful cached page.',
+    requestFailedDescription: 'The backend did not return a cached server list for the homepage.',
+    serversCount: (total) => `${total} servers`,
+    pageOf: (page, totalPages) => `Page ${page} of ${totalPages}`,
+    showingOf: (visible, pageSize) => `Showing ${visible} of ${pageSize}`,
+    oneCachedServer: 'One cached server is available. Open it directly and continue on the detail page.',
+    openServer: 'Open server',
+    table: {
+      favorite: 'Favorite',
+      rank: 'Rank',
+      name: 'Name',
+      serverType: 'Server Type',
+      players: 'Players',
+      trend: 'Trend',
+      lastWipe: 'Last Wipe',
+      nextWipe: 'Next Wipe',
+      location: 'Location',
+    },
+    noFavoriteServers: 'No favorite servers on this page',
+    noServersAvailable: 'No servers available',
+    favoriteDescription: 'Favorite a server on this page or change pages to find saved servers that match the current filters.',
+    noFilterMatches: 'No cached servers match the current search, status, or wipe filter.',
+    startBackendPolling: 'Start backend polling to populate the cached server list.',
+    previous: 'Previous',
+    next: 'Next',
+    unexpectedError: 'Unexpected error while loading the server list.',
+  },
+  ru: {
+    eyebrow: 'Список серверов',
+    heading: 'Неофициальный мониторинг серверов Rust',
+    intro: 'Просматривайте активность серверов, вайпы, локации и онлайн игроков в одном удобном виде.',
+    sectionTitle: 'Серверы',
+    sectionDescription: 'Находите активные серверы Rust, сравнивайте онлайн и смотрите RustIQ Top 250 по недавнему среднему онлайну.',
+    pageSize: 'Размер страницы',
+    refreshing: 'Обновление...',
+    refresh: 'Обновить',
+    search: 'Поиск',
+    searchPlaceholder: 'Поиск по названию, хосту или карте',
+    status: 'Статус',
+    all: 'Все',
+    online: 'Онлайн',
+    offline: 'Офлайн',
+    wipeTiming: 'Вайпы',
+    favorites: 'Избранное',
+    serverTypeFilters: 'Фильтры типа сервера',
+    loadingServerPopulations: 'Загрузка онлайна серверов',
+    waitingForBackend: 'Ждем, пока серверная часть вернет последний список серверов.',
+    loadingPage: (page) => `Загрузка страницы ${page}`,
+    fetchingSelectedPage: 'Загрузка серверов для выбранной страницы.',
+    refreshingCachedServers: 'Обновление кэша серверов',
+    readingLatestSavedData: 'Чтение последних сохраненных данных серверов из базы.',
+    refreshFailedCached: 'Обновление не удалось, показан кэш',
+    serverListRequestFailed: 'Запрос списка серверов не удался',
+    refreshFailedDescription: 'Последнее обновление не завершилось, поэтому ниже показана последняя успешно загруженная страница.',
+    requestFailedDescription: 'Серверная часть не вернула кэшированный список серверов для главной страницы.',
+    serversCount: (total) => formatRussianCount(total, 'сервер', 'сервера', 'серверов'),
+    pageOf: (page, totalPages) => `Страница ${page} из ${totalPages}`,
+    showingOf: (visible, pageSize) => `Показано ${visible} из ${pageSize}`,
+    oneCachedServer: 'Доступен один кэшированный сервер. Откройте его напрямую и продолжите на странице деталей.',
+    openServer: 'Открыть сервер',
+    table: {
+      favorite: 'Избранное',
+      rank: 'Ранг',
+      name: 'Название',
+      serverType: 'Тип сервера',
+      players: 'Игроки',
+      trend: 'Тренд',
+      lastWipe: 'Прошлый вайп',
+      nextWipe: 'Следующий вайп',
+      location: 'Локация',
+    },
+    noFavoriteServers: 'На этой странице нет избранных серверов',
+    noServersAvailable: 'Серверы недоступны',
+    favoriteDescription: 'Добавьте сервер в избранное на этой странице или смените страницу, чтобы найти сохраненные серверы с текущими фильтрами.',
+    noFilterMatches: 'В кэше нет серверов, подходящих под текущий поиск, статус или фильтр вайпа.',
+    startBackendPolling: 'Запустите опрос серверной части, чтобы заполнить кэшированный список серверов.',
+    previous: 'Назад',
+    next: 'Вперед',
+    unexpectedError: 'Неожиданная ошибка при загрузке списка серверов.',
+  },
+}
 
 function getServersQueryKey(params: GetServersParams) {
   return ['servers', params] as const
@@ -48,6 +228,8 @@ function getPageFromSearchParams(searchParams: URLSearchParams) {
 
 export function ServersPage() {
   const queryClient = useQueryClient()
+  const { language } = useLanguage()
+  const copy = serversPageCopy[language]
   const [searchParams, setSearchParams] = useSearchParams()
   const [searchInput, setSearchInput] = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
@@ -124,7 +306,13 @@ export function ServersPage() {
   const serverListErrorDetail =
     serversQuery.error instanceof ApiError
       ? `${serversQuery.error.message} (${serversQuery.error.url})`
-      : 'Unexpected error while loading the server list.'
+      : copy.unexpectedError
+  const localizedWipeFilterOptions = useMemo(() => (
+    wipeFilterOptions.map((option) => ({
+      value: option.value,
+      label: wipeFilterLabels[language][option.value],
+    }))
+  ), [language])
 
   useEffect(() => {
     const pageFromSearchParams = getPageFromSearchParams(searchParams)
@@ -260,20 +448,20 @@ export function ServersPage() {
   return (
     <div className="page-stack server-browser-page">
       <div className="page-copy">
-        <p className="page-eyebrow">Server List</p>
-        <h2 className="page-heading">Unofficial Rust server tracking</h2>
+        <p className="page-eyebrow">{copy.eyebrow}</p>
+        <h2 className="page-heading">{copy.heading}</h2>
         <p className="page-text">
-          Browse server activity, wipe timing, locations, and player counts in one survival-focused view.
+          {copy.intro}
         </p>
       </div>
 
       <SectionCard
-        title="Servers"
-        description="Find active Rust servers, compare player counts, and browse RustIQ Top 250 ranks by recent average population."
+        title={copy.sectionTitle}
+        description={copy.sectionDescription}
         actions={
           <div className="server-list-actions">
             <label className="server-list-control">
-              <span>Page size</span>
+              <span>{copy.pageSize}</span>
               <select
                 value={pageSize}
                 onChange={(event) => updatePageSize(Number(event.target.value))}
@@ -293,7 +481,7 @@ export function ServersPage() {
               onClick={() => void serversQuery.refetch()}
               disabled={isRefreshButtonDisabled}
             >
-              {serversQuery.isFetching ? 'Refreshing...' : 'Refresh'}
+              {serversQuery.isFetching ? copy.refreshing : copy.refresh}
             </button>
           </div>
         }
@@ -301,41 +489,41 @@ export function ServersPage() {
         <div className="server-list-toolbar">
           <form className="server-list-filters" onSubmit={submitSearch}>
             <label className="server-list-control server-list-control--search">
-              <span>Search</span>
+              <span>{copy.search}</span>
               <input
                 type="search"
                 value={searchInput}
                 onChange={(event) => updateSearch(event.target.value)}
-                placeholder="Search by name, host, or map"
+                placeholder={copy.searchPlaceholder}
                 className="server-list-input"
               />
             </label>
 
             <button type="submit" className="button-link">
-              Search
+              {copy.search}
             </button>
 
             <label className="server-list-control">
-              <span>Status</span>
+              <span>{copy.status}</span>
               <select
                 value={statusFilter}
                 onChange={(event) => updateStatus(event.target.value as 'all' | 'online' | 'offline')}
                 className="server-list-select"
               >
-                <option value="all">All</option>
-                <option value="online">Online</option>
-                <option value="offline">Offline</option>
+                <option value="all">{copy.all}</option>
+                <option value="online">{copy.online}</option>
+                <option value="offline">{copy.offline}</option>
               </select>
             </label>
 
             <label className="server-list-control">
-              <span>Wipe timing</span>
+              <span>{copy.wipeTiming}</span>
               <select
                 value={wipeFilter}
                 onChange={(event) => updateWipeFilter(event.target.value as WipeFilter)}
                 className="server-list-select"
               >
-                {wipeFilterOptions.map((option) => (
+                {localizedWipeFilterOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
@@ -349,11 +537,11 @@ export function ServersPage() {
               onClick={toggleFavoritesOnly}
               aria-pressed={showFavoritesOnly}
             >
-              Favorites
+              {copy.favorites}
             </button>
           </form>
 
-          <div className="server-type-filters" aria-label="Server type filters">
+          <div className="server-type-filters" aria-label={copy.serverTypeFilters}>
             {serverTypeFilterOptions.map((serverType) => {
               const isActive = serverTypeFilters.includes(serverType)
 
@@ -365,7 +553,7 @@ export function ServersPage() {
                   onClick={() => toggleServerTypeFilter(serverType)}
                   aria-pressed={isActive}
                 >
-                  {getRustServerTypeLabel(serverType)}
+                  {getRustServerTypeLabel(serverType, language)}
                 </button>
               )
             })}
@@ -374,32 +562,32 @@ export function ServersPage() {
 
         {isLoadingServers ? (
           <StateNotice
-            title="Loading server populations"
-            description="Waiting for the backend to return the latest server list."
+            title={copy.loadingServerPopulations}
+            description={copy.waitingForBackend}
           />
         ) : null}
 
         {isLoadingServerPage ? (
           <StateNotice
-            title={`Loading page ${page}`}
-            description="Fetching servers for the selected page."
+            title={copy.loadingPage(page)}
+            description={copy.fetchingSelectedPage}
           />
         ) : null}
 
         {isRefreshingServers ? (
           <StateNotice
-            title="Refreshing cached servers"
-            description="Reading the latest saved server data from the database."
+            title={copy.refreshingCachedServers}
+            description={copy.readingLatestSavedData}
           />
         ) : null}
 
         {serversQuery.isError ? (
           <StateNotice
-            title={hasServersData ? 'Refresh failed, showing cached results' : 'Server list request failed'}
+            title={hasServersData ? copy.refreshFailedCached : copy.serverListRequestFailed}
             description={
               hasServersData
-                ? 'The latest refresh did not complete, so the list below is still the last successful cached page.'
-                : 'The backend did not return a cached server list for the homepage.'
+                ? copy.refreshFailedDescription
+                : copy.requestFailedDescription
             }
             detail={serverListErrorDetail}
             tone="error"
@@ -412,9 +600,9 @@ export function ServersPage() {
 
             return (
               <div className="server-list-summary">
-                <span>{pageData.totalItems} servers</span>
-                <span>Page {page} of {totalPages}</span>
-                <span>Showing {visibleServers.length} of {pageData.pageSize}</span>
+                <span>{copy.serversCount(pageData.totalItems)}</span>
+                <span>{copy.pageOf(page, totalPages)}</span>
+                <span>{copy.showingOf(visibleServers.length, pageData.pageSize)}</span>
               </div>
             )
           })()
@@ -424,11 +612,11 @@ export function ServersPage() {
           <div className="server-focus">
             <div className="server-focus__content">
               <p className="page-text">
-                One cached server is available. Open it directly and continue on the detail page.
+                {copy.oneCachedServer}
               </p>
             </div>
             <Link to={`/servers/${visibleServers[0].id}`} className="button-link">
-              Open server
+              {copy.openServer}
             </Link>
           </div>
         ) : null}
@@ -436,39 +624,39 @@ export function ServersPage() {
         {shouldShowServerData && visibleServers.length > 0 ? (
             <div className="server-list-table" aria-label="Server list">
             <div className="server-list-table__header">
-              <span>Favorite</span>
+              <span>{copy.table.favorite}</span>
               <button
                 type="button"
                 className="server-list-table__sort server-list-table__sort--rank"
                 onClick={() => updateSort('rank')}
               >
-                Rank{getSortIndicator('rank')}
+                {copy.table.rank}{getSortIndicator('rank')}
               </button>
-              <span>Name</span>
-              <span>Server Type</span>
+              <span>{copy.table.name}</span>
+              <span>{copy.table.serverType}</span>
               <button
                 type="button"
                 className="server-list-table__sort"
                 onClick={() => updateSort('players')}
               >
-                Players{getSortIndicator('players')}
+                {copy.table.players}{getSortIndicator('players')}
               </button>
-              <span>Trend</span>
+              <span>{copy.table.trend}</span>
               <button
                 type="button"
                 className="server-list-table__sort"
                 onClick={() => updateSort('lastWipe')}
               >
-                Last Wipe{getSortIndicator('lastWipe')}
+                {copy.table.lastWipe}{getSortIndicator('lastWipe')}
               </button>
               <button
                 type="button"
                 className="server-list-table__sort"
                 onClick={() => updateSort('nextWipe')}
               >
-                Next Wipe{getSortIndicator('nextWipe')}
+                {copy.table.nextWipe}{getSortIndicator('nextWipe')}
               </button>
-              <span>Location</span>
+              <span>{copy.table.location}</span>
             </div>
             {visibleServers.map((server) => (
               <ServerListCard
@@ -476,6 +664,7 @@ export function ServersPage() {
                 server={server}
                 nowMs={nowMs}
                 isFavorite={favoriteServerIdSet.has(server.id)}
+                language={language}
                 onToggleFavorite={toggleFavoriteServer}
               />
             ))}
@@ -484,13 +673,13 @@ export function ServersPage() {
 
         {shouldShowServerData && visibleServers.length === 0 && !isLoadingServerPage ? (
           <StateNotice
-            title={showFavoritesOnly && servers.length > 0 ? 'No favorite servers on this page' : 'No servers available'}
+            title={showFavoritesOnly && servers.length > 0 ? copy.noFavoriteServers : copy.noServersAvailable}
             description={
               showFavoritesOnly && servers.length > 0
-                ? 'Favorite a server on this page or change pages to find saved servers that match the current filters.'
+                ? copy.favoriteDescription
                 : appliedSearch || statusValue !== undefined || wipeFilter !== 'all'
-                ? 'No cached servers match the current search, status, or wipe filter.'
-                : 'Start backend polling to populate the cached server list.'
+                ? copy.noFilterMatches
+                : copy.startBackendPolling
             }
           />
         ) : null}
@@ -503,7 +692,7 @@ export function ServersPage() {
               onClick={() => setPage((current) => Math.max(1, current - 1))}
               disabled={page === 1}
             >
-              Previous
+              {copy.previous}
             </button>
             <div className="server-list-pagination__pages" aria-label="Pagination">
               {getVisiblePageNumbers().map((pageNumber, index, visiblePages) => {
@@ -536,7 +725,7 @@ export function ServersPage() {
               onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
               disabled={page >= totalPages}
             >
-              Next
+              {copy.next}
             </button>
           </div>
         ) : null}

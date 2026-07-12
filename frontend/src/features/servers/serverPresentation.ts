@@ -6,12 +6,48 @@ import {
   type ServerListItem,
   type ServerStatus,
 } from '../../api'
+import { getLanguageLocale, type Language } from '../../i18n/language'
 
 type ServerQueryEndpoint = Pick<ServerListItem | ServerDetails, 'host' | 'queryPort'>
 type ServerConnectEndpoint = Pick<
   ServerListItem | ServerDetails,
   'address' | 'host' | 'gamePort' | 'queryPort'
 >
+
+const serverPresentationCopy: Record<Language, {
+  unknown: string
+  unavailable: string
+  noTrend: string
+  flatHour: string
+  online: string
+  offline: string
+  official: string
+  community: string
+  modded: string
+}> = {
+  en: {
+    unknown: 'Unknown',
+    unavailable: 'Unavailable',
+    noTrend: 'No trend',
+    flatHour: 'Flat 1h',
+    online: 'Online',
+    offline: 'Offline',
+    official: 'Official',
+    community: 'Community',
+    modded: 'Modded',
+  },
+  ru: {
+    unknown: 'Неизвестно',
+    unavailable: 'Недоступно',
+    noTrend: 'Нет тренда',
+    flatHour: 'Без изменений за 1 ч',
+    online: 'Онлайн',
+    offline: 'Офлайн',
+    official: 'Официальный',
+    community: 'Комьюнити',
+    modded: 'Моддед',
+  },
+}
 
 export function getServerDisplayName(server: Pick<ServerListItem, 'name' | 'host' | 'queryPort'>) {
   return server.name ?? `${server.host}:${server.queryPort}`
@@ -38,8 +74,8 @@ export function formatClientConnectCommand(server: ServerConnectEndpoint) {
   return `client.connect ${formatConnectAddress(server)}`
 }
 
-export function formatCountry(country: string | null | undefined) {
-  return country?.trim().toUpperCase() || 'Unknown'
+export function formatCountry(country: string | null | undefined, language: Language = 'en') {
+  return country?.trim().toUpperCase() || serverPresentationCopy[language].unknown
 }
 
 export function formatPlayerCount(
@@ -54,13 +90,14 @@ export function formatPlayerCount(
 
 export function formatPlayerTrend(
   server: Pick<ServerListItem, 'playersDeltaLastHour' | 'playersPeakLastHour'>,
+  language: Language = 'en',
 ) {
   if (server.playersDeltaLastHour === null || server.playersDeltaLastHour === undefined) {
-    return 'No trend'
+    return serverPresentationCopy[language].noTrend
   }
 
   if (server.playersDeltaLastHour === 0) {
-    return 'Flat 1h'
+    return serverPresentationCopy[language].flatHour
   }
 
   const prefix = server.playersDeltaLastHour > 0 ? '+' : ''
@@ -87,8 +124,9 @@ export function getPlayerTrendClassName(
 
 export function formatServerLocation(
   server: Pick<ServerListItem | ServerDetails, 'country' | 'latitude' | 'longitude'>,
+  language: Language = 'en',
 ) {
-  const country = formatCountry(server.country)
+  const country = formatCountry(server.country, language)
   if (server.latitude === null || server.latitude === undefined
       || server.longitude === null || server.longitude === undefined) {
     return country
@@ -99,9 +137,10 @@ export function formatServerLocation(
 
 export function formatServerLocationShort(
   server: Pick<ServerListItem | ServerDetails, 'country' | 'latitude' | 'longitude'>,
+  language: Language = 'en',
 ) {
   const flag = getCountryFlag(server.country)
-  const country = formatCountry(server.country)
+  const country = formatCountry(server.country, language)
   if (server.latitude === null || server.latitude === undefined
       || server.longitude === null || server.longitude === undefined) {
     return `${flag}${country}`.trim()
@@ -110,17 +149,17 @@ export function formatServerLocationShort(
   return `${flag}${country} ${server.latitude.toFixed(1)}, ${server.longitude.toFixed(1)}`.trim()
 }
 
-export function formatServerTimestamp(timestamp: string | null | undefined) {
+export function formatServerTimestamp(timestamp: string | null | undefined, language: Language = 'en') {
   if (!timestamp) {
-    return 'Unavailable'
+    return serverPresentationCopy[language].unavailable
   }
 
   const parsed = Date.parse(timestamp)
   if (Number.isNaN(parsed)) {
-    return 'Unavailable'
+    return serverPresentationCopy[language].unavailable
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(getLanguageLocale(language), {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -128,14 +167,14 @@ export function formatServerTimestamp(timestamp: string | null | undefined) {
   }).format(parsed)
 }
 
-export function formatRelativeTimestamp(timestamp: string | null | undefined, nowMs = Date.now()) {
+export function formatRelativeTimestamp(timestamp: string | null | undefined, nowMs = Date.now(), language: Language = 'en') {
   if (!timestamp) {
-    return 'Unknown'
+    return serverPresentationCopy[language].unknown
   }
 
   const parsed = Date.parse(timestamp)
   if (Number.isNaN(parsed)) {
-    return 'Unknown'
+    return serverPresentationCopy[language].unknown
   }
 
   const diffSeconds = Math.round((parsed - nowMs) / 1000)
@@ -150,21 +189,21 @@ export function formatRelativeTimestamp(timestamp: string | null | undefined, no
   const [unit, secondsPerUnit] = units.find(([, seconds]) => absoluteSeconds >= seconds) ?? ['second', 1]
   const value = Math.round(diffSeconds / secondsPerUnit)
 
-  return new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(value, unit)
+  return new Intl.RelativeTimeFormat(getLanguageLocale(language), { numeric: 'auto' }).format(value, unit)
 }
 
 export function getServerLastActivityTimestamp(server: Pick<ServerListItem, 'lastCheckedAtUtc' | 'updatedAtUtc'>) {
   return server.lastCheckedAtUtc ?? server.updatedAtUtc
 }
 
-export function getServerStatusLabel(status: ServerStatus) {
+export function getServerStatusLabel(status: ServerStatus, language: Language = 'en') {
   switch (status) {
     case serverStatus.Online:
-      return 'Online'
+      return serverPresentationCopy[language].online
     case serverStatus.Offline:
-      return 'Offline'
+      return serverPresentationCopy[language].offline
     default:
-      return 'Unknown'
+      return serverPresentationCopy[language].unknown
   }
 }
 
@@ -179,16 +218,16 @@ export function getServerStatusClassName(status: ServerStatus) {
   }
 }
 
-export function getRustServerTypeLabel(serverType: RustServerType | null | undefined) {
+export function getRustServerTypeLabel(serverType: RustServerType | null | undefined, language: Language = 'en') {
   switch (serverType) {
     case rustServerType.Official:
-      return 'Official'
+      return serverPresentationCopy[language].official
     case rustServerType.Community:
-      return 'Community'
+      return serverPresentationCopy[language].community
     case rustServerType.Modded:
-      return 'Modded'
+      return serverPresentationCopy[language].modded
     default:
-      return 'Unknown'
+      return serverPresentationCopy[language].unknown
   }
 }
 

@@ -1,3 +1,25 @@
+import { getLanguageLocale, type Language } from '../i18n/language'
+
+const timeCopy: Record<Language, {
+  unavailable: string
+  now: string
+  yesterday: string
+  overAWeekAgo: string
+}> = {
+  en: {
+    unavailable: 'Unavailable',
+    now: 'Now',
+    yesterday: 'Yesterday',
+    overAWeekAgo: 'Over a week ago',
+  },
+  ru: {
+    unavailable: 'Недоступно',
+    now: 'Сейчас',
+    yesterday: 'Вчера',
+    overAWeekAgo: 'Больше недели назад',
+  },
+}
+
 export function getSecondsAgo(timestamp: string, nowMs: number) {
   const parsed = Date.parse(timestamp)
 
@@ -8,42 +30,51 @@ export function getSecondsAgo(timestamp: string, nowMs: number) {
   return Math.max(0, Math.floor((nowMs - parsed) / 1000))
 }
 
-export function formatSecondsAgo(seconds: number | null | undefined) {
+export function formatSecondsAgo(seconds: number | null | undefined, language: Language = 'en') {
   if (seconds === null || seconds === undefined) {
-    return 'Unavailable'
+    return timeCopy[language].unavailable
   }
 
-  return `${seconds}s ago`
+  return new Intl.RelativeTimeFormat(getLanguageLocale(language), { numeric: 'always' }).format(-seconds, 'second')
 }
 
-export function formatCoarseRelativeTime(seconds: number | null | undefined) {
+export function formatCoarseRelativeTime(seconds: number | null | undefined, language: Language = 'en') {
   if (seconds === null || seconds === undefined) {
-    return 'Unavailable'
+    return timeCopy[language].unavailable
   }
 
   if (seconds < 60) {
-    return 'Now'
+    return timeCopy[language].now
   }
 
   if (seconds < 60 * 60) {
-    return `${Math.floor(seconds / 60)}m ago`
+    return new Intl.RelativeTimeFormat(getLanguageLocale(language), { numeric: 'always' }).format(
+      -Math.floor(seconds / 60),
+      'minute',
+    )
   }
 
   if (seconds < 2 * 60 * 60) {
-    return '1h ago'
+    return new Intl.RelativeTimeFormat(getLanguageLocale(language), { numeric: 'always' }).format(-1, 'hour')
   }
 
   if (seconds < 24 * 60 * 60) {
-    return `${Math.floor(seconds / (60 * 60))}h ago`
+    return new Intl.RelativeTimeFormat(getLanguageLocale(language), { numeric: 'always' }).format(
+      -Math.floor(seconds / (60 * 60)),
+      'hour',
+    )
   }
 
   if (seconds < 2 * 24 * 60 * 60) {
-    return 'Yesterday'
+    return timeCopy[language].yesterday
   }
 
   if (seconds < 7 * 24 * 60 * 60) {
-    return `${Math.floor(seconds / (24 * 60 * 60))}d ago`
+    return new Intl.RelativeTimeFormat(getLanguageLocale(language), { numeric: 'always' }).format(
+      -Math.floor(seconds / (24 * 60 * 60)),
+      'day',
+    )
   }
 
-  return 'Over a week ago'
+  return timeCopy[language].overAWeekAgo
 }

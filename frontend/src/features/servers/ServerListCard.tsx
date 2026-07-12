@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import type { ServerListItem } from '../../api'
+import type { Language } from '../../i18n/language'
 import {
   formatAddress,
   formatRelativeTimestamp,
@@ -13,10 +14,40 @@ import {
   getServerDisplayName,
 } from './serverPresentation'
 
+const serverListCardCopy: Record<Language, {
+  addFavorite: (serverName: string) => string
+  removeFavorite: (serverName: string) => string
+  averageTitle: (average: string, peak: number | string) => string
+  map: string
+  unavailable: string
+  peakLastHour: (peak: number) => string
+  location: (country: string) => string
+}> = {
+  en: {
+    addFavorite: (serverName) => `Add ${serverName} to favorites`,
+    removeFavorite: (serverName) => `Remove ${serverName} from favorites`,
+    averageTitle: (average, peak) => `Average ${average}, peak ${peak}`,
+    map: 'Map',
+    unavailable: 'Unavailable',
+    peakLastHour: (peak) => `Peak last hour: ${peak}`,
+    location: (country) => `Location ${country}`,
+  },
+  ru: {
+    addFavorite: (serverName) => `Добавить ${serverName} в избранное`,
+    removeFavorite: (serverName) => `Убрать ${serverName} из избранного`,
+    averageTitle: (average, peak) => `Среднее ${average}, пик ${peak}`,
+    map: 'Карта',
+    unavailable: 'Недоступно',
+    peakLastHour: (peak) => `Пик за последний час: ${peak}`,
+    location: (country) => `Локация ${country}`,
+  },
+}
+
 type ServerListCardProps = {
   server: ServerListItem
   nowMs: number
   isFavorite: boolean
+  language: Language
   onToggleFavorite: (serverId: string) => void
 }
 
@@ -24,10 +55,12 @@ export function ServerListCard({
   server,
   nowMs,
   isFavorite,
+  language,
   onToggleFavorite,
 }: ServerListCardProps) {
-  const country = formatCountry(server.country)
-  const serverTypeLabel = getRustServerTypeLabel(server.serverType)
+  const copy = serverListCardCopy[language]
+  const country = formatCountry(server.country, language)
+  const serverTypeLabel = getRustServerTypeLabel(server.serverType, language)
   const displayName = getServerDisplayName(server)
   const countryCode = server.country?.trim().toLowerCase()
   const flagSrc = countryCode && /^[a-z]{2}$/.test(countryCode)
@@ -40,7 +73,7 @@ export function ServerListCard({
         type="button"
         className={isFavorite ? 'server-favorite server-favorite--active' : 'server-favorite'}
         onClick={() => onToggleFavorite(server.id)}
-        aria-label={isFavorite ? `Remove ${displayName} from favorites` : `Add ${displayName} to favorites`}
+        aria-label={isFavorite ? copy.removeFavorite(displayName) : copy.addFavorite(displayName)}
         aria-pressed={isFavorite}
       >
         <span aria-hidden="true">{isFavorite ? '★' : '☆'}</span>
@@ -53,7 +86,7 @@ export function ServerListCard({
             title={
               server.rankedAveragePlayers === null || server.rankedAveragePlayers === undefined
                 ? undefined
-                : `Average ${server.rankedAveragePlayers.toFixed(1)}, peak ${server.rankedPeakPlayers ?? 'n/a'}`
+                : copy.averageTitle(server.rankedAveragePlayers.toFixed(1), server.rankedPeakPlayers ?? 'n/a')
             }
           >
             #{server.popularityRank}
@@ -66,7 +99,7 @@ export function ServerListCard({
       <Link to={`/servers/${server.id}`} className="server-list-card__identity">
         <h3 className="server-list-card__name">{displayName}</h3>
         <p className="server-list-card__address">
-          Map: {server.map ?? 'Unavailable'} <span>{formatAddress(server)}</span>
+          {copy.map}: {server.map ?? copy.unavailable} <span>{formatAddress(server)}</span>
         </p>
       </Link>
 
@@ -79,15 +112,15 @@ export function ServerListCard({
           className={getPlayerTrendClassName(server)}
           title={server.playersPeakLastHour === null || server.playersPeakLastHour === undefined
             ? undefined
-            : `Peak last hour: ${server.playersPeakLastHour}`}
+            : copy.peakLastHour(server.playersPeakLastHour)}
         >
-          {formatPlayerTrend(server)}
+          {formatPlayerTrend(server, language)}
         </span>
       </div>
-      <div className="server-list-card__cell">{formatRelativeTimestamp(server.lastWipeAtUtc, nowMs)}</div>
-      <div className="server-list-card__cell">{formatRelativeTimestamp(server.nextWipeAtUtc, nowMs)}</div>
+      <div className="server-list-card__cell">{formatRelativeTimestamp(server.lastWipeAtUtc, nowMs, language)}</div>
+      <div className="server-list-card__cell">{formatRelativeTimestamp(server.nextWipeAtUtc, nowMs, language)}</div>
       <div className="server-list-card__cell server-list-card__cell--location">
-        <span className="server-location" aria-label={`Location ${country}`}>
+        <span className="server-location" aria-label={copy.location(country)}>
           <span className="server-location__initials">{country}</span>
           {flagSrc ? (
             <img className="server-location__flag" src={flagSrc} alt="" loading="lazy" />
