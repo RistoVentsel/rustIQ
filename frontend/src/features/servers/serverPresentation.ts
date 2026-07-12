@@ -22,8 +22,11 @@ const serverPresentationCopy: Record<Language, {
   online: string
   offline: string
   official: string
+  officialShort: string
   community: string
+  communityShort: string
   modded: string
+  moddedShort: string
 }> = {
   en: {
     unknown: 'Unknown',
@@ -33,19 +36,25 @@ const serverPresentationCopy: Record<Language, {
     online: 'Online',
     offline: 'Offline',
     official: 'Official',
+    officialShort: 'Official',
     community: 'Community',
+    communityShort: 'Community',
     modded: 'Modded',
+    moddedShort: 'Modded',
   },
   ru: {
     unknown: 'Неизвестно',
     unavailable: 'Недоступно',
     noTrend: 'Нет тренда',
-    flatHour: 'Без изменений за 1 ч',
+    flatHour: '0 1ч',
     online: 'Онлайн',
     offline: 'Офлайн',
     official: 'Официальный',
+    officialShort: 'Офиц.',
     community: 'Комьюнити',
+    communityShort: 'Комьюн.',
     modded: 'Моддед',
+    moddedShort: 'Моддед',
   },
 }
 
@@ -101,7 +110,8 @@ export function formatPlayerTrend(
   }
 
   const prefix = server.playersDeltaLastHour > 0 ? '+' : ''
-  return `${prefix}${server.playersDeltaLastHour} 1h`
+  const hourLabel = language === 'ru' ? '1ч' : '1h'
+  return `${prefix}${server.playersDeltaLastHour} ${hourLabel}`
 }
 
 export function getPlayerTrendClassName(
@@ -218,16 +228,22 @@ export function getServerStatusClassName(status: ServerStatus) {
   }
 }
 
-export function getRustServerTypeLabel(serverType: RustServerType | null | undefined, language: Language = 'en') {
+export function getRustServerTypeLabel(
+  serverType: RustServerType | null | undefined,
+  language: Language = 'en',
+  variant: 'long' | 'short' = 'long',
+) {
+  const copy = serverPresentationCopy[language]
+
   switch (serverType) {
     case rustServerType.Official:
-      return serverPresentationCopy[language].official
+      return variant === 'short' ? copy.officialShort : copy.official
     case rustServerType.Community:
-      return serverPresentationCopy[language].community
+      return variant === 'short' ? copy.communityShort : copy.community
     case rustServerType.Modded:
-      return serverPresentationCopy[language].modded
+      return variant === 'short' ? copy.moddedShort : copy.modded
     default:
-      return serverPresentationCopy[language].unknown
+      return copy.unknown
   }
 }
 

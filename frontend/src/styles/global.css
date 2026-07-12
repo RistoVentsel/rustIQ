@@ -557,7 +557,7 @@ select {
 .server-list-table__header,
 .server-list-card {
   display: grid;
-  grid-template-columns: 62px 52px minmax(190px, 1fr) minmax(76px, 0.28fr) minmax(86px, 0.26fr) minmax(66px, 0.22fr) minmax(84px, 0.28fr) minmax(84px, 0.28fr) 88px;
+  grid-template-columns: 62px 52px minmax(170px, 1fr) minmax(76px, 0.28fr) minmax(112px, 0.32fr) minmax(66px, 0.22fr) minmax(84px, 0.28fr) minmax(84px, 0.28fr) 88px;
   column-gap: 12px;
   row-gap: 8px;
   align-items: center;
@@ -704,6 +704,12 @@ select {
 
 .server-list-card__cell--location {
   min-width: 0;
+}
+
+.server-list-card__cell--players {
+  overflow: visible;
+  text-overflow: clip;
+  font-variant-numeric: tabular-nums;
 }
 
 .server-rank-badge {

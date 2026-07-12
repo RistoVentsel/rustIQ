@@ -60,7 +60,8 @@ export function ServerListCard({
 }: ServerListCardProps) {
   const copy = serverListCardCopy[language]
   const country = formatCountry(server.country, language)
-  const serverTypeLabel = getRustServerTypeLabel(server.serverType, language)
+  const serverTypeLabel = getRustServerTypeLabel(server.serverType, language, 'short')
+  const serverTypeFullLabel = getRustServerTypeLabel(server.serverType, language)
   const displayName = getServerDisplayName(server)
   const countryCode = server.country?.trim().toLowerCase()
   const flagSrc = countryCode && /^[a-z]{2}$/.test(countryCode)
@@ -104,9 +105,15 @@ export function ServerListCard({
       </Link>
 
       <div className="server-list-card__cell">
-        <span className={getRustServerTypeClassName(server.serverType)}>{serverTypeLabel}</span>
+        <span
+          className={getRustServerTypeClassName(server.serverType)}
+          title={serverTypeFullLabel}
+          aria-label={serverTypeFullLabel}
+        >
+          {serverTypeLabel}
+        </span>
       </div>
-      <div className="server-list-card__cell">{formatPlayerCount(server)}</div>
+      <div className="server-list-card__cell server-list-card__cell--players">{formatPlayerCount(server)}</div>
       <div className="server-list-card__cell">
         <span
           className={getPlayerTrendClassName(server)}
