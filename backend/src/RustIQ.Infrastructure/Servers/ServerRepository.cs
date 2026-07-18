@@ -357,6 +357,22 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Server>> GetServersForMapMetadataRefreshAsync(
+        DateTimeOffset fetchedBeforeUtc,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.Servers
+            .AsNoTracking()
+            .Where(server =>
+                server.BattleMetricsServerId != null
+                && (server.MapMetadata == null
+                    || server.MapMetadata.FetchedAtUtc < fetchedBeforeUtc))
+            .OrderByDescending(server => server.Status == ServerStatus.Online)
+            .ThenByDescending(server => server.Players)
+            .ThenBy(server => server.Id)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(
         Guid serverId,
         DateTimeOffset? from,

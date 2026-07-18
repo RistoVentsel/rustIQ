@@ -87,6 +87,10 @@ public interface IServerRepository
         TimeSpan veryStaleOfflineAfter,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<Server>> GetServersForMapMetadataRefreshAsync(
+        DateTimeOffset fetchedBeforeUtc,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(
         Guid serverId,
         DateTimeOffset? from,

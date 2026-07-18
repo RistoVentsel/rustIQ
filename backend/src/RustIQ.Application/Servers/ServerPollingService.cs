@@ -152,6 +152,55 @@ public sealed class ServerPollingService(
         return ToDto(server, snapshot, currentPlayers);
     }
 
+    public async Task<bool> RefreshMapMetadataAsync(
+        ConfiguredRustServer configuredServer,
+        CancellationToken cancellationToken)
+    {
+        var server = await FindTrackedServerAsync(configuredServer, cancellationToken);
+        if (server is null)
+        {
+            return false;
+        }
+
+        var effectiveConfiguredServer = new ConfiguredRustServer
+        {
+            BattleMetricsServerId = server.BattleMetricsServerId,
+            Name = server.Name,
+            Address = server.Address,
+            Host = server.Host,
+            GamePort = server.GamePort,
+            QueryPort = server.QueryPort,
+            Country = server.Country,
+            Latitude = server.Latitude,
+            Longitude = server.Longitude,
+            LastWipeAtUtc = server.LastWipeAtUtc,
+            NextWipeAtUtc = server.NextWipeAtUtc,
+            QueuePlayers = server.QueuePlayers,
+            ServerType = server.ServerType,
+            DiscoverySource = server.DiscoverySource,
+            SummarySource = server.SummarySource,
+            PlayerCountSource = server.PlayerCountSource,
+            PlayerListSource = server.PlayerListSource
+        };
+        var metadata = await mapMetadataClient.GetMapMetadataAsync(
+            effectiveConfiguredServer,
+            cancellationToken);
+
+        if (!HasUsableMapMetadata(metadata))
+        {
+            return false;
+        }
+
+        ApplyMapMetadata(server, metadata, DateTimeOffset.UtcNow);
+        if (!string.IsNullOrWhiteSpace(metadata.MapName))
+        {
+            server.Map = metadata.MapName;
+        }
+
+        await serverRepository.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private async Task<Server?> FindTrackedServerAsync(
         ConfiguredRustServer configuredServer,
         CancellationToken cancellationToken)

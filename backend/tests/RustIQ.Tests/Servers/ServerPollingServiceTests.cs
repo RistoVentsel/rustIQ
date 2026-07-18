@@ -13,6 +13,59 @@ public sealed class ServerPollingServiceTests
     private const ServerPlayerCountSource DefaultPlayerCountSource = ServerPlayerCountSource.A2S;
 
     [Fact]
+    public async Task RefreshMapMetadataAsync_UpdatesOnlyMapDataWithoutCreatingSnapshot()
+    {
+        var serverId = Guid.NewGuid();
+        var fetchedAtUtc = DateTimeOffset.Parse("2026-07-18T15:00:00Z");
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = serverId,
+            BattleMetricsServerId = 42,
+            Host = "127.0.0.1",
+            QueryPort = 28015,
+            Map = "Old Map",
+            CreatedAtUtc = fetchedAtUtc.AddDays(-1),
+            UpdatedAtUtc = fetchedAtUtc.AddDays(-1)
+        });
+        var mapClient = new FakeRustServerMapMetadataClient(
+            new RustServerMapMetadata(
+                "127.0.0.1",
+                28015,
+                "New Map",
+                7331,
+                4250,
+                "https://rustmaps.com/map/new",
+                "https://content.rustmaps.com/new.webp",
+                null,
+                "BattleMetrics",
+                fetchedAtUtc,
+                fetchedAtUtc,
+                null));
+        var service = new ServerPollingService(
+            new FakeRustServerQueryClient(),
+            new FakeBattleMetricsPlayerCountClient(),
+            mapClient,
+            repository);
+
+        var updated = await service.RefreshMapMetadataAsync(
+            new ConfiguredRustServer
+            {
+                BattleMetricsServerId = 42,
+                Host = "127.0.0.1",
+                QueryPort = 28015
+            },
+            CancellationToken.None);
+
+        Assert.True(updated);
+        Assert.Empty(repository.Snapshots);
+        Assert.Equal("New Map", repository.Servers[0].Map);
+        Assert.Equal("New Map", repository.Servers[0].MapMetadata?.MapName);
+        Assert.Equal(7331, repository.Servers[0].MapMetadata?.Seed);
+        Assert.Equal(fetchedAtUtc, repository.Servers[0].MapMetadata?.FetchedAtUtc);
+    }
+
+    [Fact]
     public async Task EnsureConfiguredServersExistAsync_SeedsConfiguredServersWithUnknownStatus()
     {
         var repository = new InMemoryServerRepository();

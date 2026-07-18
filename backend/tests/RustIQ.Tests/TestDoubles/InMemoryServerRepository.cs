@@ -277,6 +277,21 @@ internal sealed class InMemoryServerRepository : IServerRepository
             .ToArray());
     }
 
+    public Task<IReadOnlyList<Server>> GetServersForMapMetadataRefreshAsync(
+        DateTimeOffset fetchedBeforeUtc,
+        CancellationToken cancellationToken)
+    {
+        return Task.FromResult<IReadOnlyList<Server>>(Servers
+            .Where(server =>
+                server.BattleMetricsServerId is not null
+                && (server.MapMetadata is null
+                    || server.MapMetadata.FetchedAtUtc < fetchedBeforeUtc))
+            .OrderByDescending(server => server.Status == ServerStatus.Online)
+            .ThenByDescending(server => server.Players)
+            .ThenBy(server => server.Id)
+            .ToArray());
+    }
+
     public Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(
         Guid serverId,
         DateTimeOffset? from,

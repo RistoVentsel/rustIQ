@@ -112,6 +112,19 @@ builder.Services
     .Validate(options => !options.Enabled || options.SnapshotIntervalMinutes > 0, "BattleMetrics summary refresh snapshot interval minutes must be greater than 0 when enabled.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<MapMetadataRefreshOptions>()
+    .Bind(builder.Configuration.GetSection(MapMetadataRefreshOptions.SectionName))
+    .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.TimeZoneId), "Map metadata refresh time zone is required when enabled.")
+    .Validate(options => !options.Enabled || TimeZoneInfo.TryFindSystemTimeZoneById(options.TimeZoneId, out _), "Map metadata refresh time zone must be recognized by the host when enabled.")
+    .Validate(options => !options.Enabled || options.LocalHours.Length > 0, "Map metadata refresh requires at least one local hour when enabled.")
+    .Validate(options => !options.Enabled || options.LocalHours.All(hour => hour is >= 0 and <= 23), "Map metadata refresh local hours must be between 0 and 23.")
+    .Validate(options => !options.Enabled || options.LocalHours.Distinct().Count() == options.LocalHours.Length, "Map metadata refresh local hours must be unique.")
+    .Validate(options => !options.Enabled || options.StartupStaleAfterHours > 0, "Map metadata startup stale-after hours must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || options.BatchSize > 0, "Map metadata refresh batch size must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || options.DelayBetweenServersMilliseconds >= 0, "Map metadata refresh server delay must not be negative.")
+    .Validate(options => !options.Enabled || options.DelayBetweenBatchesSeconds >= 0, "Map metadata refresh batch delay must not be negative.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<SnapshotRetentionOptions>()
     .Bind(builder.Configuration.GetSection(SnapshotRetentionOptions.SectionName))
     .Validate(options => !options.Enabled || options.RetentionDays > 0, "Snapshot retention days must be greater than 0 when retention is enabled.")
@@ -137,6 +150,7 @@ builder.Services.AddHostedService<ServerPollingWorker>();
 builder.Services.AddHostedService<WatchedServerRefreshWorker>();
 builder.Services.AddHostedService<SteamDiscoveryWorker>();
 builder.Services.AddHostedService<BattleMetricsPlayerCountRefreshWorker>();
+builder.Services.AddHostedService<MapMetadataRefreshWorker>();
 builder.Services.AddHostedService<SnapshotRetentionWorker>();
 builder.Services.AddHostedService<ServerRankingWorker>();
 builder.Services.AddHostedService(serviceProvider =>

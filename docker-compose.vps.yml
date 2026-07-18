@@ -61,6 +61,16 @@ services:
       BattleMetricsSummaryRefresh__VeryStaleOfflineLaneBatchSize: 100
       BattleMetricsSummaryRefresh__RefreshCurrentPlayers: "false"
       BattleMetricsSummaryRefresh__RefreshMapMetadata: "false"
+      MapMetadataRefresh__Enabled: "true"
+      MapMetadataRefresh__RunOnStartup: "true"
+      MapMetadataRefresh__StartupStaleAfterHours: 8
+      MapMetadataRefresh__TimeZoneId: Europe/Tallinn
+      MapMetadataRefresh__LocalHours__0: 3
+      MapMetadataRefresh__LocalHours__1: 18
+      MapMetadataRefresh__LocalHours__2: 22
+      MapMetadataRefresh__BatchSize: 25
+      MapMetadataRefresh__DelayBetweenServersMilliseconds: 500
+      MapMetadataRefresh__DelayBetweenBatchesSeconds: 10
       SnapshotRetention__Enabled: "true"
       SnapshotRetention__RetentionDays: 14
       SnapshotRetention__CleanupIntervalHours: 12
