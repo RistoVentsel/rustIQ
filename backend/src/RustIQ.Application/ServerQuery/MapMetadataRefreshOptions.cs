@@ -12,7 +12,7 @@ public sealed class MapMetadataRefreshOptions
 
     public string TimeZoneId { get; init; } = "Europe/Tallinn";
 
-    public int[] LocalHours { get; init; } = [3, 18, 22];
+    public int[] LocalHours { get; init; } = [];
 
     public int BatchSize { get; init; } = 25;
 
