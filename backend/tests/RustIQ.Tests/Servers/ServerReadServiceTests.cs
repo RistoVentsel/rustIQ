@@ -233,8 +233,9 @@ public sealed class ServerReadServiceTests
             CancellationToken.None);
 
         Assert.Equal(
-            ["near.test", "far.test", "unknown.test"],
+            ["near.test", "far.test", "expired.test", "unknown.test"],
             result.Items.Select(server => server.Host));
+        Assert.Null(result.Items.Single(server => server.Host == "expired.test").NextWipeAtUtc);
     }
 
     [Fact]
@@ -255,8 +256,9 @@ public sealed class ServerReadServiceTests
             CancellationToken.None);
 
         Assert.Equal(
-            ["far.test", "near.test", "unknown.test"],
+            ["far.test", "near.test", "expired.test", "unknown.test"],
             result.Items.Select(server => server.Host));
+        Assert.Null(result.Items.Single(server => server.Host == "expired.test").NextWipeAtUtc);
     }
 
     [Fact]
@@ -837,6 +839,7 @@ public sealed class ServerReadServiceTests
 
     private static InMemoryServerRepository CreateNextWipeSortRepository()
     {
+        var now = DateTimeOffset.UtcNow;
         var repository = new InMemoryServerRepository();
         repository.Servers.AddRange(
         [
@@ -845,7 +848,7 @@ public sealed class ServerReadServiceTests
                 Id = Guid.NewGuid(),
                 Host = "near.test",
                 QueryPort = 28015,
-                NextWipeAtUtc = DateTimeOffset.Parse("2026-07-09T12:00:00Z"),
+                NextWipeAtUtc = now.AddDays(1),
                 Players = 10,
                 MaxPlayers = 100,
                 Status = ServerStatus.Online,
@@ -857,12 +860,24 @@ public sealed class ServerReadServiceTests
                 Id = Guid.NewGuid(),
                 Host = "far.test",
                 QueryPort = 28015,
-                NextWipeAtUtc = DateTimeOffset.Parse("2026-07-15T12:00:00Z"),
+                NextWipeAtUtc = now.AddDays(7),
                 Players = 10,
                 MaxPlayers = 100,
                 Status = ServerStatus.Online,
                 CreatedAtUtc = DateTimeOffset.UtcNow,
                 UpdatedAtUtc = DateTimeOffset.UtcNow
+            },
+            new Server
+            {
+                Id = Guid.NewGuid(),
+                Host = "expired.test",
+                QueryPort = 28015,
+                NextWipeAtUtc = now.AddYears(-2),
+                Players = 10,
+                MaxPlayers = 100,
+                Status = ServerStatus.Online,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
             },
             new Server
             {

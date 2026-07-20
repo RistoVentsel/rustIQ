@@ -61,7 +61,8 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         return await ApplyServerSort(
                 filteredServers,
                 sortBy,
-                sortDescending)
+                sortDescending,
+                now)
             .Skip(skip)
             .Take(take)
             .ToArrayAsync(cancellationToken);
@@ -526,7 +527,8 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
     private IOrderedQueryable<Server> ApplyServerSort(
         IQueryable<Server> servers,
         string sortBy,
-        bool sortDescending)
+        bool sortDescending,
+        DateTimeOffset now)
     {
         var sorted = sortBy switch
         {
@@ -558,11 +560,11 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
                     .ThenBy(server => server.LastWipeAtUtc),
             ServerReadService.SortByNextWipe => sortDescending
                 ? servers
-                    .OrderBy(server => server.NextWipeAtUtc == null)
-                    .ThenByDescending(server => server.NextWipeAtUtc)
+                    .OrderBy(server => server.NextWipeAtUtc == null || server.NextWipeAtUtc < now)
+                    .ThenByDescending(server => server.NextWipeAtUtc >= now ? server.NextWipeAtUtc : null)
                 : servers
-                    .OrderBy(server => server.NextWipeAtUtc == null)
-                    .ThenBy(server => server.NextWipeAtUtc),
+                    .OrderBy(server => server.NextWipeAtUtc == null || server.NextWipeAtUtc < now)
+                    .ThenBy(server => server.NextWipeAtUtc >= now ? server.NextWipeAtUtc : null),
             ServerReadService.SortByLocation => sortDescending
                 ? servers.OrderByDescending(server => server.Country ?? string.Empty)
                 : servers.OrderBy(server => server.Country ?? string.Empty),

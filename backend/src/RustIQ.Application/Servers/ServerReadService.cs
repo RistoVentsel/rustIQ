@@ -241,7 +241,7 @@ public sealed class ServerReadService(
             server.Latitude,
             server.Longitude,
             server.LastWipeAtUtc,
-            server.NextWipeAtUtc,
+            GetUpcomingNextWipeAtUtc(server.NextWipeAtUtc, now),
             server.Name,
             server.Map,
             server.Players,
@@ -282,7 +282,7 @@ public sealed class ServerReadService(
             server.Latitude,
             server.Longitude,
             server.LastWipeAtUtc,
-            server.NextWipeAtUtc,
+            GetUpcomingNextWipeAtUtc(server.NextWipeAtUtc, now),
             server.Name,
             server.Map,
             server.Players,
@@ -356,6 +356,11 @@ public sealed class ServerReadService(
     private static int SecondsAgo(DateTimeOffset value, DateTimeOffset now)
     {
         return Math.Max(0, (int)(now - value).TotalSeconds);
+    }
+
+    private static DateTimeOffset? GetUpcomingNextWipeAtUtc(DateTimeOffset? nextWipeAtUtc, DateTimeOffset now)
+    {
+        return nextWipeAtUtc >= now ? nextWipeAtUtc : null;
     }
 
     private static bool IsRequestCancellation(Exception exception, CancellationToken cancellationToken)

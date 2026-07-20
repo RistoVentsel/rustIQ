@@ -44,7 +44,8 @@ internal sealed class InMemoryServerRepository : IServerRepository
         var servers = ApplyServerSort(
                 DeduplicateServers(ApplyServerFilters(search, status, serverTypes, wipeFilter, now)),
                 sortBy,
-                sortDescending)
+                sortDescending,
+                now)
             .Skip(skip)
             .Take(take)
             .ToArray();
@@ -437,7 +438,8 @@ internal sealed class InMemoryServerRepository : IServerRepository
     private IOrderedEnumerable<Server> ApplyServerSort(
         IEnumerable<Server> servers,
         string sortBy,
-        bool sortDescending)
+        bool sortDescending,
+        DateTimeOffset now)
     {
         var sorted = sortBy switch
         {
@@ -453,11 +455,11 @@ internal sealed class InMemoryServerRepository : IServerRepository
                     .ThenBy(server => GetRank(server.Id)),
             ServerReadService.SortByNextWipe => sortDescending
                 ? servers
-                    .OrderBy(server => server.NextWipeAtUtc is null)
-                    .ThenByDescending(server => server.NextWipeAtUtc)
+                    .OrderBy(server => server.NextWipeAtUtc is null || server.NextWipeAtUtc < now)
+                    .ThenByDescending(server => server.NextWipeAtUtc >= now ? server.NextWipeAtUtc : null)
                 : servers
-                    .OrderBy(server => server.NextWipeAtUtc is null)
-                    .ThenBy(server => server.NextWipeAtUtc),
+                    .OrderBy(server => server.NextWipeAtUtc is null || server.NextWipeAtUtc < now)
+                    .ThenBy(server => server.NextWipeAtUtc >= now ? server.NextWipeAtUtc : null),
             ServerReadService.SortByLocation => sortDescending
                 ? servers.OrderByDescending(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 : servers.OrderBy(server => server.Country ?? string.Empty, StringComparer.OrdinalIgnoreCase),
