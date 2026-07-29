@@ -130,10 +130,7 @@ public sealed class ServerPollingService(
             PlayerListSource = server.PlayerListSource
         };
 
-        var shouldRefreshMapMetadata = refreshMapMetadata
-            || (server.MapMetadata is null && server.BattleMetricsServerId is not null);
-
-        if (shouldRefreshMapMetadata)
+        if (refreshMapMetadata)
         {
             var mapMetadata = await mapMetadataClient.GetMapMetadataAsync(effectiveConfiguredServer, cancellationToken);
             ApplyMapMetadata(server, mapMetadata, now);
@@ -491,6 +488,15 @@ public sealed class ServerPollingService(
 
         if (battleMetricsPlayerCount is null)
         {
+            if (queryResult.IsOnline
+                && queryResult.PlayerCountSource == ServerPlayerCountSource.A2S)
+            {
+                return queryResult with
+                {
+                    BattleMetricsServerId = battleMetricsServerId
+                };
+            }
+
             var lastKnownBattleMetricsPlayers = server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics
                 ? server.Players
                 : queryResult.Players;

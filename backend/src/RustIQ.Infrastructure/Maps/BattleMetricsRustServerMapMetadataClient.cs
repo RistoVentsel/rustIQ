@@ -9,18 +9,25 @@ namespace RustIQ.Infrastructure.Maps;
 
 public sealed class BattleMetricsRustServerMapMetadataClient(
     HttpClient httpClient,
-    IOptions<RustServerQueryOptions> options)
+    IOptions<RustServerQueryOptions> options,
+    IOptions<BattleMetricsApiOptions> apiOptions)
     : IRustServerMapMetadataClient
 {
     private const string SourceName = "BattleMetrics";
 
     private readonly RustServerQueryOptions _options = options.Value;
+    private readonly bool _enabled = apiOptions.Value.Enabled;
 
     public async Task<RustServerMapMetadata> GetMapMetadataAsync(
         ConfiguredRustServer configuredServer,
         CancellationToken cancellationToken)
     {
         var fetchedAtUtc = DateTimeOffset.UtcNow;
+
+        if (!_enabled)
+        {
+            return Unavailable(configuredServer, fetchedAtUtc, "BattleMetrics API access is disabled.");
+        }
 
         using var timeoutCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCancellation.CancelAfter(TimeSpan.FromMilliseconds(_options.TimeoutMilliseconds));

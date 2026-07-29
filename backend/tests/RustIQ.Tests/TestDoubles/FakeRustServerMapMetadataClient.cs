@@ -6,6 +6,9 @@ namespace RustIQ.Tests.TestDoubles;
 internal sealed class FakeRustServerMapMetadataClient : IRustServerMapMetadataClient
 {
     private readonly Dictionary<(string Host, int QueryPort), RustServerMapMetadata> _metadataByServer;
+    private int _callCount;
+
+    public int CallCount => _callCount;
 
     public FakeRustServerMapMetadataClient(
         RustServerMapMetadata? metadata = null)
@@ -28,6 +31,8 @@ internal sealed class FakeRustServerMapMetadataClient : IRustServerMapMetadataCl
         ConfiguredRustServer configuredServer,
         CancellationToken cancellationToken)
     {
+        Interlocked.Increment(ref _callCount);
+
         if (_metadataByServer.TryGetValue((configuredServer.Host, configuredServer.QueryPort), out var metadata))
         {
             return Task.FromResult(metadata);

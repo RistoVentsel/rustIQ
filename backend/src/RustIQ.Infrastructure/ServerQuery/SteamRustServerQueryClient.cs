@@ -81,6 +81,16 @@ public sealed class SteamRustServerQueryClient(
                     "Server query returned no server information.");
             }
 
+            var lastWipeAtUtc = RustServerKeywordParser.GetLastWipeAtUtc(
+                serverInfo.Keywords,
+                checkedAtUtc);
+            var players = RustServerKeywordParser.GetCurrentPlayers(serverInfo.Keywords)
+                ?? serverInfo.Players;
+            var maxPlayers = RustServerKeywordParser.GetMaxPlayers(serverInfo.Keywords)
+                ?? serverInfo.MaxPlayers;
+            var queuePlayers = RustServerKeywordParser.GetQueuePlayers(serverInfo.Keywords)
+                ?? configuredServer.QueuePlayers;
+
             return new RustServerQueryResult(
                 configuredServer.BattleMetricsServerId,
                 configuredServer.Address,
@@ -90,13 +100,13 @@ public sealed class SteamRustServerQueryClient(
                 configuredServer.Country,
                 configuredServer.Latitude,
                 configuredServer.Longitude,
-                configuredServer.LastWipeAtUtc,
+                lastWipeAtUtc ?? configuredServer.LastWipeAtUtc,
                 configuredServer.NextWipeAtUtc,
                 NullIfWhiteSpace(serverInfo.Name),
                 NullIfWhiteSpace(serverInfo.Map),
-                serverInfo.Players,
-                serverInfo.MaxPlayers,
-                configuredServer.QueuePlayers,
+                players,
+                maxPlayers,
+                queuePlayers,
                 IsOnline: true,
                 stopwatch.ElapsedMilliseconds,
                 checkedAtUtc,

@@ -196,6 +196,12 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             })
             .ToArray();
 
+        // A transient ingestion outage must not erase the last usable ranking set.
+        if (nextRankings.Length == 0)
+        {
+            return 0;
+        }
+
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         await dbContext.ServerRankings.ExecuteDeleteAsync(cancellationToken);
 
@@ -296,14 +302,14 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         var query = dbContext.Servers
             .AsNoTracking()
             .Where(server =>
-                server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics
-                && server.BattleMetricsServerId != null
+                server.BattleMetricsServerId != null
                 && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= dueBeforeUtc));
 
         query = refreshLane switch
         {
             ServerRefreshLane.Fast => query.Where(server =>
                 server.Players >= popularPlayerThreshold
+                || (server.Status == ServerStatus.Online && server.QueuePlayers > 0)
                 || dbContext.ServerRankings.Any(ranking =>
                     ranking.ServerId == server.Id && ranking.Rank <= popularRankThreshold)
                 || dbContext.ServerSnapshots.Any(snapshot =>
@@ -322,6 +328,7 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             ServerRefreshLane.NormalOnline => query.Where(server =>
                 server.Status == ServerStatus.Online
                 && server.Players < popularPlayerThreshold
+                && (server.QueuePlayers == null || server.QueuePlayers <= 0)
                 && !dbContext.ServerRankings.Any(ranking =>
                     ranking.ServerId == server.Id && ranking.Rank <= popularRankThreshold)
                 && !dbContext.ServerSnapshots.Any(snapshot =>

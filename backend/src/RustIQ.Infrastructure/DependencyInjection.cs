@@ -58,14 +58,24 @@ public static class DependencyInjection
         services.AddSingleton<IBattleMetricsServerDirectoryClient, BattleMetricsServerDirectoryClient>();
         services.AddSingleton<IBattleMetricsPlayerCountClient, BattleMetricsPlayerCountClient>();
         services.AddSingleton<IRustServerQueryClient, SteamRustServerQueryClient>();
-        services.AddHttpClient("BattleMetricsApi", client =>
-        {
-            client.BaseAddress = new Uri("https://api.battlemetrics.com/");
-        });
-        services.AddHttpClient<IRustServerMapMetadataClient, BattleMetricsRustServerMapMetadataClient>(client =>
-        {
-            client.BaseAddress = new Uri("https://api.battlemetrics.com/");
-        });
+        services.AddSingleton(serviceProvider =>
+            new BattleMetricsRequestPacer(TimeSpan.FromMilliseconds(serviceProvider
+                .GetRequiredService<IOptions<BattleMetricsApiOptions>>()
+                .Value
+                .MinimumRequestIntervalMilliseconds)));
+        services.AddTransient<BattleMetricsRequestPacingHandler>();
+        services
+            .AddHttpClient("BattleMetricsApi", client =>
+            {
+                client.BaseAddress = new Uri("https://api.battlemetrics.com/");
+            })
+            .AddHttpMessageHandler<BattleMetricsRequestPacingHandler>();
+        services
+            .AddHttpClient<IRustServerMapMetadataClient, BattleMetricsRustServerMapMetadataClient>(client =>
+            {
+                client.BaseAddress = new Uri("https://api.battlemetrics.com/");
+            })
+            .AddHttpMessageHandler<BattleMetricsRequestPacingHandler>();
         services.AddHttpClient<IRustPatchNoteClient, FacepunchRustPatchNoteClient>(client =>
         {
             client.BaseAddress = new Uri("https://rust.facepunch.com/");

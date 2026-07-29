@@ -1,19 +1,29 @@
 using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using RustIQ.Application.ServerQuery;
 using RustIQ.Domain.Servers;
 
 namespace RustIQ.Infrastructure.ServerQuery;
 
-public sealed class BattleMetricsPlayerCountClient(IHttpClientFactory httpClientFactory)
+public sealed class BattleMetricsPlayerCountClient(
+    IHttpClientFactory httpClientFactory,
+    IOptions<BattleMetricsApiOptions>? apiOptions = null)
     : IBattleMetricsPlayerCountClient
 {
+    private readonly bool _enabled = apiOptions?.Value.Enabled ?? true;
+
     public async Task<long?> FindServerIdAsync(
         string host,
         int queryPort,
         CancellationToken cancellationToken)
     {
+        if (!_enabled)
+        {
+            return null;
+        }
+
         var client = httpClientFactory.CreateClient("BattleMetricsApi");
         var requestUri = $"servers?filter[game]=rust&filter[search]={Uri.EscapeDataString(host)}&page[size]=10";
         using var response = await client.GetAsync(requestUri, cancellationToken);
@@ -36,6 +46,11 @@ public sealed class BattleMetricsPlayerCountClient(IHttpClientFactory httpClient
         long battleMetricsServerId,
         CancellationToken cancellationToken)
     {
+        if (!_enabled)
+        {
+            return null;
+        }
+
         var client = httpClientFactory.CreateClient("BattleMetricsApi");
         using var response = await client.GetAsync($"servers/{battleMetricsServerId}", cancellationToken);
         if (!response.IsSuccessStatusCode)

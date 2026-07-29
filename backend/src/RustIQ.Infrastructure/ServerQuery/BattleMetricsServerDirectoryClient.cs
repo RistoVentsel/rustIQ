@@ -2,14 +2,19 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using RustIQ.Application.ServerQuery;
 using RustIQ.Domain.Servers;
 
 namespace RustIQ.Infrastructure.ServerQuery;
 
-public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpClientFactory)
+public sealed class BattleMetricsServerDirectoryClient(
+    IHttpClientFactory httpClientFactory,
+    IOptions<BattleMetricsApiOptions>? apiOptions = null)
     : IBattleMetricsServerDirectoryClient
 {
+    private readonly bool _enabled = apiOptions?.Value.Enabled ?? true;
+
     public async Task<IReadOnlyList<ConfiguredRustServer>> GetRustServersAsync(
         int pageSize,
         int maxPages,
@@ -34,6 +39,11 @@ public sealed class BattleMetricsServerDirectoryClient(IHttpClientFactory httpCl
         int maxPages,
         CancellationToken cancellationToken)
     {
+        if (!_enabled)
+        {
+            return [];
+        }
+
         var client = httpClientFactory.CreateClient("BattleMetricsApi");
         var results = new List<BattleMetricsServerSummary>();
         string? requestUri = $"servers?filter[game]=rust&page[size]={pageSize}&sort=rank";

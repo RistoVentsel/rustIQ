@@ -151,6 +151,11 @@ internal sealed class InMemoryServerRepository : IServerRepository
             })
             .ToArray();
 
+        if (nextRankings.Length == 0)
+        {
+            return Task.FromResult(0);
+        }
+
         Rankings.Clear();
         Rankings.AddRange(nextRankings);
 
@@ -246,8 +251,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
 
         var query = Servers
             .Where(server =>
-                server.PlayerCountSource == ServerPlayerCountSource.BattleMetrics
-                && server.BattleMetricsServerId != null
+                server.BattleMetricsServerId != null
                 && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= dueBeforeUtc));
 
         query = refreshLane switch
@@ -501,6 +505,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
         DateTimeOffset recentPeakSinceUtc)
     {
         return server.Players >= popularPlayerThreshold
+               || (server.Status == ServerStatus.Online && server.QueuePlayers > 0)
                || GetRank(server.Id) <= popularRankThreshold
                || HasPeakSince(server.Id, popularPeakPlayerThreshold, recentPeakSinceUtc);
     }

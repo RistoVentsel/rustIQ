@@ -30,11 +30,13 @@ services:
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=rustiq;Username=rustiq;Password=${RUSTIQ_POSTGRES_PASSWORD:?Set RUSTIQ_POSTGRES_PASSWORD in .env}
       RustServerQuery__TimeoutMilliseconds: 3000
       RustServerQuery__OfflineThresholdSeconds: 60
+      BattleMetricsApi__Enabled: "false"
+      BattleMetricsApi__MinimumRequestIntervalMilliseconds: 1100
       SteamDiscovery__Enabled: "true"
       SteamDiscovery__MaxServersPerRefresh: 1000
       SteamDiscovery__RefreshIntervalMinutes: 10
       SteamDiscovery__AllowBattleMetricsFallback: "true"
-      BattleMetricsDiscovery__Enabled: "true"
+      BattleMetricsDiscovery__Enabled: "false"
       BattleMetricsDiscovery__PageSize: 100
       BattleMetricsDiscovery__MaxPages: 60
       BattleMetricsDiscovery__RefreshIntervalMinutes: 10
@@ -61,7 +63,7 @@ services:
       BattleMetricsSummaryRefresh__VeryStaleOfflineLaneBatchSize: 100
       BattleMetricsSummaryRefresh__RefreshCurrentPlayers: "false"
       BattleMetricsSummaryRefresh__RefreshMapMetadata: "false"
-      MapMetadataRefresh__Enabled: "true"
+      MapMetadataRefresh__Enabled: "false"
       MapMetadataRefresh__RunOnStartup: "true"
       MapMetadataRefresh__StartupStaleAfterHours: 8
       MapMetadataRefresh__TimeZoneId: Europe/Tallinn

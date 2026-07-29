@@ -71,6 +71,13 @@ builder.Services
     .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.JsonFilePath), "Rust server catalog import requires JsonFilePath when enabled.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<BattleMetricsApiOptions>()
+    .Bind(builder.Configuration.GetSection(BattleMetricsApiOptions.SectionName))
+    .Validate(
+        options => !options.Enabled || options.MinimumRequestIntervalMilliseconds > 0,
+        "BattleMetrics API minimum request interval must be greater than 0 when the API is enabled.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<SteamDiscoveryOptions>()
     .Bind(builder.Configuration.GetSection(SteamDiscoveryOptions.SectionName))
     .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.Host), "Steam discovery host is required when enabled.")

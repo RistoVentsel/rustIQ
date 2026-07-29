@@ -150,6 +150,37 @@ public sealed class BattleMetricsClientTests
     }
 
     [Fact]
+    public async Task GetPlayerCountAsync_PrefersNewerRustBornOverRecentForcedWipe()
+    {
+        var forcedWipeAt = DateTimeOffset.UtcNow.AddDays(-9);
+        var currentBornAt = DateTimeOffset.UtcNow.AddHours(-2);
+
+        using var handler = new StubHttpMessageHandler(_ => JsonResponse($$"""
+            {
+              "data": {
+                "type": "server",
+                "id": "42",
+                "attributes": {
+                  "players": 10,
+                  "maxPlayers": 100,
+                  "status": "online",
+                  "details": {
+                    "rust_last_wipe": "{{forcedWipeAt:O}}",
+                    "rust_born": "{{currentBornAt:O}}"
+                  }
+                }
+              }
+            }
+            """));
+        var client = new BattleMetricsPlayerCountClient(new StubHttpClientFactory(handler));
+
+        var result = await client.GetPlayerCountAsync(42, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(currentBornAt, result.LastWipeAtUtc);
+    }
+
+    [Fact]
     public async Task GetRustServerSummariesAsync_ThrowsRateLimitExceptionWithPartialSummaries()
     {
         var callCount = 0;

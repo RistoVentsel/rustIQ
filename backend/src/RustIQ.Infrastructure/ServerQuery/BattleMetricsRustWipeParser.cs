@@ -88,7 +88,7 @@ internal static class BattleMetricsRustWipeParser
             return true;
         }
 
-        return born > lastWipe.Value && IsStaleLastWipe(lastWipe.Value, nextWipe, checkedAtUtc);
+        return born > lastWipe.Value;
     }
 
     private static bool IsStaleLastWipe(

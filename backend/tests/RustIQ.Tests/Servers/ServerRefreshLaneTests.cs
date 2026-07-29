@@ -16,9 +16,11 @@ public sealed class ServerRefreshLaneTests
         var populated = CreateServer("populated.test", ServerStatus.Online, players: 120);
         var recentPeak = CreateServer("recent-peak.test", ServerStatus.Online, players: 10);
         var restarting = CreateServer("restarting.test", ServerStatus.Offline, players: 0, lastSeenAtUtc: Now.AddMinutes(-10));
+        var queued = CreateServer("queued.test", ServerStatus.Online, players: 30);
+        queued.QueuePlayers = 5;
         var normal = CreateServer("normal.test", ServerStatus.Online, players: 30);
         var notDue = CreateServer("not-due.test", ServerStatus.Online, players: 200, lastRefreshedAtUtc: Now.AddSeconds(-10));
-        repository.Servers.AddRange([ranked, populated, recentPeak, restarting, normal, notDue]);
+        repository.Servers.AddRange([ranked, populated, recentPeak, restarting, queued, normal, notDue]);
         repository.Rankings.Add(CreateRanking(ranked.Id, rank: 12));
         repository.Snapshots.Add(CreateSnapshot(recentPeak.Id, Now.AddMinutes(-30), players: 140));
         repository.Snapshots.Add(CreateSnapshot(restarting.Id, Now.AddMinutes(-45), players: 150));
@@ -26,7 +28,7 @@ public sealed class ServerRefreshLaneTests
         var servers = await GetLaneAsync(repository, ServerRefreshLane.Fast, Now.AddSeconds(-45));
 
         Assert.Equal(
-            ["populated.test", "ranked.test", "recent-peak.test", "restarting.test"],
+            ["populated.test", "queued.test", "ranked.test", "recent-peak.test", "restarting.test"],
             servers.Select(server => server.Host).Order());
     }
 
@@ -42,6 +44,23 @@ public sealed class ServerRefreshLaneTests
 
         var server = Assert.Single(servers);
         Assert.Equal("normal.test", server.Host);
+    }
+
+    [Fact]
+    public async Task GetServersForRefreshLaneAsync_IncludesServersUsingA2sFallback()
+    {
+        var repository = new InMemoryServerRepository();
+        var server = CreateServer(
+            "a2s-fallback.test",
+            ServerStatus.Online,
+            players: 30,
+            lastRefreshedAtUtc: Now.AddMinutes(-4));
+        server.PlayerCountSource = ServerPlayerCountSource.A2S;
+        repository.Servers.Add(server);
+
+        var servers = await GetLaneAsync(repository, ServerRefreshLane.NormalOnline, Now.AddMinutes(-3));
+
+        Assert.Equal(server.Id, Assert.Single(servers).Id);
     }
 
     [Fact]

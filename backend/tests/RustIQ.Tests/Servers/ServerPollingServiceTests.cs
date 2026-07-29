@@ -66,6 +66,75 @@ public sealed class ServerPollingServiceTests
     }
 
     [Fact]
+    public async Task PollConfiguredServerAsync_DoesNotFetchMissingMapMetadataWhenRefreshIsDisabled()
+    {
+        var checkedAtUtc = DateTimeOffset.Parse("2026-07-29T08:00:00Z");
+        var serverId = Guid.NewGuid();
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = serverId,
+            BattleMetricsServerId = 42,
+            Host = "example.test",
+            QueryPort = 28015,
+            Name = "Tracked Server",
+            Players = 10,
+            MaxPlayers = 100,
+            Status = ServerStatus.Online,
+            PlayerCountSource = ServerPlayerCountSource.BattleMetrics,
+            CreatedAtUtc = checkedAtUtc.AddDays(-1),
+            UpdatedAtUtc = checkedAtUtc.AddMinutes(-10)
+        });
+        var mapClient = new FakeRustServerMapMetadataClient(
+            new RustServerMapMetadata(
+                "example.test",
+                28015,
+                "Map that should not be fetched",
+                1234,
+                4500,
+                null,
+                null,
+                null,
+                "BattleMetrics",
+                null,
+                checkedAtUtc,
+                null));
+        var service = new ServerPollingService(
+            new FakeRustServerQueryClient(
+                QueryResult(
+                    "example.test",
+                    28015,
+                    "Tracked Server",
+                    "Procedural Map",
+                    10,
+                    100,
+                    true,
+                    10,
+                    checkedAtUtc,
+                    null)),
+            new FakeBattleMetricsPlayerCountClient(),
+            mapClient,
+            repository);
+
+        await service.PollConfiguredServerAsync(
+            new ConfiguredRustServer
+            {
+                BattleMetricsServerId = 42,
+                Host = "example.test",
+                QueryPort = 28015,
+                PlayerCountSource = ServerPlayerCountSource.BattleMetrics
+            },
+            DefaultOfflineThreshold,
+            refreshCurrentPlayers: false,
+            refreshMapMetadata: false,
+            CancellationToken.None);
+
+        Assert.Equal(0, mapClient.CallCount);
+        Assert.Null(repository.Servers.Single().MapMetadata);
+        Assert.Single(repository.Snapshots);
+    }
+
+    [Fact]
     public async Task EnsureConfiguredServersExistAsync_SeedsConfiguredServersWithUnknownStatus()
     {
         var repository = new InMemoryServerRepository();
@@ -673,6 +742,66 @@ public sealed class ServerPollingServiceTests
         Assert.Equal(77, result.Players);
         Assert.Equal(200, result.MaxPlayers);
         Assert.Equal(4, result.QueuePlayers);
+    }
+
+    [Fact]
+    public async Task PollConfiguredServerAsync_FallsBackToFreshA2sDataWhenBattleMetricsIsUnavailable()
+    {
+        var checkedAtUtc = DateTimeOffset.Parse("2026-07-29T08:00:00Z");
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = Guid.NewGuid(),
+            BattleMetricsServerId = 42,
+            Host = "example.test",
+            QueryPort = 28015,
+            Name = "Stale Server",
+            Players = 77,
+            MaxPlayers = 200,
+            Status = ServerStatus.Online,
+            PlayerCountSource = ServerPlayerCountSource.BattleMetrics,
+            LastSeenAtUtc = checkedAtUtc.AddDays(-2),
+            CreatedAtUtc = checkedAtUtc.AddDays(-10),
+            UpdatedAtUtc = checkedAtUtc.AddDays(-2)
+        });
+        var queryClient = new FakeRustServerQueryClient(
+            QueryResult(
+                "example.test",
+                28015,
+                "Fresh Server",
+                "Procedural Map",
+                12,
+                100,
+                true,
+                15,
+                checkedAtUtc,
+                null));
+        var service = new ServerPollingService(
+            queryClient,
+            new FakeBattleMetricsPlayerCountClient(),
+            new FakeRustServerMapMetadataClient(),
+            repository);
+
+        var result = await service.PollConfiguredServerAsync(
+            new ConfiguredRustServer
+            {
+                BattleMetricsServerId = 42,
+                Host = "example.test",
+                QueryPort = 28015,
+                PlayerCountSource = ServerPlayerCountSource.BattleMetrics
+            },
+            DefaultOfflineThreshold,
+            refreshCurrentPlayers: false,
+            refreshMapMetadata: false,
+            CancellationToken.None);
+
+        var server = Assert.Single(repository.Servers);
+        Assert.Equal(12, server.Players);
+        Assert.Equal(100, server.MaxPlayers);
+        Assert.Equal(ServerPlayerCountSource.A2S, server.PlayerCountSource);
+        Assert.Equal(checkedAtUtc, server.LastSeenAtUtc);
+        Assert.Equal(12, result.Players);
+        Assert.Single(repository.Snapshots);
     }
 
     private static RustServerQueryResult QueryResult(
