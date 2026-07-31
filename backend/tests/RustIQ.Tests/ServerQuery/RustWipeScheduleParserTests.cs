@@ -7,6 +7,32 @@ public sealed class RustWipeScheduleParserTests
     private static readonly DateTimeOffset CheckedAtUtc =
         DateTimeOffset.Parse("2026-07-31T11:45:00Z");
 
+    [Theory]
+    [InlineData("2026-07-31T11:45:00Z", "2026-08-06T18:00:00Z")]
+    [InlineData("2026-08-06T18:01:00Z", "2026-09-03T18:00:00Z")]
+    [InlineData("2026-10-31T12:00:00Z", "2026-11-05T19:00:00Z")]
+    public void GetNextForcedWipeAtUtc_ReturnsFirstThursdayAtNineteenLondon(
+        string checkedAtUtc,
+        string expectedUtc)
+    {
+        var result = RustWipeScheduleParser.GetNextForcedWipeAtUtc(
+            DateTimeOffset.Parse(checkedAtUtc));
+
+        Assert.Equal(DateTimeOffset.Parse(expectedUtc), result);
+    }
+
+    [Fact]
+    public void GetEarliestUpcomingWipeAtUtc_PrefersEarlierAdvertisedWipeAndIgnoresExpiredDates()
+    {
+        var result = RustWipeScheduleParser.GetEarliestUpcomingWipeAtUtc(
+            CheckedAtUtc,
+            CheckedAtUtc.AddDays(-1),
+            CheckedAtUtc.AddDays(2),
+            CheckedAtUtc.AddDays(4));
+
+        Assert.Equal(CheckedAtUtc.AddDays(2), result);
+    }
+
     [Fact]
     public void GetNextWipeAtUtc_ParsesWeeklyLondonScheduleAcrossDescriptionFragments()
     {

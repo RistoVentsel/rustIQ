@@ -44,17 +44,19 @@ public sealed class A2sRustServerMapMetadataClient(
             var rustMapsUrl = RustServerRuleParser.BuildRustMapsUrl(mapFileUrl);
             var mapName = NullIfWhiteSpace(configuredServer.Map);
             var lastWipeAtUtc = configuredServer.LastWipeAtUtc;
-            var nextWipeAtUtc = RustWipeScheduleParser.GetNextWipeAtUtc(
-                    rules,
-                    lastWipeAtUtc,
-                    fetchedAtUtc)
-                ?? GetUpcomingNextWipeAtUtc(configuredServer.NextWipeAtUtc, fetchedAtUtc);
+            var advertisedNextWipeAtUtc = RustWipeScheduleParser.GetNextWipeAtUtc(
+                rules,
+                lastWipeAtUtc,
+                fetchedAtUtc);
+            var nextWipeAtUtc = RustWipeScheduleParser.GetEarliestUpcomingWipeAtUtc(
+                fetchedAtUtc,
+                advertisedNextWipeAtUtc,
+                configuredServer.NextWipeAtUtc);
 
             if (seed is null
                 && size is null
                 && mapFileUrl is null
-                && thumbnailUrl is null
-                && nextWipeAtUtc is null)
+                && thumbnailUrl is null)
             {
                 return Unavailable(
                     configuredServer,
@@ -244,15 +246,10 @@ public sealed class A2sRustServerMapMetadataClient(
             SourceUpdatedAtUtc: null,
             fetchedAtUtc,
             error,
-            GetUpcomingNextWipeAtUtc(configuredServer.NextWipeAtUtc, fetchedAtUtc),
+            RustWipeScheduleParser.GetEarliestUpcomingWipeAtUtc(
+                fetchedAtUtc,
+                configuredServer.NextWipeAtUtc),
             configuredServer.LastWipeAtUtc);
-    }
-
-    private static DateTimeOffset? GetUpcomingNextWipeAtUtc(
-        DateTimeOffset? nextWipeAtUtc,
-        DateTimeOffset fetchedAtUtc)
-    {
-        return nextWipeAtUtc >= fetchedAtUtc ? nextWipeAtUtc : null;
     }
 
     private static string? NullIfWhiteSpace(string? value)

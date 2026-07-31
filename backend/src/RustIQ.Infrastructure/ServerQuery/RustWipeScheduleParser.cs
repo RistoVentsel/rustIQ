@@ -7,6 +7,39 @@ namespace RustIQ.Infrastructure.ServerQuery;
 public static partial class RustWipeScheduleParser
 {
     private const int DescriptionFragmentCount = 16;
+    private const int ForcedWipeHour = 19;
+
+    public static DateTimeOffset GetNextForcedWipeAtUtc(DateTimeOffset checkedAtUtc)
+    {
+        var timeZone = GetTimeZoneOrUtc("Europe/London");
+        var localNow = TimeZoneInfo.ConvertTime(checkedAtUtc, timeZone);
+        var month = new DateTime(localNow.Year, localNow.Month, 1);
+
+        for (var monthOffset = 0; monthOffset < 2; monthOffset++)
+        {
+            var firstOfMonth = month.AddMonths(monthOffset);
+            var daysUntilThursday = ((int)DayOfWeek.Thursday - (int)firstOfMonth.DayOfWeek + 7) % 7;
+            var localCandidate = DateTime.SpecifyKind(
+                firstOfMonth.AddDays(daysUntilThursday).AddHours(ForcedWipeHour),
+                DateTimeKind.Unspecified);
+            if (localCandidate >= localNow.DateTime)
+            {
+                return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(localCandidate, timeZone));
+            }
+        }
+
+        throw new InvalidOperationException("Could not calculate the next Rust forced wipe.");
+    }
+
+    public static DateTimeOffset GetEarliestUpcomingWipeAtUtc(
+        DateTimeOffset checkedAtUtc,
+        params DateTimeOffset?[] candidates)
+    {
+        return candidates
+            .Where(candidate => candidate >= checkedAtUtc)
+            .Min()
+            ?? GetNextForcedWipeAtUtc(checkedAtUtc);
+    }
 
     public static DateTimeOffset? GetNextWipeAtUtc(
         IReadOnlyDictionary<string, string> rules,
@@ -216,6 +249,22 @@ public static partial class RustWipeScheduleParser
         {
             timeZone = null!;
             return false;
+        }
+    }
+
+    private static TimeZoneInfo GetTimeZoneOrUtc(string timeZoneId)
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.Utc;
         }
     }
 

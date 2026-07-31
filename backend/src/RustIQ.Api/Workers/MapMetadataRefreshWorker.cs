@@ -96,6 +96,17 @@ public sealed class MapMetadataRefreshWorker(
                 failedCount += refreshResults.Count(updated => !updated);
                 processedCount += batch.Length;
 
+                if (processedCount == targets.Count || processedCount % 250 == 0)
+                {
+                    logger.LogInformation(
+                        "Map metadata refresh sweep progress. Trigger: {Trigger}. ProcessedServers: {ProcessedServers}/{TargetServers}. UpdatedServers: {UpdatedServers}. FailedServers: {FailedServers}.",
+                        trigger,
+                        processedCount,
+                        targets.Count,
+                        updatedCount,
+                        failedCount);
+                }
+
                 if (processedCount < targets.Count
                     && options.Value.DelayBetweenBatchesSeconds > 0)
                 {

@@ -87,14 +87,10 @@ public sealed class SteamRustServerQueryClient(
             var advertisedNextWipeAtUtc = RustServerKeywordParser.GetNextWipeAtUtc(
                 serverInfo.Keywords,
                 checkedAtUtc);
-            var currentNextWipeAtUtc = configuredServer.NextWipeAtUtc >= checkedAtUtc
-                ? configuredServer.NextWipeAtUtc
-                : null;
-            var nextWipeAtUtc = advertisedNextWipeAtUtc is not null
-                                && (currentNextWipeAtUtc is null
-                                    || advertisedNextWipeAtUtc < currentNextWipeAtUtc)
-                ? advertisedNextWipeAtUtc
-                : currentNextWipeAtUtc;
+            var nextWipeAtUtc = RustWipeScheduleParser.GetEarliestUpcomingWipeAtUtc(
+                checkedAtUtc,
+                advertisedNextWipeAtUtc,
+                configuredServer.NextWipeAtUtc);
             var players = RustServerKeywordParser.GetCurrentPlayers(serverInfo.Keywords)
                 ?? serverInfo.Players;
             var maxPlayers = RustServerKeywordParser.GetMaxPlayers(serverInfo.Keywords)
@@ -157,7 +153,9 @@ public sealed class SteamRustServerQueryClient(
             configuredServer.Latitude,
             configuredServer.Longitude,
             configuredServer.LastWipeAtUtc,
-            configuredServer.NextWipeAtUtc,
+            RustWipeScheduleParser.GetEarliestUpcomingWipeAtUtc(
+                checkedAtUtc,
+                configuredServer.NextWipeAtUtc),
             Name: null,
             Map: null,
             Players: 0,
