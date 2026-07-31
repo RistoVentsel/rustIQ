@@ -48,4 +48,55 @@ public sealed class RustServerKeywordParserTests
 
         Assert.Null(result);
     }
+
+    [Theory]
+    [InlineData("^w", "2026-08-06T18:00:00Z")]
+    [InlineData("^b", "2026-08-06T18:00:00Z")]
+    [InlineData("^m", "2026-08-06T18:00:00Z")]
+    [InlineData("weekly", "2026-08-06T18:00:00Z")]
+    public void GetNextWipeAtUtc_ReadsRustWipeFrequencyTags(
+        string wipeTag,
+        string expectedUtc)
+    {
+        var result = RustServerKeywordParser.GetNextWipeAtUtc(
+            $"mp850,cp829,{wipeTag},^v,EU,gmrust",
+            DateTimeOffset.Parse("2026-07-31T11:45:00Z"));
+
+        Assert.Equal(DateTimeOffset.Parse(expectedUtc), result);
+    }
+
+    [Theory]
+    [InlineData("^w", "2026-08-13T18:00:00Z")]
+    [InlineData("^b", "2026-08-20T18:00:00Z")]
+    [InlineData("^m", "2026-09-03T18:00:00Z")]
+    public void GetNextWipeAtUtc_AdvancesToTheNextFrequencyOccurrence(
+        string wipeTag,
+        string expectedUtc)
+    {
+        var result = RustServerKeywordParser.GetNextWipeAtUtc(
+            wipeTag,
+            DateTimeOffset.Parse("2026-08-06T18:01:00Z"));
+
+        Assert.Equal(DateTimeOffset.Parse(expectedUtc), result);
+    }
+
+    [Fact]
+    public void GetNextWipeAtUtc_AppliesLondonDaylightSavingTime()
+    {
+        var result = RustServerKeywordParser.GetNextWipeAtUtc(
+            "^m",
+            DateTimeOffset.Parse("2026-10-31T12:00:00Z"));
+
+        Assert.Equal(DateTimeOffset.Parse("2026-11-05T19:00:00Z"), result);
+    }
+
+    [Fact]
+    public void GetNextWipeAtUtc_ReturnsNullWithoutAWipeFrequencyTag()
+    {
+        var result = RustServerKeywordParser.GetNextWipeAtUtc(
+            "mp850,cp829,^v,EU,gmrust",
+            DateTimeOffset.Parse("2026-07-31T11:45:00Z"));
+
+        Assert.Null(result);
+    }
 }
