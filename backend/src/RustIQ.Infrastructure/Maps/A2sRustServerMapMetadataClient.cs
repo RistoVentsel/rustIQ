@@ -45,9 +45,10 @@ public sealed class A2sRustServerMapMetadataClient(
             var mapName = NullIfWhiteSpace(configuredServer.Map);
             var lastWipeAtUtc = configuredServer.LastWipeAtUtc;
             var nextWipeAtUtc = RustWipeScheduleParser.GetNextWipeAtUtc(
-                rules,
-                lastWipeAtUtc ?? configuredServer.LastWipeAtUtc,
-                fetchedAtUtc);
+                    rules,
+                    lastWipeAtUtc,
+                    fetchedAtUtc)
+                ?? GetUpcomingNextWipeAtUtc(configuredServer.NextWipeAtUtc, fetchedAtUtc);
 
             if (seed is null
                 && size is null
@@ -242,7 +243,16 @@ public sealed class A2sRustServerMapMetadataClient(
             SourceName,
             SourceUpdatedAtUtc: null,
             fetchedAtUtc,
-            error);
+            error,
+            GetUpcomingNextWipeAtUtc(configuredServer.NextWipeAtUtc, fetchedAtUtc),
+            configuredServer.LastWipeAtUtc);
+    }
+
+    private static DateTimeOffset? GetUpcomingNextWipeAtUtc(
+        DateTimeOffset? nextWipeAtUtc,
+        DateTimeOffset fetchedAtUtc)
+    {
+        return nextWipeAtUtc >= fetchedAtUtc ? nextWipeAtUtc : null;
     }
 
     private static string? NullIfWhiteSpace(string? value)
