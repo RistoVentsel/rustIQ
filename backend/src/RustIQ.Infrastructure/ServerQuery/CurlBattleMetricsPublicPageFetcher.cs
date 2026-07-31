@@ -26,11 +26,11 @@ public sealed class CurlBattleMetricsPublicPageFetcher(
     }
 
     public async Task<string?> SearchRustServersAsync(
-        string serverName,
+        string query,
         CancellationToken cancellationToken)
     {
         return await FetchAsync(
-            $"servers/rust?q={Uri.EscapeDataString(serverName)}",
+            $"servers/rust?q={Uri.EscapeDataString(query)}",
             cancellationToken);
     }
 

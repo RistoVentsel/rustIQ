@@ -56,6 +56,66 @@ public sealed class BattleMetricsClientTests
     }
 
     [Fact]
+    public void FindServerId_IgnoresChangingWipeTextAndUsesFirstCurrentDuplicate()
+    {
+        const string html = """
+            <a title="Bestrust Solo/Duo 2x #3 | JUST FULLWIPED 31.07 07:31" href="/servers/rust/42">Current</a>
+            <a title="Bestrust Solo/Duo 2x #3 | Wipe 24.07" href="/servers/rust/41">Stale duplicate</a>
+            """;
+
+        var result = BattleMetricsPublicWipeMetadataClient.FindServerId(
+            html,
+            "Bestrust Solo/Duo 2x #3 | Wipe 24.07");
+
+        Assert.Equal(42, result);
+    }
+
+    [Fact]
+    public void FindServerId_DoesNotTreatMultiplierAsWipeDate()
+    {
+        const string html = """
+            <a title="RUST ROOM 1.7x | MAIN | Wipe 31.07" href="/servers/rust/42">Wrong multiplier</a>
+            """;
+
+        var result = BattleMetricsPublicWipeMetadataClient.FindServerId(
+            html,
+            "RUST ROOM 1.5x | MAIN | Wipe 24.07");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetWipeMetadataAsync_SearchesByEndpointWhenServerIdIsMissing()
+    {
+        var nextWipeAtUtc = DateTimeOffset.UtcNow.AddDays(5);
+        var fetcher = new StubBattleMetricsPublicPageFetcher(
+            $$"""
+              <h4>Upcoming Wipes</h4>
+              <ul><li><strong>Map</strong> - <time dateTime="{{nextWipeAtUtc:O}}">next</time></li></ul>
+              """,
+            """
+              <a title="Bestrust Solo/Duo 2x #3 | JUST FULLWIPED 31.07 07:31" href="/servers/rust/42">Server</a>
+              """);
+        var client = new BattleMetricsPublicWipeMetadataClient(
+            fetcher,
+            Options.Create(new BattleMetricsWipeFallbackOptions { Enabled = true }));
+
+        var result = await client.GetWipeMetadataAsync(
+            new ConfiguredRustServer
+            {
+                Name = "Bestrust Solo/Duo 2x #3 | Wipe 24.07",
+                Host = "205.178.168.148",
+                QueryPort = 28015
+            },
+            CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(42, result.BattleMetricsServerId);
+        Assert.Equal(nextWipeAtUtc, result.NextWipeAtUtc);
+        Assert.Equal("205.178.168.148:28015", fetcher.LastSearchQuery);
+    }
+
+    [Fact]
     public async Task FindServerIdAsync_ReadsTopLevelResourceId()
     {
         using var handler = new StubHttpMessageHandler(_ => JsonResponse("""
@@ -293,9 +353,13 @@ public sealed class BattleMetricsClientTests
         }
     }
 
-    private sealed class StubBattleMetricsPublicPageFetcher(string html)
+    private sealed class StubBattleMetricsPublicPageFetcher(
+        string html,
+        string? searchHtml = null)
         : IBattleMetricsPublicPageFetcher
     {
+        public string? LastSearchQuery { get; private set; }
+
         public Task<string?> FetchRustSettingsAsync(
             long battleMetricsServerId,
             CancellationToken cancellationToken)
@@ -304,10 +368,11 @@ public sealed class BattleMetricsClientTests
         }
 
         public Task<string?> SearchRustServersAsync(
-            string serverName,
+            string query,
             CancellationToken cancellationToken)
         {
-            return Task.FromResult<string?>(html);
+            LastSearchQuery = query;
+            return Task.FromResult<string?>(searchHtml ?? html);
         }
     }
 

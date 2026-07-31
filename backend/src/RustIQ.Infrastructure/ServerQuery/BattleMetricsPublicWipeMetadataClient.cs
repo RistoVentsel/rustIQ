@@ -25,8 +25,10 @@ public sealed partial class BattleMetricsPublicWipeMetadataClient(
         var battleMetricsServerId = configuredServer.BattleMetricsServerId;
         if (battleMetricsServerId is null && !string.IsNullOrWhiteSpace(configuredServer.Name))
         {
+            // A server's advertised name often contains a changing wipe date. Searching by the
+            // endpoint keeps the result set tied to the actual server instead of that transient name.
             var searchHtml = await pageFetcher.SearchRustServersAsync(
-                configuredServer.Name,
+                $"{configuredServer.Host}:{configuredServer.QueryPort}",
                 cancellationToken);
             battleMetricsServerId = string.IsNullOrWhiteSpace(searchHtml)
                 ? null
@@ -59,7 +61,6 @@ public sealed partial class BattleMetricsPublicWipeMetadataClient(
     public static long? FindServerId(string html, string serverName)
     {
         var normalizedServerName = NormalizeName(serverName);
-        var candidates = new HashSet<long>();
         foreach (Match match in ServerLinkRegex().Matches(html))
         {
             var candidateName = NormalizeName(WebUtility.HtmlDecode(match.Groups["name"].Value));
@@ -70,11 +71,13 @@ public sealed partial class BattleMetricsPublicWipeMetadataClient(
                     CultureInfo.InvariantCulture,
                     out var serverId))
             {
-                candidates.Add(serverId);
+                // BattleMetrics can retain duplicate/stale entries for the same endpoint. Its
+                // search page ranks the current matching server first, so retain that ordering.
+                return serverId;
             }
         }
 
-        return candidates.Count == 1 ? candidates.Single() : null;
+        return null;
     }
 
     public static DateTimeOffset? GetNextMapWipeAtUtc(
@@ -123,7 +126,11 @@ public sealed partial class BattleMetricsPublicWipeMetadataClient(
 
     private static string NormalizeName(string value)
     {
-        return WhitespaceRegex().Replace(value, " ").Trim();
+        var withoutChangingWipeDetails = WipeDateRegex().Replace(value, " ");
+        withoutChangingWipeDetails = WipeTimeOfDayRegex().Replace(withoutChangingWipeDetails, " ");
+        withoutChangingWipeDetails = WipeStatusWordRegex().Replace(withoutChangingWipeDetails, " ");
+        withoutChangingWipeDetails = NameSeparatorRegex().Replace(withoutChangingWipeDetails, " ");
+        return WhitespaceRegex().Replace(withoutChangingWipeDetails, " ").Trim();
     }
 
     [GeneratedRegex(
@@ -143,6 +150,30 @@ public sealed partial class BattleMetricsPublicWipeMetadataClient(
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         matchTimeoutMilliseconds: 1000)]
     private static partial Regex ServerLinkRegex();
+
+    [GeneratedRegex(
+        @"(?<![\p{L}\d])\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?(?![\p{L}\d])",
+        RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 1000)]
+    private static partial Regex WipeDateRegex();
+
+    [GeneratedRegex(
+        @"(?<!\d)\d{1,2}:\d{2}(?!\d)",
+        RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 1000)]
+    private static partial Regex WipeTimeOfDayRegex();
+
+    [GeneratedRegex(
+        @"\b(?:just\s+)?(?:full\s*)?wiped?\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 1000)]
+    private static partial Regex WipeStatusWordRegex();
+
+    [GeneratedRegex(
+        @"[^\p{L}\p{N}]+",
+        RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 1000)]
+    private static partial Regex NameSeparatorRegex();
 
     [GeneratedRegex(
         @"\s+",

@@ -7,6 +7,6 @@ public interface IBattleMetricsPublicPageFetcher
         CancellationToken cancellationToken);
 
     Task<string?> SearchRustServersAsync(
-        string serverName,
+        string query,
         CancellationToken cancellationToken);
 }
