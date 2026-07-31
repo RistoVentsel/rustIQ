@@ -20,7 +20,7 @@ public sealed class MapMetadataRefreshSelectionTests
             cutoffUtc,
             CancellationToken.None);
 
-        Assert.Equal([missingMap.Id, staleMap.Id], result.Select(server => server.Id));
+        Assert.Equal([noBattleMetricsId.Id, missingMap.Id, staleMap.Id], result.Select(server => server.Id));
     }
 
     private static Server ServerWithMap(

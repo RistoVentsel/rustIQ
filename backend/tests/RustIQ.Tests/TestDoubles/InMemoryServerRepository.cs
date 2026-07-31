@@ -288,9 +288,8 @@ internal sealed class InMemoryServerRepository : IServerRepository
     {
         return Task.FromResult<IReadOnlyList<Server>>(Servers
             .Where(server =>
-                server.BattleMetricsServerId is not null
-                && (server.MapMetadata is null
-                    || server.MapMetadata.FetchedAtUtc < fetchedBeforeUtc))
+                server.MapMetadata is null
+                    || server.MapMetadata.FetchedAtUtc < fetchedBeforeUtc)
             .OrderByDescending(server => server.Status == ServerStatus.Online)
             .ThenByDescending(server => server.Players)
             .ThenBy(server => server.Id)

@@ -58,6 +58,7 @@ public static class DependencyInjection
         services.AddSingleton<IBattleMetricsServerDirectoryClient, BattleMetricsServerDirectoryClient>();
         services.AddSingleton<IBattleMetricsPlayerCountClient, BattleMetricsPlayerCountClient>();
         services.AddSingleton<IRustServerQueryClient, SteamRustServerQueryClient>();
+        services.AddSingleton<IRustServerMapMetadataClient, A2sRustServerMapMetadataClient>();
         services.AddSingleton(serviceProvider =>
             new BattleMetricsRequestPacer(TimeSpan.FromMilliseconds(serviceProvider
                 .GetRequiredService<IOptions<BattleMetricsApiOptions>>()
@@ -66,12 +67,6 @@ public static class DependencyInjection
         services.AddTransient<BattleMetricsRequestPacingHandler>();
         services
             .AddHttpClient("BattleMetricsApi", client =>
-            {
-                client.BaseAddress = new Uri("https://api.battlemetrics.com/");
-            })
-            .AddHttpMessageHandler<BattleMetricsRequestPacingHandler>();
-        services
-            .AddHttpClient<IRustServerMapMetadataClient, BattleMetricsRustServerMapMetadataClient>(client =>
             {
                 client.BaseAddress = new Uri("https://api.battlemetrics.com/");
             })

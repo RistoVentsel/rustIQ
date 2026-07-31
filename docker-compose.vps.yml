@@ -63,7 +63,7 @@ services:
       BattleMetricsSummaryRefresh__VeryStaleOfflineLaneBatchSize: 100
       BattleMetricsSummaryRefresh__RefreshCurrentPlayers: "false"
       BattleMetricsSummaryRefresh__RefreshMapMetadata: "false"
-      MapMetadataRefresh__Enabled: "false"
+      MapMetadataRefresh__Enabled: "true"
       MapMetadataRefresh__RunOnStartup: "true"
       MapMetadataRefresh__StartupStaleAfterHours: 8
       MapMetadataRefresh__TimeZoneId: Europe/Tallinn
