@@ -74,8 +74,15 @@ builder.Services
     .AddOptions<BattleMetricsApiOptions>()
     .Bind(builder.Configuration.GetSection(BattleMetricsApiOptions.SectionName))
     .Validate(
-        options => !options.Enabled || options.MinimumRequestIntervalMilliseconds > 0,
-        "BattleMetrics API minimum request interval must be greater than 0 when the API is enabled.")
+        options => options.MinimumRequestIntervalMilliseconds > 0,
+        "BattleMetrics request interval must be greater than 0.")
+    .ValidateOnStart();
+builder.Services
+    .AddOptions<BattleMetricsWipeFallbackOptions>()
+    .Bind(builder.Configuration.GetSection(BattleMetricsWipeFallbackOptions.SectionName))
+    .Validate(
+        options => !options.Enabled || options.RequestTimeoutSeconds > 0,
+        "BattleMetrics public wipe fallback timeout must be greater than 0 when enabled.")
     .ValidateOnStart();
 builder.Services
     .AddOptions<SteamDiscoveryOptions>()

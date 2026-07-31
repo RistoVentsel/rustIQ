@@ -57,8 +57,11 @@ public static class DependencyInjection
         services.AddSingleton<ISteamServerDiscoveryClient, SteamServerDiscoveryClient>();
         services.AddSingleton<IBattleMetricsServerDirectoryClient, BattleMetricsServerDirectoryClient>();
         services.AddSingleton<IBattleMetricsPlayerCountClient, BattleMetricsPlayerCountClient>();
+        services.AddSingleton<IBattleMetricsPublicPageFetcher, CurlBattleMetricsPublicPageFetcher>();
+        services.AddSingleton<IBattleMetricsWipeMetadataClient, BattleMetricsPublicWipeMetadataClient>();
         services.AddSingleton<IRustServerQueryClient, SteamRustServerQueryClient>();
-        services.AddSingleton<IRustServerMapMetadataClient, A2sRustServerMapMetadataClient>();
+        services.AddSingleton<A2sRustServerMapMetadataClient>();
+        services.AddSingleton<IRustServerMapMetadataClient, FallbackRustServerMapMetadataClient>();
         services.AddSingleton(serviceProvider =>
             new BattleMetricsRequestPacer(TimeSpan.FromMilliseconds(serviceProvider
                 .GetRequiredService<IOptions<BattleMetricsApiOptions>>()

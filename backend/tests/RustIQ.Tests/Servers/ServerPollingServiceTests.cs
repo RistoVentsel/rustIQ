@@ -66,6 +66,159 @@ public sealed class ServerPollingServiceTests
     }
 
     [Fact]
+    public async Task RefreshMapMetadataAsync_UpdatesNextWipeWithoutCreatingMapOrSnapshot()
+    {
+        var serverId = Guid.NewGuid();
+        var nextWipeAtUtc = DateTimeOffset.Parse("2030-07-31T16:00:00Z");
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = serverId,
+            Host = "127.0.0.1",
+            QueryPort = 28015,
+            CreatedAtUtc = nextWipeAtUtc.AddDays(-1),
+            UpdatedAtUtc = nextWipeAtUtc.AddDays(-1)
+        });
+        var mapClient = new FakeRustServerMapMetadataClient(
+            new RustServerMapMetadata(
+                "127.0.0.1",
+                28015,
+                MapName: null,
+                Seed: null,
+                Size: null,
+                RustMapsUrl: null,
+                ThumbnailUrl: null,
+                MapFileUrl: null,
+                Source: "A2S",
+                SourceUpdatedAtUtc: null,
+                FetchedAtUtc: nextWipeAtUtc.AddHours(-1),
+                Error: null,
+                nextWipeAtUtc));
+        var service = new ServerPollingService(
+            new FakeRustServerQueryClient(),
+            new FakeBattleMetricsPlayerCountClient(),
+            mapClient,
+            repository);
+
+        var updated = await service.RefreshMapMetadataAsync(
+            new ConfiguredRustServer
+            {
+                Host = "127.0.0.1",
+                QueryPort = 28015
+            },
+            CancellationToken.None);
+
+        Assert.True(updated);
+        Assert.Empty(repository.Snapshots);
+        Assert.Null(repository.Servers[0].MapMetadata);
+        Assert.Equal(nextWipeAtUtc, repository.Servers[0].NextWipeAtUtc);
+    }
+
+    [Fact]
+    public async Task RefreshMapMetadataAsync_AppliesWipeFallbackWithoutReplacingMapSource()
+    {
+        var fetchedAtUtc = DateTimeOffset.UtcNow;
+        var lastWipeAtUtc = fetchedAtUtc.AddDays(-1);
+        var nextWipeAtUtc = fetchedAtUtc.AddDays(6);
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = Guid.NewGuid(),
+            Host = "127.0.0.1",
+            QueryPort = 28015,
+            Map = "Procedural Map",
+            CreatedAtUtc = fetchedAtUtc.AddDays(-7),
+            UpdatedAtUtc = fetchedAtUtc.AddDays(-7)
+        });
+        var mapClient = new FakeRustServerMapMetadataClient(
+            new RustServerMapMetadata(
+                "127.0.0.1",
+                28015,
+                "Procedural Map",
+                7331,
+                4250,
+                null,
+                null,
+                null,
+                "A2S",
+                null,
+                fetchedAtUtc,
+                null,
+                nextWipeAtUtc,
+                lastWipeAtUtc,
+                42));
+        var service = new ServerPollingService(
+            new FakeRustServerQueryClient(),
+            new FakeBattleMetricsPlayerCountClient(),
+            mapClient,
+            repository);
+
+        var updated = await service.RefreshMapMetadataAsync(
+            new ConfiguredRustServer
+            {
+                Host = "127.0.0.1",
+                QueryPort = 28015
+            },
+            CancellationToken.None);
+
+        Assert.True(updated);
+        var server = Assert.Single(repository.Servers);
+        Assert.Equal(42, server.BattleMetricsServerId);
+        Assert.Equal(lastWipeAtUtc, server.LastWipeAtUtc);
+        Assert.Equal(nextWipeAtUtc, server.NextWipeAtUtc);
+        Assert.Equal("A2S", server.MapMetadata?.Source);
+        Assert.Empty(repository.Snapshots);
+    }
+
+    [Fact]
+    public async Task RefreshMapMetadataAsync_PreservesEarlierFutureNextWipe()
+    {
+        var existingNextWipeAtUtc = DateTimeOffset.Parse("2030-07-31T15:00:00Z");
+        var inferredNextWipeAtUtc = existingNextWipeAtUtc.AddHours(1);
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = Guid.NewGuid(),
+            Host = "127.0.0.1",
+            QueryPort = 28015,
+            NextWipeAtUtc = existingNextWipeAtUtc,
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-1),
+            UpdatedAtUtc = DateTimeOffset.UtcNow.AddDays(-1)
+        });
+        var mapClient = new FakeRustServerMapMetadataClient(
+            new RustServerMapMetadata(
+                "127.0.0.1",
+                28015,
+                MapName: null,
+                Seed: null,
+                Size: null,
+                RustMapsUrl: null,
+                ThumbnailUrl: null,
+                MapFileUrl: null,
+                Source: "A2S",
+                SourceUpdatedAtUtc: null,
+                FetchedAtUtc: DateTimeOffset.UtcNow,
+                Error: null,
+                inferredNextWipeAtUtc));
+        var service = new ServerPollingService(
+            new FakeRustServerQueryClient(),
+            new FakeBattleMetricsPlayerCountClient(),
+            mapClient,
+            repository);
+
+        await service.RefreshMapMetadataAsync(
+            new ConfiguredRustServer
+            {
+                Host = "127.0.0.1",
+                QueryPort = 28015
+            },
+            CancellationToken.None);
+
+        Assert.Equal(existingNextWipeAtUtc, repository.Servers[0].NextWipeAtUtc);
+        Assert.Empty(repository.Snapshots);
+    }
+
+    [Fact]
     public async Task PollConfiguredServerAsync_DoesNotFetchMissingMapMetadataWhenRefreshIsDisabled()
     {
         var checkedAtUtc = DateTimeOffset.Parse("2026-07-29T08:00:00Z");

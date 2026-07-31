@@ -27,16 +27,16 @@ public sealed class MapMetadataRefreshWorker(
             options.Value.DelayBetweenServersMilliseconds,
             options.Value.DelayBetweenBatchesSeconds);
 
-        var nextRunUtc = MapMetadataRefreshSchedule.GetNextRunUtc(
-            DateTimeOffset.UtcNow,
-            timeZone,
-            options.Value.LocalHours);
-
         if (options.Value.RunOnStartup)
         {
             var startupCutoffUtc = DateTimeOffset.UtcNow.AddHours(-options.Value.StartupStaleAfterHours);
             await RunSweepAsync(startupCutoffUtc, "startup", stoppingToken);
         }
+
+        var nextRunUtc = MapMetadataRefreshSchedule.GetNextRunUtc(
+            DateTimeOffset.UtcNow,
+            timeZone,
+            options.Value.LocalHours);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -55,7 +55,7 @@ public sealed class MapMetadataRefreshWorker(
 
             await RunSweepAsync(nextRunUtc, "scheduled", stoppingToken);
             nextRunUtc = MapMetadataRefreshSchedule.GetNextRunUtc(
-                nextRunUtc,
+                DateTimeOffset.UtcNow,
                 timeZone,
                 options.Value.LocalHours);
         }
@@ -85,52 +85,19 @@ public sealed class MapMetadataRefreshWorker(
 
             var updatedCount = 0;
             var failedCount = 0;
-            var batches = targets.Chunk(options.Value.BatchSize).ToArray();
+            var batches = targets.Chunk(options.Value.BatchSize);
+            var processedCount = 0;
 
-            for (var batchIndex = 0; batchIndex < batches.Length; batchIndex++)
+            foreach (var batch in batches)
             {
-                await using var batchScope = serviceScopeFactory.CreateAsyncScope();
-                var pollingService = batchScope.ServiceProvider.GetRequiredService<ServerPollingService>();
+                var refreshResults = await Task.WhenAll(batch.Select((server, serverIndex) =>
+                    RefreshServerAsync(server, serverIndex, cancellationToken)));
+                updatedCount += refreshResults.Count(updated => updated);
+                failedCount += refreshResults.Count(updated => !updated);
+                processedCount += batch.Length;
 
-                var batch = batches[batchIndex];
-                for (var serverIndex = 0; serverIndex < batch.Length; serverIndex++)
-                {
-                    var server = batch[serverIndex];
-                    try
-                    {
-                        var updated = await pollingService.RefreshMapMetadataAsync(
-                            ToConfiguredServer(server),
-                            cancellationToken);
-                        if (updated)
-                        {
-                            updatedCount++;
-                        }
-                        else
-                        {
-                            failedCount++;
-                        }
-                    }
-                    catch (Exception exception) when (!WorkerExceptionHandling.IsExpectedShutdownException(exception, cancellationToken))
-                    {
-                        failedCount++;
-                        logger.LogWarning(
-                            exception,
-                            "Map metadata refresh failed for server {ServerId} ({Host}:{QueryPort}).",
-                            server.Id,
-                            server.Host,
-                            server.QueryPort);
-                    }
-
-                    if (serverIndex < batch.Length - 1
-                        && options.Value.DelayBetweenServersMilliseconds > 0)
-                    {
-                        await Task.Delay(
-                            TimeSpan.FromMilliseconds(options.Value.DelayBetweenServersMilliseconds),
-                            cancellationToken);
-                    }
-                }
-
-                if (batchIndex < batches.Length - 1)
+                if (processedCount < targets.Count
+                    && options.Value.DelayBetweenBatchesSeconds > 0)
                 {
                     await Task.Delay(
                         TimeSpan.FromSeconds(options.Value.DelayBetweenBatchesSeconds),
@@ -156,12 +123,47 @@ public sealed class MapMetadataRefreshWorker(
         }
     }
 
+    private async Task<bool> RefreshServerAsync(
+        Server server,
+        int serverIndex,
+        CancellationToken cancellationToken)
+    {
+        if (serverIndex > 0 && options.Value.DelayBetweenServersMilliseconds > 0)
+        {
+            await Task.Delay(
+                TimeSpan.FromMilliseconds(
+                    (long)serverIndex * options.Value.DelayBetweenServersMilliseconds),
+                cancellationToken);
+        }
+
+        try
+        {
+            // Each concurrent refresh needs its own scoped DbContext.
+            await using var scope = serviceScopeFactory.CreateAsyncScope();
+            var pollingService = scope.ServiceProvider.GetRequiredService<ServerPollingService>();
+            return await pollingService.RefreshMapMetadataAsync(
+                ToConfiguredServer(server),
+                cancellationToken);
+        }
+        catch (Exception exception) when (!WorkerExceptionHandling.IsExpectedShutdownException(exception, cancellationToken))
+        {
+            logger.LogWarning(
+                exception,
+                "Map metadata refresh failed for server {ServerId} ({Host}:{QueryPort}).",
+                server.Id,
+                server.Host,
+                server.QueryPort);
+            return false;
+        }
+    }
+
     private static ConfiguredRustServer ToConfiguredServer(Server server)
     {
         return new ConfiguredRustServer
         {
             BattleMetricsServerId = server.BattleMetricsServerId,
             Name = server.Name,
+            Map = server.Map,
             Address = server.Address,
             Host = server.Host,
             GamePort = server.GamePort,

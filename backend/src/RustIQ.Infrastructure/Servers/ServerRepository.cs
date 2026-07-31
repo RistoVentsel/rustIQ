@@ -372,9 +372,11 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         return await dbContext.Servers
             .AsNoTracking()
             .Where(server =>
-                server.MapMetadata == null
+                server.NextWipeAtUtc == null
+                    || server.MapMetadata == null
                     || server.MapMetadata.FetchedAtUtc < fetchedBeforeUtc)
-            .OrderByDescending(server => server.Status == ServerStatus.Online)
+            .OrderByDescending(server => server.NextWipeAtUtc == null)
+            .ThenByDescending(server => server.Status == ServerStatus.Online)
             .ThenByDescending(server => server.Players)
             .ThenBy(server => server.Id)
             .ToListAsync(cancellationToken);

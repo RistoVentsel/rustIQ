@@ -12,4 +12,7 @@ public sealed record RustServerMapMetadata(
     string Source,
     DateTimeOffset? SourceUpdatedAtUtc,
     DateTimeOffset FetchedAtUtc,
-    string? Error);
+    string? Error,
+    DateTimeOffset? NextWipeAtUtc = null,
+    DateTimeOffset? LastWipeAtUtc = null,
+    long? BattleMetricsServerId = null);

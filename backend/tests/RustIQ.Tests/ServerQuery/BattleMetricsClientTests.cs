@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.Options;
 using RustIQ.Application.ServerQuery;
 using RustIQ.Domain.Servers;
 using RustIQ.Infrastructure.ServerQuery;
@@ -8,6 +9,52 @@ namespace RustIQ.Tests.ServerQuery;
 
 public sealed class BattleMetricsClientTests
 {
+    [Fact]
+    public async Task GetWipeMetadataAsync_ReadsUpcomingMapWipeFromPublicSettingsPage()
+    {
+        var nextWipeAtUtc = DateTimeOffset.UtcNow.AddDays(6);
+        var blueprintWipeAtUtc = nextWipeAtUtc.AddDays(-1);
+        var client = new BattleMetricsPublicWipeMetadataClient(
+            new StubBattleMetricsPublicPageFetcher($$"""
+                <h4>Upcoming Wipes</h4>
+                <p>The following dates/times are converted to your time zone.</p>
+                <ul>
+                  <li><strong>Blueprints</strong> - <time dateTime="{{blueprintWipeAtUtc:O}}">ignored</time></li>
+                  <li><strong>Map</strong> - <time dateTime="{{nextWipeAtUtc:O}}">next map wipe</time></li>
+                </ul>
+                """),
+            Options.Create(new BattleMetricsWipeFallbackOptions { Enabled = true }));
+
+        var result = await client.GetWipeMetadataAsync(
+            new ConfiguredRustServer
+            {
+                BattleMetricsServerId = 42,
+                Host = "203.0.113.10",
+                QueryPort = 28015
+            },
+            CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(42, result.BattleMetricsServerId);
+        Assert.Null(result.LastWipeAtUtc);
+        Assert.Equal(nextWipeAtUtc, result.NextWipeAtUtc);
+    }
+
+    [Fact]
+    public void FindServerId_MatchesExactHtmlDecodedServerName()
+    {
+        const string html = """
+            <a title="Different Server" href="/servers/rust/1">Different Server</a>
+            <a title="EU | Helli&#x27;s Aimtrain" href="/servers/rust/42">EU | Helli's Aimtrain</a>
+            """;
+
+        var result = BattleMetricsPublicWipeMetadataClient.FindServerId(
+            html,
+            "EU | Helli's Aimtrain");
+
+        Assert.Equal(42, result);
+    }
+
     [Fact]
     public async Task FindServerIdAsync_ReadsTopLevelResourceId()
     {
@@ -243,6 +290,24 @@ public sealed class BattleMetricsClientTests
             {
                 BaseAddress = new Uri("https://api.battlemetrics.com/")
             };
+        }
+    }
+
+    private sealed class StubBattleMetricsPublicPageFetcher(string html)
+        : IBattleMetricsPublicPageFetcher
+    {
+        public Task<string?> FetchRustSettingsAsync(
+            long battleMetricsServerId,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<string?>(html);
+        }
+
+        public Task<string?> SearchRustServersAsync(
+            string serverName,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<string?>(html);
         }
     }
 

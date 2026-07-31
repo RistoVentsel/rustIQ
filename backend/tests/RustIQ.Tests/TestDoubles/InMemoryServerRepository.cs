@@ -288,9 +288,11 @@ internal sealed class InMemoryServerRepository : IServerRepository
     {
         return Task.FromResult<IReadOnlyList<Server>>(Servers
             .Where(server =>
-                server.MapMetadata is null
+                server.NextWipeAtUtc is null
+                    || server.MapMetadata is null
                     || server.MapMetadata.FetchedAtUtc < fetchedBeforeUtc)
-            .OrderByDescending(server => server.Status == ServerStatus.Online)
+            .OrderByDescending(server => server.NextWipeAtUtc is null)
+            .ThenByDescending(server => server.Status == ServerStatus.Online)
             .ThenByDescending(server => server.Players)
             .ThenBy(server => server.Id)
             .ToArray());

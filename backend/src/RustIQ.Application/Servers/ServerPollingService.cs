@@ -113,6 +113,7 @@ public sealed class ServerPollingService(
         {
             BattleMetricsServerId = server.BattleMetricsServerId,
             Name = server.Name,
+            Map = server.Map,
             Address = server.Address,
             Host = server.Host,
             GamePort = server.GamePort,
@@ -134,6 +135,14 @@ public sealed class ServerPollingService(
         {
             var mapMetadata = await mapMetadataClient.GetMapMetadataAsync(effectiveConfiguredServer, cancellationToken);
             ApplyMapMetadata(server, mapMetadata, now);
+            ApplyMapMetadataIdentityAndLastWipe(server, mapMetadata, now);
+            if (ShouldApplyInferredNextWipe(
+                    server.NextWipeAtUtc,
+                    mapMetadata.NextWipeAtUtc,
+                    now))
+            {
+                server.NextWipeAtUtc = mapMetadata.NextWipeAtUtc;
+            }
         }
 
         IReadOnlyList<ServerPlayerCurrent> currentPlayers = [];
@@ -163,6 +172,7 @@ public sealed class ServerPollingService(
         {
             BattleMetricsServerId = server.BattleMetricsServerId,
             Name = server.Name,
+            Map = server.Map,
             Address = server.Address,
             Host = server.Host,
             GamePort = server.GamePort,
@@ -183,15 +193,44 @@ public sealed class ServerPollingService(
             effectiveConfiguredServer,
             cancellationToken);
 
-        if (!HasUsableMapMetadata(metadata))
+        var hasUsableMapMetadata = HasUsableMapMetadata(metadata);
+        var updatedAtUtc = DateTimeOffset.UtcNow;
+        var shouldApplyBattleMetricsServerId = server.BattleMetricsServerId is null
+                                               && metadata.BattleMetricsServerId is not null;
+        var shouldApplyLastWipe = ShouldApplyReportedLastWipe(
+            server.LastWipeAtUtc,
+            metadata.LastWipeAtUtc,
+            updatedAtUtc);
+        var shouldApplyNextWipe = ShouldApplyInferredNextWipe(
+            server.NextWipeAtUtc,
+            metadata.NextWipeAtUtc,
+            updatedAtUtc);
+        if (!hasUsableMapMetadata
+            && !shouldApplyBattleMetricsServerId
+            && !shouldApplyLastWipe
+            && !shouldApplyNextWipe)
         {
             return false;
         }
 
-        ApplyMapMetadata(server, metadata, DateTimeOffset.UtcNow);
-        if (!string.IsNullOrWhiteSpace(metadata.MapName))
+        if (hasUsableMapMetadata)
         {
-            server.Map = metadata.MapName;
+            ApplyMapMetadata(server, metadata, updatedAtUtc);
+            if (!string.IsNullOrWhiteSpace(metadata.MapName))
+            {
+                server.Map = metadata.MapName;
+            }
+        }
+
+        if (shouldApplyBattleMetricsServerId || shouldApplyLastWipe)
+        {
+            ApplyMapMetadataIdentityAndLastWipe(server, metadata, updatedAtUtc);
+        }
+
+        if (shouldApplyNextWipe)
+        {
+            server.NextWipeAtUtc = metadata.NextWipeAtUtc;
+            server.UpdatedAtUtc = updatedAtUtc;
         }
 
         await serverRepository.SaveChangesAsync(cancellationToken);
@@ -426,6 +465,30 @@ public sealed class ServerPollingService(
         server.MapMetadata.UpdatedAtUtc = updatedAtUtc;
     }
 
+    private static void ApplyMapMetadataIdentityAndLastWipe(
+        Server server,
+        RustServerMapMetadata metadata,
+        DateTimeOffset updatedAtUtc)
+    {
+        var changed = false;
+        if (server.BattleMetricsServerId is null && metadata.BattleMetricsServerId is not null)
+        {
+            server.BattleMetricsServerId = metadata.BattleMetricsServerId;
+            changed = true;
+        }
+
+        if (ShouldApplyReportedLastWipe(server.LastWipeAtUtc, metadata.LastWipeAtUtc, updatedAtUtc))
+        {
+            server.LastWipeAtUtc = metadata.LastWipeAtUtc;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            server.UpdatedAtUtc = updatedAtUtc;
+        }
+    }
+
     private async Task<IReadOnlyList<ServerPlayerCurrent>> QueryCurrentPlayersAsync(
         ConfiguredRustServer configuredServer,
         Guid serverId,
@@ -588,6 +651,31 @@ public sealed class ServerPollingService(
             || metadata.RustMapsUrl is not null
             || metadata.ThumbnailUrl is not null
             || metadata.MapFileUrl is not null;
+    }
+
+    private static bool ShouldApplyInferredNextWipe(
+        DateTimeOffset? currentNextWipeAtUtc,
+        DateTimeOffset? inferredNextWipeAtUtc,
+        DateTimeOffset now)
+    {
+        if (inferredNextWipeAtUtc is null || inferredNextWipeAtUtc < now)
+        {
+            return false;
+        }
+
+        return currentNextWipeAtUtc is null
+               || currentNextWipeAtUtc < now
+               || inferredNextWipeAtUtc < currentNextWipeAtUtc;
+    }
+
+    private static bool ShouldApplyReportedLastWipe(
+        DateTimeOffset? currentLastWipeAtUtc,
+        DateTimeOffset? reportedLastWipeAtUtc,
+        DateTimeOffset now)
+    {
+        return reportedLastWipeAtUtc is not null
+               && reportedLastWipeAtUtc <= now.AddMinutes(5)
+               && (currentLastWipeAtUtc is null || reportedLastWipeAtUtc > currentLastWipeAtUtc);
     }
 
     private static ServerDto ToDto(

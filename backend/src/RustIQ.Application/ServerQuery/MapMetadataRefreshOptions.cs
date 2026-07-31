@@ -16,7 +16,7 @@ public sealed class MapMetadataRefreshOptions
 
     public int BatchSize { get; init; } = 25;
 
-    public int DelayBetweenServersMilliseconds { get; init; } = 500;
+    public int DelayBetweenServersMilliseconds { get; init; }
 
-    public int DelayBetweenBatchesSeconds { get; init; } = 10;
+    public int DelayBetweenBatchesSeconds { get; init; } = 1;
 }

@@ -6,6 +6,8 @@ public sealed class ConfiguredRustServer
 {
     public string? Name { get; init; }
 
+    public string? Map { get; init; }
+
     public long? BattleMetricsServerId { get; init; }
 
     public string? Address { get; init; }

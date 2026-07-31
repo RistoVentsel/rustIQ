@@ -1,12 +1,10 @@
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Net.Sockets;
-using A2S.Structs;
 using Microsoft.Extensions.Options;
 using RustIQ.Application.Maps;
 using RustIQ.Application.ServerQuery;
 using RustIQ.Infrastructure.ServerQuery;
-using A2SServer = A2S.Server;
 
 namespace RustIQ.Infrastructure.Maps;
 
@@ -38,21 +36,24 @@ public sealed class A2sRustServerMapMetadataClient(
         try
         {
             var rules = await QueryRulesAsync(configuredServer, cancellationToken);
-            var serverInfo = await TryQueryServerInfoAsync(configuredServer, cancellationToken);
 
             var mapFileUrl = GetRule(rules, "level_url");
             var thumbnailUrl = GetRule(rules, "map_image_url");
             var seed = GetIntRule(rules, "world.seed");
             var size = GetIntRule(rules, "world.size");
             var rustMapsUrl = RustServerRuleParser.BuildRustMapsUrl(mapFileUrl);
-            var mapName = serverInfo is { } info
-                ? NullIfWhiteSpace(info.Map)
-                : null;
+            var mapName = NullIfWhiteSpace(configuredServer.Map);
+            var lastWipeAtUtc = configuredServer.LastWipeAtUtc;
+            var nextWipeAtUtc = RustWipeScheduleParser.GetNextWipeAtUtc(
+                rules,
+                lastWipeAtUtc ?? configuredServer.LastWipeAtUtc,
+                fetchedAtUtc);
 
             if (seed is null
                 && size is null
                 && mapFileUrl is null
-                && thumbnailUrl is null)
+                && thumbnailUrl is null
+                && nextWipeAtUtc is null)
             {
                 return Unavailable(
                     configuredServer,
@@ -70,11 +71,11 @@ public sealed class A2sRustServerMapMetadataClient(
                 thumbnailUrl,
                 mapFileUrl,
                 SourceName,
-                serverInfo is { } sourceInfo
-                    ? RustServerKeywordParser.GetLastWipeAtUtc(sourceInfo.Keywords, fetchedAtUtc)
-                    : null,
+                SourceUpdatedAtUtc: null,
                 fetchedAtUtc,
-                Error: null);
+                Error: null,
+                nextWipeAtUtc,
+                lastWipeAtUtc);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -102,50 +103,36 @@ public sealed class A2sRustServerMapMetadataClient(
 
         await client.SendAsync(RulesChallengeRequest, timeoutToken);
         var challengeResponse = (await client.ReceiveAsync(timeoutToken)).Buffer;
-        if (challengeResponse.Length < 9
-            || BinaryPrimitives.ReadInt32LittleEndian(challengeResponse) != SimplePacketHeader
-            || challengeResponse[4] != ChallengeResponseType)
+        if (!IsChallengeResponse(challengeResponse))
         {
             throw new InvalidDataException("The server returned an invalid A2S challenge.");
         }
 
-        var rulesRequest = new byte[9];
-        BinaryPrimitives.WriteInt32LittleEndian(rulesRequest, SimplePacketHeader);
-        rulesRequest[4] = RulesRequestType;
-        challengeResponse.AsSpan(5, 4).CopyTo(rulesRequest.AsSpan(5));
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var rulesRequest = new byte[9];
+            BinaryPrimitives.WriteInt32LittleEndian(rulesRequest, SimplePacketHeader);
+            rulesRequest[4] = RulesRequestType;
+            challengeResponse.AsSpan(5, 4).CopyTo(rulesRequest.AsSpan(5));
 
-        await client.SendAsync(rulesRequest, timeoutToken);
-        var rulesPayload = await ReceiveResponseAsync(client, timeoutToken);
+            await client.SendAsync(rulesRequest, timeoutToken);
+            var rulesPayload = await ReceiveResponseAsync(client, timeoutToken);
+            if (!IsChallengeResponse(rulesPayload))
+            {
+                return RustServerRuleParser.Parse(rulesPayload);
+            }
 
-        return RustServerRuleParser.Parse(rulesPayload);
+            challengeResponse = rulesPayload;
+        }
+
+        throw new InvalidDataException("The server repeatedly replaced its A2S rules challenge.");
     }
 
-    private async Task<ServerInfo?> TryQueryServerInfoAsync(
-        ConfiguredRustServer configuredServer,
-        CancellationToken cancellationToken)
+    private static bool IsChallengeResponse(byte[] payload)
     {
-        try
-        {
-            var queryTask = Task.Run(
-                () => A2SServer.Query(
-                    configuredServer.Host,
-                    configuredServer.QueryPort,
-                    _options.TimeoutMilliseconds),
-                CancellationToken.None);
-            var result = await queryTask.WaitAsync(
-                TimeSpan.FromMilliseconds(_options.TimeoutMilliseconds),
-                cancellationToken);
-
-            return result is ServerInfo info ? info : null;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            return null;
-        }
+        return payload.Length >= 9
+               && BinaryPrimitives.ReadInt32LittleEndian(payload) == SimplePacketHeader
+               && payload[4] == ChallengeResponseType;
     }
 
     private static async Task<byte[]> ReceiveResponseAsync(

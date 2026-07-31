@@ -13,14 +13,18 @@ public sealed class MapMetadataRefreshSelectionTests
         var missingMap = ServerWithMap(1, null, ServerStatus.Online, 50);
         var staleMap = ServerWithMap(2, cutoffUtc.AddMinutes(-1), ServerStatus.Offline, 0);
         var freshMap = ServerWithMap(3, cutoffUtc, ServerStatus.Online, 100);
+        freshMap.NextWipeAtUtc = cutoffUtc.AddDays(1);
         var noBattleMetricsId = ServerWithMap(null, null, ServerStatus.Online, 200);
-        repository.Servers.AddRange([missingMap, staleMap, freshMap, noBattleMetricsId]);
+        var freshMapWithoutNextWipe = ServerWithMap(4, cutoffUtc, ServerStatus.Online, 150);
+        repository.Servers.AddRange([missingMap, staleMap, freshMap, noBattleMetricsId, freshMapWithoutNextWipe]);
 
         var result = await repository.GetServersForMapMetadataRefreshAsync(
             cutoffUtc,
             CancellationToken.None);
 
-        Assert.Equal([noBattleMetricsId.Id, missingMap.Id, staleMap.Id], result.Select(server => server.Id));
+        Assert.Equal(
+            [noBattleMetricsId.Id, freshMapWithoutNextWipe.Id, missingMap.Id, staleMap.Id],
+            result.Select(server => server.Id));
     }
 
     private static Server ServerWithMap(
