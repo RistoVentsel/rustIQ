@@ -9,6 +9,7 @@ import {
   RecipeGuessMinigamePage,
 } from '../pages/MinigamesPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
+import { PrivacyPolicyPage } from '../pages/PrivacyPolicyPage'
 import { RustKnowledgePage } from '../pages/RustKnowledgePage'
 import { RustKnowledgeTopicPage } from '../pages/RustKnowledgeTopicPage'
 import { ServerDetailPage } from '../pages/ServerDetailPage'
@@ -54,6 +55,10 @@ export const router = createBrowserRouter([
       {
         path: 'rust-knowledge/:topicId',
         element: <RustKnowledgeTopicPage />,
+      },
+      {
+        path: 'privacy',
+        element: <PrivacyPolicyPage />,
       },
       {
         path: '*',

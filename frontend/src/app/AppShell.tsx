@@ -32,6 +32,7 @@ const appShellCopy: Record<Language, {
   }
   languageLabel: string
   sponsorInquiries: string
+  privacyPolicy: string
 }> = {
   en: {
     appTitle: 'Server Monitor',
@@ -47,6 +48,7 @@ const appShellCopy: Record<Language, {
     },
     languageLabel: 'Language',
     sponsorInquiries: 'Sponsor inquiries',
+    privacyPolicy: 'Privacy Policy',
   },
   ru: {
     appTitle: 'Монитор серверов',
@@ -62,6 +64,7 @@ const appShellCopy: Record<Language, {
     },
     languageLabel: 'Язык',
     sponsorInquiries: 'Вопросы спонсорства',
+    privacyPolicy: 'Политика конфиденциальности',
   },
 }
 
@@ -162,6 +165,9 @@ export function AppShell() {
         <p>
           {copy.sponsorInquiries}:{' '}
           <a href="mailto:greyezel@gmail.com">greyezel@gmail.com</a>
+        </p>
+        <p>
+          <Link to="/privacy">{copy.privacyPolicy}</Link>
         </p>
       </footer>
     </div>

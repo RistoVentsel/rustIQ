@@ -22,9 +22,15 @@ function readApiBaseUrl() {
   return normalizeBaseUrl(value)
 }
 
+function readAdsenseClientId() {
+  const value = import.meta.env.VITE_ADSENSE_CLIENT_ID?.trim()
+  return value ? value : undefined
+}
+
 export const appConfig = {
   apiBaseUrl: readApiBaseUrl(),
   get apiHubUrl() {
     return `${this.apiBaseUrl}/hubs/servers`
   },
+  adsenseClientId: readAdsenseClientId(),
 } as const
