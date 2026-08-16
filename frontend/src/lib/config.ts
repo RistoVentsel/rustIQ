@@ -22,9 +22,11 @@ function readApiBaseUrl() {
   return normalizeBaseUrl(value)
 }
 
+const defaultAdsenseClientId = 'ca-pub-1494964558491486'
+
 function readAdsenseClientId() {
   const value = import.meta.env.VITE_ADSENSE_CLIENT_ID?.trim()
-  return value ? value : undefined
+  return value ? value : defaultAdsenseClientId
 }
 
 export const appConfig = {
