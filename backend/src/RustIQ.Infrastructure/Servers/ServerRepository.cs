@@ -308,7 +308,8 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         query = refreshLane switch
         {
             ServerRefreshLane.Fast => query.Where(server =>
-                server.Players >= popularPlayerThreshold
+                server.ServerType == RustServerType.Official
+                || server.Players >= popularPlayerThreshold
                 || (server.Status == ServerStatus.Online && server.QueuePlayers > 0)
                 || dbContext.ServerRankings.Any(ranking =>
                     ranking.ServerId == server.Id && ranking.Rank <= popularRankThreshold)

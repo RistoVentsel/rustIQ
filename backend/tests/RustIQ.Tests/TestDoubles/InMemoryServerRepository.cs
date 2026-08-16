@@ -257,7 +257,8 @@ internal sealed class InMemoryServerRepository : IServerRepository
         query = refreshLane switch
         {
             ServerRefreshLane.Fast => query.Where(server =>
-                IsPopular(server, popularRankThreshold, popularPlayerThreshold, popularPeakPlayerThreshold, recentPeakSinceUtc)
+                server.ServerType == RustServerType.Official
+                || IsPopular(server, popularRankThreshold, popularPlayerThreshold, popularPeakPlayerThreshold, recentPeakSinceUtc)
                 || IsRecentlyPopularOffline(server, popularRankThreshold, popularPeakPlayerThreshold, popularOfflineGraceSinceUtc)),
             ServerRefreshLane.NormalOnline => query.Where(server =>
                 server.Status == ServerStatus.Online

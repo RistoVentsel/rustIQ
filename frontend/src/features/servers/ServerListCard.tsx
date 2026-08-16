@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 
-import type { ServerListItem } from '../../api'
+import { serverStatus, type ServerListItem } from '../../api'
 import type { Language } from '../../i18n/language'
 import {
   formatAddress,
@@ -59,6 +59,7 @@ export function ServerListCard({
   onToggleFavorite,
 }: ServerListCardProps) {
   const copy = serverListCardCopy[language]
+  const isOffline = server.status === serverStatus.Offline
   const country = formatCountry(server.country, language)
   const serverTypeLabel = getRustServerTypeLabel(server.serverType, language, 'short')
   const serverTypeFullLabel = getRustServerTypeLabel(server.serverType, language)
@@ -69,7 +70,7 @@ export function ServerListCard({
     : null
 
   return (
-    <article className="server-list-card">
+    <article className={isOffline ? 'server-list-card server-list-card--offline' : 'server-list-card'}>
       <button
         type="button"
         className={isFavorite ? 'server-favorite server-favorite--active' : 'server-favorite'}
@@ -113,7 +114,15 @@ export function ServerListCard({
           {serverTypeLabel}
         </span>
       </div>
-      <div className="server-list-card__cell server-list-card__cell--players">{formatPlayerCount(server)}</div>
+      <div
+        className={
+          isOffline
+            ? 'server-list-card__cell server-list-card__cell--players server-list-card__cell--offline'
+            : 'server-list-card__cell server-list-card__cell--players'
+        }
+      >
+        {formatPlayerCount(server)}
+      </div>
       <div className="server-list-card__cell">
         <span
           className={getPlayerTrendClassName(server)}
