@@ -16,6 +16,7 @@ import {
   patchNotesGuideId,
   type KnowledgeGuide,
 } from '../features/knowledge/rustKnowledgeContent'
+import { useAdsGate } from '../hooks/useAdsGate'
 import type { Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
 
@@ -170,6 +171,7 @@ export function RustKnowledgeTopicPage() {
   const { language } = useLanguage()
   const copy = knowledgeTopicCopy[language]
   const guide = getKnowledgeGuide(topicId, language)
+  useAdsGate(Boolean(guide))
 
   if (!guide) {
     return (

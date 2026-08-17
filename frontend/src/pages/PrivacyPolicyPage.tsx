@@ -1,3 +1,4 @@
+import { useAdsGate } from '../hooks/useAdsGate'
 import type { Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
 
@@ -83,6 +84,7 @@ const privacyCopy: Record<Language, {
 export function PrivacyPolicyPage() {
   const { language } = useLanguage()
   const copy = privacyCopy[language]
+  useAdsGate(true)
 
   return (
     <section className="page-stack">

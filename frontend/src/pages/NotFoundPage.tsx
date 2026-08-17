@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 
+import { useAdsGate } from '../hooks/useAdsGate'
 import type { Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
 
@@ -26,6 +27,7 @@ const notFoundCopy: Record<Language, {
 export function NotFoundPage() {
   const { language } = useLanguage()
   const copy = notFoundCopy[language]
+  useAdsGate(false)
 
   return (
     <section className="page-stack">

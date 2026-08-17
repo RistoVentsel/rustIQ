@@ -36,6 +36,13 @@
         signalGooglefcPresent()
       })()
     </script>
+    <script>
+      // Default to paused: pages must explicitly opt in once real content has
+      // loaded (see src/hooks/useAdsGate.ts). Prevents Auto ads from serving
+      // on empty/loading/error/under-construction screens.
+      window.adsbygoogle = window.adsbygoogle || [];
+      window.adsbygoogle.pauseAdRequests = 1;
+    </script>
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1494964558491486"
      crossorigin="anonymous"></script>
   </head>

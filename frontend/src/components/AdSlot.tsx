@@ -1,13 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 
+import '../lib/adsGate'
 import { appConfig } from '../lib/config'
-
-declare global {
-  interface Window {
-    adsbygoogle?: Array<Record<string, unknown>>
-  }
-}
 
 type AdSlotProps = {
   slotId: string

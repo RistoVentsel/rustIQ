@@ -15,7 +15,7 @@ import { StateNotice } from '../components/StateNotice'
 import { ServerListCard } from '../features/servers/ServerListCard'
 import { getRustServerTypeLabel } from '../features/servers/serverPresentation'
 import { useFavoriteServers } from '../features/servers/useFavoriteServers'
-import { useNow } from '../hooks'
+import { useAdsGate, useNow } from '../hooks'
 import { formatRussianCount, type Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
 
@@ -303,6 +303,7 @@ export function ServersPage() {
   const isRefreshingServers = serversQuery.isFetching && hasServersData && !serversQuery.isPlaceholderData
   const shouldShowServerData = hasServersData
   const isRefreshButtonDisabled = serversQuery.isFetching
+  useAdsGate(shouldShowServerData && visibleServers.length > 0)
   const serverListErrorDetail =
     serversQuery.error instanceof ApiError
       ? `${serversQuery.error.message} (${serversQuery.error.url})`

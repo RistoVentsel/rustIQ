@@ -10,7 +10,7 @@ import {
   getRustServerTypeLabel,
   getServerDisplayName,
 } from '../features/servers/serverPresentation'
-import { useNow } from '../hooks'
+import { useAdsGate, useNow } from '../hooks'
 import type { Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
 
@@ -587,6 +587,8 @@ function getHigherLowerMetricDefinition(metric: HigherLowerMetric, language: Lan
 }
 
 export function MinigamesPage() {
+  useAdsGate(true)
+
   return (
     <div className="page-stack minigames-page">
       <MinigamesPageHeader />
@@ -708,6 +710,7 @@ function ComingSoonMinigamePage({
   const { language } = useLanguage()
   const copy = minigameCopy[language]
   const game = getGameCards(language).find((item) => item.id === gameId)
+  useAdsGate(false)
 
   if (!game) {
     return null
@@ -909,6 +912,11 @@ function MinigameExperience({
   useEffect(() => () => {
     clearHigherLowerRevealTimer()
   }, [clearHigherLowerRevealTimer])
+
+  const hasPlayableContent = activeGame === 'guess'
+    ? Boolean(answer) && candidatePool.length >= selectedDifficulty.poolSize
+    : Boolean(higherLowerDisplayPair) && higherLowerPool.length >= 12
+  useAdsGate(hasPlayableContent)
 
   useEffect(() => {
     const nextAvailableMs = storedState.nextAvailableAtUtc ? Date.parse(storedState.nextAvailableAtUtc) : null

@@ -20,7 +20,7 @@ import {
   getServerStatusLabel,
 } from '../features/servers/serverPresentation'
 import { useServerLiveUpdates } from '../features/servers/useServerLiveUpdates'
-import { useNow } from '../hooks'
+import { useAdsGate, useNow } from '../hooks'
 import type { Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
 import { formatCoarseRelativeTime, getSecondsAgo } from '../lib/time'
@@ -410,6 +410,7 @@ export function ServerDetailPage() {
   const players = playersQuery.data?.players ?? []
   const hasPlayerSnapshot = Boolean(playersQuery.data?.refreshedAtUtc)
   const hasServerData = Boolean(serverQuery.data)
+  useAdsGate(hasServerData)
   const lastSeenSecondsAgo = serverQuery.data?.lastSeenAtUtc
     ? getSecondsAgo(serverQuery.data.lastSeenAtUtc, nowMs)
     : null

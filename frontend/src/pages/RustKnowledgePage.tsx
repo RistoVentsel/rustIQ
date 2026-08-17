@@ -5,6 +5,7 @@ import { getLatestPatchNotes, type PatchNote } from '../api'
 import { SectionCard } from '../components/SectionCard'
 import { formatPatchNoteDate, latestPatchNotesQueryKey } from '../features/knowledge/patchNotesPresentation'
 import { getKnowledgeGuides, patchNotesGuideId, type KnowledgeGuide } from '../features/knowledge/rustKnowledgeContent'
+import { useAdsGate } from '../hooks/useAdsGate'
 import { formatRussianCount, type Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
 
@@ -102,6 +103,7 @@ export function RustKnowledgePage() {
     staleTime: 15 * 60 * 1000,
   })
   const patchNotes = patchNotesQuery.data ?? []
+  useAdsGate(true)
 
   return (
     <div className="page-stack knowledge-page">
