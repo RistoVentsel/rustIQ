@@ -193,19 +193,31 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
                 continue;
             }
 
-            var configuredServer = ToConfiguredServer(server);
-            var result = await pollingService.PollConfiguredServerAsync(
-                configuredServer,
-                TimeSpan.FromSeconds(queryOptions.Value.OfflineThresholdSeconds),
-                options.Value.RefreshCurrentPlayers,
-                options.Value.RefreshMapMetadata,
-                cancellationToken);
-            var updateMessage = serverUpdateMessageFactory.Create(result, DateTimeOffset.UtcNow);
+            try
+            {
+                var configuredServer = ToConfiguredServer(server);
+                var result = await pollingService.PollConfiguredServerAsync(
+                    configuredServer,
+                    TimeSpan.FromSeconds(queryOptions.Value.OfflineThresholdSeconds),
+                    options.Value.RefreshCurrentPlayers,
+                    options.Value.RefreshMapMetadata,
+                    cancellationToken);
+                var updateMessage = serverUpdateMessageFactory.Create(result, DateTimeOffset.UtcNow);
 
-            await hubContext.Clients
-                .Group(ServerUpdatesHub.GetServerGroupName(result.Id))
-                .SendAsync("ServerUpdated", updateMessage, cancellationToken);
-            refreshedCount++;
+                await hubContext.Clients
+                    .Group(ServerUpdatesHub.GetServerGroupName(result.Id))
+                    .SendAsync("ServerUpdated", updateMessage, cancellationToken);
+                refreshedCount++;
+            }
+            catch (Exception exception) when (!WorkerExceptionHandling.IsExpectedShutdownException(exception, cancellationToken))
+            {
+                logger.LogError(
+                    exception,
+                    "BattleMetrics {RefreshLane} refresh failed for server {Host}:{QueryPort}.",
+                    refreshLane,
+                    server.Host,
+                    server.QueryPort);
+            }
         }
 
         setLastRefreshUtc(now);
