@@ -64,12 +64,19 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
             var now = DateTimeOffset.UtcNow;
             if (IsDue(_lastDirectoryRefreshUtc, now, TimeSpan.FromMinutes(options.Value.DirectoryRefreshIntervalMinutes)))
             {
-                await RefreshDirectoryAsync(refreshService, now, cancellationToken);
-                _lastDirectoryRefreshUtc = now;
+                try
+                {
+                    await RefreshDirectoryAsync(refreshService, now, cancellationToken);
+                    _lastDirectoryRefreshUtc = now;
+                }
+                catch (Exception exception) when (!WorkerExceptionHandling.IsExpectedShutdownException(exception, cancellationToken))
+                {
+                    logger.LogError(exception, "BattleMetrics directory population sweep failed.");
+                }
             }
 
             var refreshedServerIds = new HashSet<Guid>();
-            await RefreshLaneIfDueAsync(
+            await RunLaneRefreshAsync(
                 ServerRefreshLane.Fast,
                 _lastFastLaneRefreshUtc,
                 value => _lastFastLaneRefreshUtc = value,
@@ -81,7 +88,7 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
                 now,
                 cancellationToken);
 
-            await RefreshLaneIfDueAsync(
+            await RunLaneRefreshAsync(
                 ServerRefreshLane.NormalOnline,
                 _lastNormalOnlineLaneRefreshUtc,
                 value => _lastNormalOnlineLaneRefreshUtc = value,
@@ -93,7 +100,7 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
                 now,
                 cancellationToken);
 
-            await RefreshLaneIfDueAsync(
+            await RunLaneRefreshAsync(
                 ServerRefreshLane.SlowOffline,
                 _lastSlowOfflineLaneRefreshUtc,
                 value => _lastSlowOfflineLaneRefreshUtc = value,
@@ -105,7 +112,7 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
                 now,
                 cancellationToken);
 
-            await RefreshLaneIfDueAsync(
+            await RunLaneRefreshAsync(
                 ServerRefreshLane.VeryStaleOffline,
                 _lastVeryStaleOfflineLaneRefreshUtc,
                 value => _lastVeryStaleOfflineLaneRefreshUtc = value,
@@ -150,6 +157,38 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
                 "BattleMetrics directory population sweep completed. RefreshedServers: {RefreshedServers}. CapturedSnapshots: {CapturedSnapshots}.",
                 directoryRefreshedServers,
                 captureSnapshots);
+        }
+    }
+
+    private async Task RunLaneRefreshAsync(
+        ServerRefreshLane refreshLane,
+        DateTimeOffset? lastRefreshUtc,
+        Action<DateTimeOffset> setLastRefreshUtc,
+        TimeSpan interval,
+        int batchSize,
+        IServerRepository repository,
+        ServerPollingService pollingService,
+        HashSet<Guid> refreshedServerIds,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await RefreshLaneIfDueAsync(
+                refreshLane,
+                lastRefreshUtc,
+                setLastRefreshUtc,
+                interval,
+                batchSize,
+                repository,
+                pollingService,
+                refreshedServerIds,
+                now,
+                cancellationToken);
+        }
+        catch (Exception exception) when (!WorkerExceptionHandling.IsExpectedShutdownException(exception, cancellationToken))
+        {
+            logger.LogError(exception, "BattleMetrics {RefreshLane} lane refresh failed.", refreshLane);
         }
     }
 
