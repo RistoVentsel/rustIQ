@@ -305,27 +305,57 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
                 server.BattleMetricsServerId != null
                 && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= dueBeforeUtc));
 
+        if (refreshLane == ServerRefreshLane.Fast)
+        {
+            // Official servers are always eligible for the fast lane, but they must never be able to
+            // crowd out servers that are popular right now: a stuck/never-succeeding official server would
+            // otherwise permanently occupy a batch slot (it stays "due" every tick) and starve real traffic.
+            // Popular servers are selected first up to `take`; officials only fill any capacity left over.
+            var popularCandidates = await query
+                .Where(server =>
+                    server.Players >= popularPlayerThreshold
+                    || (server.Status == ServerStatus.Online && server.QueuePlayers > 0)
+                    || dbContext.ServerRankings.Any(ranking =>
+                        ranking.ServerId == server.Id && ranking.Rank <= popularRankThreshold)
+                    || dbContext.ServerSnapshots.Any(snapshot =>
+                        snapshot.ServerId == server.Id
+                        && snapshot.CheckedAtUtc >= recentPeakSinceUtc
+                        && snapshot.Players >= popularPeakPlayerThreshold)
+                    || (server.Status != ServerStatus.Online
+                        && server.LastSeenAtUtc != null
+                        && server.LastSeenAtUtc >= popularOfflineGraceSinceUtc
+                        && (dbContext.ServerRankings.Any(ranking =>
+                                ranking.ServerId == server.Id && ranking.Rank <= popularRankThreshold)
+                            || dbContext.ServerSnapshots.Any(snapshot =>
+                                snapshot.ServerId == server.Id
+                                && snapshot.CheckedAtUtc >= popularOfflineGraceSinceUtc
+                                && snapshot.Players >= popularPeakPlayerThreshold))))
+                .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+                .ThenByDescending(server => server.Players)
+                .Take(take)
+                .ToListAsync(cancellationToken);
+
+            var remaining = take - popularCandidates.Count;
+            if (remaining <= 0)
+            {
+                return popularCandidates;
+            }
+
+            var popularCandidateIds = popularCandidates.Select(server => server.Id).ToArray();
+            var officialCandidates = await query
+                .Where(server =>
+                    server.ServerType == RustServerType.Official
+                    && !popularCandidateIds.Contains(server.Id))
+                .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+                .ThenByDescending(server => server.Players)
+                .Take(remaining)
+                .ToListAsync(cancellationToken);
+
+            return popularCandidates.Concat(officialCandidates).ToList();
+        }
+
         query = refreshLane switch
         {
-            ServerRefreshLane.Fast => query.Where(server =>
-                server.ServerType == RustServerType.Official
-                || server.Players >= popularPlayerThreshold
-                || (server.Status == ServerStatus.Online && server.QueuePlayers > 0)
-                || dbContext.ServerRankings.Any(ranking =>
-                    ranking.ServerId == server.Id && ranking.Rank <= popularRankThreshold)
-                || dbContext.ServerSnapshots.Any(snapshot =>
-                    snapshot.ServerId == server.Id
-                    && snapshot.CheckedAtUtc >= recentPeakSinceUtc
-                    && snapshot.Players >= popularPeakPlayerThreshold)
-                || (server.Status != ServerStatus.Online
-                    && server.LastSeenAtUtc != null
-                    && server.LastSeenAtUtc >= popularOfflineGraceSinceUtc
-                    && (dbContext.ServerRankings.Any(ranking =>
-                            ranking.ServerId == server.Id && ranking.Rank <= popularRankThreshold)
-                        || dbContext.ServerSnapshots.Any(snapshot =>
-                            snapshot.ServerId == server.Id
-                            && snapshot.CheckedAtUtc >= popularOfflineGraceSinceUtc
-                            && snapshot.Players >= popularPeakPlayerThreshold)))),
             ServerRefreshLane.NormalOnline => query.Where(server =>
                 server.Status == ServerStatus.Online
                 && server.Players < popularPlayerThreshold

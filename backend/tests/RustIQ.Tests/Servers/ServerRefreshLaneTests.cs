@@ -51,6 +51,42 @@ public sealed class ServerRefreshLaneTests
     }
 
     [Fact]
+    public async Task GetServersForRefreshLaneAsync_FastLaneNeverLetsOfficialServersStarvePopularServers()
+    {
+        var repository = new InMemoryServerRepository();
+        var officialStuck = CreateServer(
+            "official-stuck.test",
+            ServerStatus.Offline,
+            players: 0,
+            lastSeenAtUtc: Now.AddDays(-20),
+            lastRefreshedAtUtc: Now.AddDays(-20));
+        officialStuck.ServerType = RustServerType.Official;
+        var populated = CreateServer(
+            "populated.test",
+            ServerStatus.Online,
+            players: 120,
+            lastRefreshedAtUtc: Now.AddMinutes(-1));
+        repository.Servers.AddRange([officialStuck, populated]);
+
+        var servers = await repository.GetServersForRefreshLaneAsync(
+            ServerRefreshLane.Fast,
+            Now.AddSeconds(-45),
+            Now,
+            take: 1,
+            popularRankThreshold: 250,
+            popularPlayerThreshold: 100,
+            popularPeakPlayerThreshold: 100,
+            recentPeakWindow: TimeSpan.FromMinutes(60),
+            popularOfflineGrace: TimeSpan.FromMinutes(60),
+            slowOfflineAfter: TimeSpan.FromMinutes(60),
+            veryStaleOfflineAfter: TimeSpan.FromHours(24),
+            CancellationToken.None);
+
+        var server = Assert.Single(servers);
+        Assert.Equal("populated.test", server.Host);
+    }
+
+    [Fact]
     public async Task GetServersForRefreshLaneAsync_NormalOnlineExcludesFastLaneServers()
     {
         var repository = new InMemoryServerRepository();

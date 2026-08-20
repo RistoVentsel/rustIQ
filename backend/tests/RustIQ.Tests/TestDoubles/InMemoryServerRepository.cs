@@ -254,12 +254,38 @@ internal sealed class InMemoryServerRepository : IServerRepository
                 server.BattleMetricsServerId != null
                 && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= dueBeforeUtc));
 
+        if (refreshLane == ServerRefreshLane.Fast)
+        {
+            // Mirrors ServerRepository: popular servers always win a batch slot; officials only fill
+            // whatever capacity is left over so they can never starve genuinely popular servers.
+            var popularCandidates = query
+                .Where(server =>
+                    IsPopular(server, popularRankThreshold, popularPlayerThreshold, popularPeakPlayerThreshold, recentPeakSinceUtc)
+                    || IsRecentlyPopularOffline(server, popularRankThreshold, popularPeakPlayerThreshold, popularOfflineGraceSinceUtc))
+                .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+                .ThenByDescending(server => server.Players)
+                .Take(take)
+                .ToArray();
+
+            var remaining = take - popularCandidates.Length;
+            if (remaining <= 0)
+            {
+                return Task.FromResult<IReadOnlyList<Server>>(popularCandidates);
+            }
+
+            var popularCandidateIds = popularCandidates.Select(server => server.Id).ToHashSet();
+            var officialCandidates = query
+                .Where(server => server.ServerType == RustServerType.Official && !popularCandidateIds.Contains(server.Id))
+                .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+                .ThenByDescending(server => server.Players)
+                .Take(remaining)
+                .ToArray();
+
+            return Task.FromResult<IReadOnlyList<Server>>(popularCandidates.Concat(officialCandidates).ToArray());
+        }
+
         query = refreshLane switch
         {
-            ServerRefreshLane.Fast => query.Where(server =>
-                server.ServerType == RustServerType.Official
-                || IsPopular(server, popularRankThreshold, popularPlayerThreshold, popularPeakPlayerThreshold, recentPeakSinceUtc)
-                || IsRecentlyPopularOffline(server, popularRankThreshold, popularPeakPlayerThreshold, popularOfflineGraceSinceUtc)),
             ServerRefreshLane.NormalOnline => query.Where(server =>
                 server.Status == ServerStatus.Online
                 && !IsPopular(server, popularRankThreshold, popularPlayerThreshold, popularPeakPlayerThreshold, recentPeakSinceUtc)),
