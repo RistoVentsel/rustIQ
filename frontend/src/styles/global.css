@@ -212,6 +212,20 @@ select {
   margin: 0;
 }
 
+.app-footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0 0 12px;
+}
+
+.app-footer__disclaimer {
+  margin-top: 12px;
+  max-width: 70ch;
+  font-size: 0.82rem;
+  opacity: 0.75;
+}
+
 .app-footer a {
   color: var(--backdrop-text);
   font-weight: 800;
@@ -493,6 +507,15 @@ select {
 
 .page-copy .page-text {
   color: var(--backdrop-text-muted);
+}
+
+.page-lead {
+  margin: 0;
+  max-width: 70ch;
+  color: var(--backdrop-text);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.5;
 }
 
 .section-card,
@@ -4178,4 +4201,197 @@ select {
   .theme-toggle {
     align-self: flex-end;
   }
+}
+
+/* --- Item minigames (Guess the Item, Recipe Guess) ----------------------- */
+
+.guess-item-history {
+  display: grid;
+  gap: 10px;
+}
+
+.guess-item-history h4 {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.guess-item-history ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guess-item-history__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--row-bg);
+}
+
+.guess-item-history__row span {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.guess-item-history__row--correct {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.recipe-game {
+  display: grid;
+  gap: 18px;
+}
+
+.recipe-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--active-border);
+  border-radius: 12px;
+  background: var(--panel-bg);
+}
+
+.recipe-card__eyebrow {
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.recipe-card__ingredients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recipe-card__ingredients li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--row-bg);
+}
+
+.recipe-card__ingredients strong {
+  font-size: 1.1rem;
+}
+
+.recipe-card__ingredients span {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.recipe-card__workbench {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.recipe-options {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.recipe-option {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--button-border);
+  border-radius: 10px;
+  background: var(--button-bg);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
+}
+
+.recipe-option:hover:not(:disabled) {
+  border-color: var(--hover-border);
+  background: var(--row-hover-bg);
+}
+
+.recipe-option:disabled {
+  cursor: default;
+}
+
+.recipe-option strong {
+  font-size: 1rem;
+}
+
+.recipe-option small {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.recipe-option--correct {
+  border-color: rgba(34, 197, 94, 0.62);
+  background: rgba(34, 197, 94, 0.16);
+}
+
+.recipe-option--wrong {
+  border-color: rgba(239, 68, 68, 0.62);
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.recipe-option--muted {
+  opacity: 0.5;
+}
+
+.minigame-how-to-play {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.minigame-source-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.minigame-source-note a {
+  color: var(--accent-strong);
+}
+
+/* --- In-content ad units -------------------------------------------------- */
+
+.content-ad {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.content-ad__label {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.content-ad__slot {
+  min-height: 90px;
 }

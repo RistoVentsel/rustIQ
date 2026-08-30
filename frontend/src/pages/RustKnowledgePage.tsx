@@ -5,6 +5,7 @@ import { getLatestPatchNotes, type PatchNote } from '../api'
 import { SectionCard } from '../components/SectionCard'
 import { formatPatchNoteDate, latestPatchNotesQueryKey } from '../features/knowledge/patchNotesPresentation'
 import { getKnowledgeGuides, patchNotesGuideId, type KnowledgeGuide } from '../features/knowledge/rustKnowledgeContent'
+import { ContentAd } from '../components/ContentAd'
 import { useAdsGate } from '../hooks/useAdsGate'
 import { formatRussianCount, type Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
@@ -160,6 +161,8 @@ export function RustKnowledgePage() {
           </Link>
         ))}
       </section>
+
+      <ContentAd placement="knowledge" />
 
       <SectionCard
         title={copy.howToTitle}

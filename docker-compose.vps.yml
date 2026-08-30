@@ -87,6 +87,10 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
         VITE_ADSENSE_CLIENT_ID: ${VITE_ADSENSE_CLIENT_ID:-}
+        VITE_ADSENSE_SLOT_SERVERS: ${VITE_ADSENSE_SLOT_SERVERS:-}
+        VITE_ADSENSE_SLOT_KNOWLEDGE: ${VITE_ADSENSE_SLOT_KNOWLEDGE:-}
+        VITE_ADSENSE_SLOT_MINIGAMES: ${VITE_ADSENSE_SLOT_MINIGAMES:-}
+        VITE_ADSENSE_SLOT_ARTICLE: ${VITE_ADSENSE_SLOT_ARTICLE:-}
     container_name: rustiq-frontend
     restart: unless-stopped
     depends_on:

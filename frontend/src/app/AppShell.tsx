@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom'
 
 import { languageOptions, type Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
+import { useDocumentMeta } from '../seo/useDocumentMeta'
 
 type Theme = 'dark' | 'light'
 type NavItemId = 'servers' | 'minigames' | 'knowledge'
@@ -33,6 +34,9 @@ const appShellCopy: Record<Language, {
   languageLabel: string
   sponsorInquiries: string
   privacyPolicy: string
+  about: string
+  contact: string
+  disclaimer: string
 }> = {
   en: {
     appTitle: 'Server Monitor',
@@ -49,6 +53,9 @@ const appShellCopy: Record<Language, {
     languageLabel: 'Language',
     sponsorInquiries: 'Sponsor inquiries',
     privacyPolicy: 'Privacy Policy',
+    about: 'About',
+    contact: 'Contact',
+    disclaimer: 'rustIQ is an independent project and is not affiliated with or endorsed by Facepunch Studios. Rust is a trademark of Facepunch Studios.',
   },
   ru: {
     appTitle: 'Монитор серверов',
@@ -65,6 +72,9 @@ const appShellCopy: Record<Language, {
     languageLabel: 'Язык',
     sponsorInquiries: 'Вопросы спонсорства',
     privacyPolicy: 'Политика конфиденциальности',
+    about: 'О проекте',
+    contact: 'Контакты',
+    disclaimer: 'rustIQ — независимый проект, не аффилированный с Facepunch Studios и не одобренный ими. Rust — торговая марка Facepunch Studios.',
   },
 }
 
@@ -72,6 +82,7 @@ export function AppShell() {
   const location = useLocation()
   const { language, setLanguage } = useLanguage()
   const copy = appShellCopy[language]
+  useDocumentMeta()
   const [theme, setTheme] = useState<Theme>(() => {
     const savedTheme = window.localStorage.getItem('rustiq-theme')
     return savedTheme === 'light' ? 'light' : 'dark'
@@ -162,13 +173,17 @@ export function AppShell() {
       </main>
 
       <footer className="app-footer">
+        <nav className="app-footer__links" aria-label="Footer">
+          <Link to="/about">{copy.about}</Link>
+          <Link to="/contact">{copy.contact}</Link>
+          <Link to="/rust-knowledge">{copy.nav.knowledge.label}</Link>
+          <Link to="/privacy">{copy.privacyPolicy}</Link>
+        </nav>
         <p>
           {copy.sponsorInquiries}:{' '}
           <a href="mailto:greyezel@gmail.com">greyezel@gmail.com</a>
         </p>
-        <p>
-          <Link to="/privacy">{copy.privacyPolicy}</Link>
-        </p>
+        <p className="app-footer__disclaimer">{copy.disclaimer}</p>
       </footer>
     </div>
   )

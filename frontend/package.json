@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node ./scripts/prerender.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
-    "verify:local": "node ./scripts/verify-local-flow.mjs"
+    "verify:local": "node ./scripts/verify-local-flow.mjs",
+    "prerender": "node ./scripts/prerender.mjs"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",

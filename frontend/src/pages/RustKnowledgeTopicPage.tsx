@@ -16,6 +16,7 @@ import {
   patchNotesGuideId,
   type KnowledgeGuide,
 } from '../features/knowledge/rustKnowledgeContent'
+import { ContentAd } from '../components/ContentAd'
 import { useAdsGate } from '../hooks/useAdsGate'
 import type { Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
@@ -191,6 +192,8 @@ export function RustKnowledgeTopicPage() {
     <div className="page-stack knowledge-detail-page">
       <Link className="knowledge-back-link" to="/rust-knowledge">{copy.backToKnowledge}</Link>
       <GuideHero guide={guide} language={language} />
+
+      <ContentAd placement="article" hasContent={Boolean(guide)} />
 
       {guide.id === 'keybinds' ? (
         <KeybindGuide guide={guide} language={language} />

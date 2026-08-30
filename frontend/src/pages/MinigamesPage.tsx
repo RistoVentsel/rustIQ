@@ -3,6 +3,7 @@ import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Link } from 'react-router-dom'
 
 import { ApiError, getServers, type ServerListItem } from '../api'
+import { ContentAd } from '../components/ContentAd'
 import { SectionCard } from '../components/SectionCard'
 import { StateNotice } from '../components/StateNotice'
 import {
@@ -260,13 +261,13 @@ const minigameCopy: Record<Language, {
       },
       guessItem: {
         title: 'Guess the Item',
-        status: 'Coming soon',
+        status: 'Playable',
         description: 'Use workbench, category, cost, and recycle clues.',
         meta: 'Item logic',
       },
       recipeGuess: {
         title: 'Recipe Guess',
-        status: 'Coming soon',
+        status: 'Playable',
         description: 'See ingredients and name the item they craft.',
         meta: 'Craft clues',
       },
@@ -421,13 +422,13 @@ const minigameCopy: Record<Language, {
       },
       guessItem: {
         title: 'Угадай предмет',
-        status: 'Скоро',
+        status: 'Играбельно',
         description: 'Используйте подсказки по верстаку, категории, стоимости и переработке.',
         meta: 'Логика предметов',
       },
       recipeGuess: {
         title: 'Угадай рецепт',
-        status: 'Скоро',
+        status: 'Играбельно',
         description: 'Посмотрите ингредиенты и назовите предмет, который они создают.',
         meta: 'Подсказки крафта',
       },
@@ -594,6 +595,7 @@ export function MinigamesPage() {
       <MinigamesPageHeader />
       <MinigameTodayPanel />
       <MinigameCardGrid />
+      <ContentAd placement="minigames" />
     </div>
   )
 }
@@ -604,14 +606,6 @@ export function GuessServerMinigamePage() {
 
 export function HigherLowerMinigamePage() {
   return <MinigameExperience activeGame="higherLower" />
-}
-
-export function GuessItemMinigamePage() {
-  return <ComingSoonMinigamePage gameId="guessItem" />
-}
-
-export function RecipeGuessMinigamePage() {
-  return <ComingSoonMinigamePage gameId="recipeGuess" />
 }
 
 function MinigamesPageHeader() {
@@ -683,10 +677,7 @@ function MinigameCardGrid() {
             </div>
           </>
         )
-        const isPlayable = game.id === 'guessServer' || game.id === 'higherLower'
-        const className = isPlayable
-          ? 'minigame-option minigame-option--active'
-          : 'minigame-option'
+        const className = 'minigame-option minigame-option--active'
 
         return (
           <Link
@@ -699,41 +690,6 @@ function MinigameCardGrid() {
         )
       })}
     </section>
-  )
-}
-
-function ComingSoonMinigamePage({
-  gameId,
-}: {
-  gameId: GameCardId
-}) {
-  const { language } = useLanguage()
-  const copy = minigameCopy[language]
-  const game = getGameCards(language).find((item) => item.id === gameId)
-  useAdsGate(false)
-
-  if (!game) {
-    return null
-  }
-
-  return (
-    <div className="page-stack minigames-page">
-      <Link to="/minigames" className="knowledge-back-link">{copy.backToMinigames}</Link>
-      <section className="minigame-coming-soon">
-        <div className="minigame-coming-soon__media" aria-hidden="true">
-          <img src={game.image} alt="" />
-          <span>
-            <img src={game.emote} alt="" />
-          </span>
-        </div>
-        <div className="minigame-coming-soon__copy">
-          <p className="page-eyebrow">{copy.minigameEyebrow}</p>
-          <h2 className="page-heading">{game.title}</h2>
-          <p className="page-text">{game.description}</p>
-          <span className="minigame-option__status">{game.status}</span>
-        </div>
-      </section>
-    </div>
   )
 }
 

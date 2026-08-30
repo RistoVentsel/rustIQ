@@ -1,13 +1,15 @@
 import { createBrowserRouter } from 'react-router-dom'
 
 import { AppShell } from '../app/AppShell'
+import { AboutPage } from '../pages/AboutPage'
+import { ContactPage } from '../pages/ContactPage'
+import { GuessItemPage } from '../pages/GuessItemPage'
 import {
   GuessServerMinigamePage,
-  GuessItemMinigamePage,
   HigherLowerMinigamePage,
   MinigamesPage,
-  RecipeGuessMinigamePage,
 } from '../pages/MinigamesPage'
+import { RecipeGuessPage } from '../pages/RecipeGuessPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { PrivacyPolicyPage } from '../pages/PrivacyPolicyPage'
 import { RustKnowledgePage } from '../pages/RustKnowledgePage'
@@ -42,11 +44,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'minigames/guess-the-item',
-        element: <GuessItemMinigamePage />,
+        element: <GuessItemPage />,
       },
       {
         path: 'minigames/recipe-guess',
-        element: <RecipeGuessMinigamePage />,
+        element: <RecipeGuessPage />,
       },
       {
         path: 'rust-knowledge',
@@ -55,6 +57,14 @@ export const router = createBrowserRouter([
       {
         path: 'rust-knowledge/:topicId',
         element: <RustKnowledgeTopicPage />,
+      },
+      {
+        path: 'about',
+        element: <AboutPage />,
+      },
+      {
+        path: 'contact',
+        element: <ContactPage />,
       },
       {
         path: 'privacy',
