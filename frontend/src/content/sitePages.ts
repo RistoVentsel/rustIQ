@@ -25,17 +25,9 @@ const aboutCopy: Record<Language, StaticPageCopy> = {
       {
         heading: 'Where the data comes from',
         body: [
-          'Population, map name, server name and max player count are read directly from each Rust server using the Steam A2S query protocol. This is the same public query interface the in-game server browser uses, so the numbers come from the server itself rather than from a third-party mirror.',
-          'Wipe timing is harder. Some servers publish a usable next-wipe schedule over A2S; many do not. When A2S does not expose a schedule, rustIQ falls back to reading the structured upcoming-wipe times from the public BattleMetrics settings page for that server. That fallback covers wipe timing only, never replaces population or map data, and does not use an API token or a paid subscription.',
-          'Every successful query is stored as a snapshot, which is what builds the population history and uptime record over time.',
-        ],
-      },
-      {
-        heading: 'How often it refreshes',
-        body: [
-          'The server list is deliberately not a live feed. It is a cached snapshot that refreshes when you do something: open the page, search, change a filter, or move to the next page. Refreshing hundreds of rows every few seconds would make the list slower without making it more useful.',
-          'Individual server pages are the live part. When you open one, rustIQ shows the cached record immediately and then opens a live connection that re-queries that single server every few seconds, so the player count updates while you watch. If several people are viewing the same server, the backend queries it once and broadcasts the result to everyone, rather than hitting the server once per viewer.',
-          'A single failed query does not mark a server offline. The page shows how long ago the server was last seen, and offline status is only applied after repeated failures.',
+          'Player counts, maps, server names and slot counts come straight from the server itself. rustIQ uses the same public Steam query that the in-game server browser uses, so nothing is second-hand from another tracker.',
+          'Wipe times are harder. Some servers publish their next wipe through that same query. Many do not. For those, rustIQ reads the schedule from the public BattleMetrics page for that server. It covers wipe times only, and never stands in for live player counts or map data.',
+          'Every successful check is saved. Those saved checks are what build up the population history and uptime record for each server.',
         ],
       },
       {
@@ -68,17 +60,9 @@ const aboutCopy: Record<Language, StaticPageCopy> = {
       {
         heading: 'Откуда берутся данные',
         body: [
-          'Онлайн, название карты, название сервера и максимальное число игроков читаются напрямую с каждого сервера Rust по протоколу запросов Steam A2S. Это тот же публичный интерфейс, который использует внутриигровой браузер серверов, поэтому цифры приходят с самого сервера, а не из стороннего зеркала.',
-          'С расписанием вайпов сложнее. Некоторые серверы публикуют пригодное расписание следующего вайпа через A2S, но многие — нет. Когда A2S не отдает расписание, rustIQ читает структурированное время ближайших вайпов с публичной страницы настроек этого сервера на BattleMetrics. Этот запасной вариант касается только вайпов, никогда не заменяет данные об онлайне или карте и не использует API-токен или платную подписку.',
-          'Каждый успешный запрос сохраняется как снимок — именно из них со временем складывается история онлайна и запись аптайма.',
-        ],
-      },
-      {
-        heading: 'Как часто обновляются данные',
-        body: [
-          'Список серверов намеренно не является живой лентой. Это кэшированный снимок, который обновляется, когда вы что-то делаете: открываете страницу, ищете, меняете фильтр или переходите на следующую страницу. Обновление сотен строк каждые несколько секунд сделало бы список медленнее, но не полезнее.',
-          'Живая часть — страницы отдельных серверов. При открытии rustIQ сразу показывает кэшированную запись, а затем открывает живое соединение и перезапрашивает именно этот сервер каждые несколько секунд, так что онлайн обновляется прямо при вас. Если один сервер смотрят несколько человек, бэкенд запрашивает его один раз и рассылает результат всем, а не опрашивает сервер отдельно для каждого зрителя.',
-          'Один неудачный запрос не помечает сервер офлайн. Страница показывает, как давно сервер был виден в последний раз, а статус офлайн ставится только после повторных неудач.',
+          'Онлайн, карты, названия серверов и число слотов приходят прямо с самого сервера. rustIQ использует тот же публичный запрос Steam, что и внутриигровой браузер серверов, поэтому данные не берутся из вторых рук у другого трекера.',
+          'С вайпами сложнее. Некоторые серверы публикуют время следующего вайпа через этот же запрос. Многие — нет. Для них rustIQ читает расписание с публичной страницы этого сервера на BattleMetrics. Это касается только вайпов и никогда не подменяет живой онлайн или данные о карте.',
+          'Каждая успешная проверка сохраняется. Именно из этих проверок складывается история онлайна и аптайм каждого сервера.',
         ],
       },
       {
