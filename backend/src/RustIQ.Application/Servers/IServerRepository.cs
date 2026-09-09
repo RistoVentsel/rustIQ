@@ -81,9 +81,11 @@ public interface IServerRepository
         TimeSpan veryStaleOfflineAfter,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<Server>> GetServersForMapMetadataRefreshAsync(
+    Task<MapMetadataRefreshBatch> GetServersForMapMetadataRefreshAsync(
         DateTimeOffset fetchedBeforeUtc,
         int take,
+        int priorityTake,
+        Guid? rotationCursor,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(

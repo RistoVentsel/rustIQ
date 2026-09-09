@@ -19,6 +19,11 @@ public sealed class MapMetadataRefreshOptions
     // never finish a pass - the leftovers are picked up by the next run.
     public int MaxServersPerRun { get; init; } = 1000;
 
+    // Part of MaxServersPerRun is reserved for online servers, ordered by population, so the
+    // servers people actually look at are attempted on every run. The rest rotates through the whole
+    // candidate set, which is what stops any one slice from monopolising a capped run.
+    public int PriorityServersPerRun { get; init; } = 250;
+
     public int BatchSize { get; init; } = 25;
 
     public int DelayBetweenServersMilliseconds { get; init; }

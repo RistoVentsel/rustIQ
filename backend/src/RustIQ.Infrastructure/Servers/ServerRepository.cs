@@ -383,23 +383,97 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<Server>> GetServersForMapMetadataRefreshAsync(
+    public async Task<MapMetadataRefreshBatch> GetServersForMapMetadataRefreshAsync(
         DateTimeOffset fetchedBeforeUtc,
         int take,
+        int priorityTake,
+        Guid? rotationCursor,
         CancellationToken cancellationToken)
     {
-        return await dbContext.Servers
+        var candidates = dbContext.Servers
             .AsNoTracking()
             .Where(server =>
                 server.NextWipeAtUtc == null
                     || server.MapMetadata == null
-                    || server.MapMetadata.FetchedAtUtc < fetchedBeforeUtc)
-            .OrderByDescending(server => server.NextWipeAtUtc == null)
-            .ThenByDescending(server => server.Status == ServerStatus.Online)
-            .ThenByDescending(server => server.Players)
+                    || server.MapMetadata.FetchedAtUtc < fetchedBeforeUtc);
+
+        // Ordered by how alive and busy a server is, never by whether it is missing data. Leading with
+        // "no wipe data first" put the servers that never answer A2S_RULES at the front of every run -
+        // nothing is recorded when a query fails, so they stayed missing, stayed candidates, and stayed
+        // first. Harmless while the run was unbounded and it eventually walked past them; once the run
+        // was capped it meant the same dead ends every time and nothing else ever reached.
+        var priorityServers = await candidates
+            .Where(server => server.Status == ServerStatus.Online)
+            .OrderByDescending(server => server.Players)
             .ThenBy(server => server.Id)
+            .Take(Math.Clamp(priorityTake, 0, take))
+            .ToListAsync(cancellationToken);
+
+        var remaining = take - priorityServers.Count;
+        if (remaining <= 0)
+        {
+            return new MapMetadataRefreshBatch(priorityServers, rotationCursor);
+        }
+
+        var priorityIds = priorityServers
+            .Select(server => server.Id)
+            .ToArray();
+        var rotationServers = await TakeRotationSliceAsync(
+            candidates,
+            priorityIds,
+            remaining,
+            rotationCursor,
+            cancellationToken);
+
+        var servers = priorityServers
+            .Concat(rotationServers)
+            .ToArray();
+        var nextRotationCursor = rotationServers.Count > 0
+            ? rotationServers[^1].Id
+            : rotationCursor;
+
+        return new MapMetadataRefreshBatch(servers, nextRotationCursor);
+    }
+
+    /// <summary>
+    /// A keyset walk over the candidates in id order that resumes where the previous run stopped and
+    /// wraps once it runs off the end, so every candidate is reached eventually no matter how many of
+    /// them never answer.
+    /// </summary>
+    private static async Task<IReadOnlyList<Server>> TakeRotationSliceAsync(
+        IQueryable<Server> candidates,
+        Guid[] excludedServerIds,
+        int take,
+        Guid? rotationCursor,
+        CancellationToken cancellationToken)
+    {
+        var remainingCandidates = candidates
+            .Where(server => !excludedServerIds.Contains(server.Id));
+
+        var afterCursor = remainingCandidates;
+        if (rotationCursor is Guid cursor)
+        {
+            afterCursor = afterCursor.Where(server => server.Id > cursor);
+        }
+
+        var slice = await afterCursor
+            .OrderBy(server => server.Id)
             .Take(take)
             .ToListAsync(cancellationToken);
+
+        if (slice.Count >= take || rotationCursor is not Guid wrapBefore)
+        {
+            return slice;
+        }
+
+        var wrapped = await remainingCandidates
+            .Where(server => server.Id <= wrapBefore)
+            .OrderBy(server => server.Id)
+            .Take(take - slice.Count)
+            .ToListAsync(cancellationToken);
+
+        slice.AddRange(wrapped);
+        return slice;
     }
 
     public async Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(

@@ -9,6 +9,4 @@ public sealed class BattleMetricsDiscoveryOptions
     public int PageSize { get; init; } = 100;
 
     public int MaxPages { get; init; } = 1;
-
-    public int RefreshIntervalMinutes { get; init; } = 15;
 }

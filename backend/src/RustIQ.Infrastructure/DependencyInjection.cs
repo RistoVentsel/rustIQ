@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -69,9 +70,24 @@ public static class DependencyInjection
                 .MinimumRequestIntervalMilliseconds)));
         services.AddTransient<BattleMetricsRequestPacingHandler>();
         services
-            .AddHttpClient("BattleMetricsApi", client =>
+            .AddHttpClient("BattleMetricsApi", (serviceProvider, client) =>
             {
+                var battleMetricsApiOptions = serviceProvider
+                    .GetRequiredService<IOptions<BattleMetricsApiOptions>>()
+                    .Value;
+
                 client.BaseAddress = new Uri("https://api.battlemetrics.com/");
+
+                // Sent explicitly: HttpClient sends no User-Agent by default and public APIs commonly
+                // reject anonymous callers that omit one.
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("RustIQ/1.0");
+
+                if (!string.IsNullOrWhiteSpace(battleMetricsApiOptions.Token))
+                {
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                        "Bearer",
+                        battleMetricsApiOptions.Token.Trim());
+                }
             })
             .AddHttpMessageHandler<BattleMetricsRequestPacingHandler>();
         services.AddHttpClient<IRustPatchNoteClient, FacepunchRustPatchNoteClient>(client =>

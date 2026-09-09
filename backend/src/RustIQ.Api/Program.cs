@@ -100,7 +100,6 @@ builder.Services
     .Bind(builder.Configuration.GetSection(BattleMetricsDiscoveryOptions.SectionName))
     .Validate(options => !options.Enabled || options.PageSize is > 0 and <= 100, "BattleMetrics discovery page size must be between 1 and 100 when enabled.")
     .Validate(options => !options.Enabled || options.MaxPages > 0, "BattleMetrics discovery max pages must be greater than 0 when enabled.")
-    .Validate(options => !options.Enabled || options.RefreshIntervalMinutes > 0, "BattleMetrics discovery refresh interval minutes must be greater than 0 when enabled.")
     .ValidateOnStart();
 builder.Services
     .AddOptions<BattleMetricsSummaryRefreshOptions>()
@@ -136,6 +135,7 @@ builder.Services
     .Validate(options => !options.Enabled || options.StartupStaleAfterHours > 0, "Map metadata startup stale-after hours must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.BatchSize > 0, "Map metadata refresh batch size must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.MaxServersPerRun > 0, "Map metadata refresh server cap must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || options.PriorityServersPerRun >= 0, "Map metadata refresh priority server count cannot be negative.")
     .Validate(options => !options.Enabled || options.DelayBetweenServersMilliseconds >= 0, "Map metadata refresh server delay must not be negative.")
     .Validate(options => !options.Enabled || options.DelayBetweenBatchesSeconds >= 0, "Map metadata refresh batch delay must not be negative.")
     .ValidateOnStart();

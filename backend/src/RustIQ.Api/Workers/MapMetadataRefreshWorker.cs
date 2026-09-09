@@ -10,6 +10,10 @@ public sealed class MapMetadataRefreshWorker(
     IOptions<MapMetadataRefreshOptions> options,
     ILogger<MapMetadataRefreshWorker> logger) : BackgroundService
 {
+    // Where the rotating part of the last selection stopped. Held in memory only, like the discovery
+    // resume seed: losing it on restart just means the next run starts the rotation from the top.
+    private Guid? _rotationCursor;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!options.Value.Enabled)
@@ -72,10 +76,14 @@ public sealed class MapMetadataRefreshWorker(
             await using (var targetScope = serviceScopeFactory.CreateAsyncScope())
             {
                 var repository = targetScope.ServiceProvider.GetRequiredService<IServerRepository>();
-                targets = await repository.GetServersForMapMetadataRefreshAsync(
+                var batch = await repository.GetServersForMapMetadataRefreshAsync(
                     fetchedBeforeUtc,
                     options.Value.MaxServersPerRun,
+                    options.Value.PriorityServersPerRun,
+                    _rotationCursor,
                     cancellationToken);
+                targets = batch.Servers;
+                _rotationCursor = batch.NextRotationCursor;
             }
 
             logger.LogInformation(

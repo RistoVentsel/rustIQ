@@ -297,22 +297,58 @@ internal sealed class InMemoryServerRepository : IServerRepository
             .ToArray());
     }
 
-    public Task<IReadOnlyList<Server>> GetServersForMapMetadataRefreshAsync(
+    public Task<MapMetadataRefreshBatch> GetServersForMapMetadataRefreshAsync(
         DateTimeOffset fetchedBeforeUtc,
         int take,
+        int priorityTake,
+        Guid? rotationCursor,
         CancellationToken cancellationToken)
     {
-        return Task.FromResult<IReadOnlyList<Server>>(Servers
+        // Mirrors ServerRepository: a value-ordered priority slice, then a rotating keyset walk.
+        var candidates = Servers
             .Where(server =>
                 server.NextWipeAtUtc is null
                     || server.MapMetadata is null
                     || server.MapMetadata.FetchedAtUtc < fetchedBeforeUtc)
-            .OrderByDescending(server => server.NextWipeAtUtc is null)
-            .ThenByDescending(server => server.Status == ServerStatus.Online)
-            .ThenByDescending(server => server.Players)
+            .ToArray();
+
+        var priorityServers = candidates
+            .Where(server => server.Status == ServerStatus.Online)
+            .OrderByDescending(server => server.Players)
             .ThenBy(server => server.Id)
-            .Take(take)
-            .ToArray());
+            .Take(Math.Clamp(priorityTake, 0, take))
+            .ToArray();
+
+        var remaining = take - priorityServers.Length;
+        if (remaining <= 0)
+        {
+            return Task.FromResult(new MapMetadataRefreshBatch(priorityServers, rotationCursor));
+        }
+
+        var priorityIds = priorityServers.Select(server => server.Id).ToHashSet();
+        var rotationCandidates = candidates
+            .Where(server => !priorityIds.Contains(server.Id))
+            .OrderBy(server => server.Id)
+            .ToArray();
+
+        var rotationServers = rotationCandidates
+            .Where(server => rotationCursor is null || server.Id.CompareTo(rotationCursor.Value) > 0)
+            .Take(remaining)
+            .ToList();
+
+        if (rotationServers.Count < remaining && rotationCursor is not null)
+        {
+            rotationServers.AddRange(rotationCandidates
+                .Where(server => server.Id.CompareTo(rotationCursor.Value) <= 0)
+                .Take(remaining - rotationServers.Count));
+        }
+
+        var servers = priorityServers.Concat(rotationServers).ToArray();
+        var nextRotationCursor = rotationServers.Count > 0
+            ? rotationServers[^1].Id
+            : rotationCursor;
+
+        return Task.FromResult(new MapMetadataRefreshBatch(servers, nextRotationCursor));
     }
 
     public Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(
