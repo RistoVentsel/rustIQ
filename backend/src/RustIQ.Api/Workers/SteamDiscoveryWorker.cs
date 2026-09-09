@@ -22,12 +22,21 @@ public sealed class SteamDiscoveryWorker(
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(options.Value.ApiKey))
+        {
+            // Not a startup failure: the rest of the site runs fine without discovery, and taking the
+            // whole API down over a missing optional key would be worse than losing new servers.
+            logger.LogError(
+                "Steam discovery is enabled but no API key is configured. Create a free key at "
+                + "https://steamcommunity.com/dev/apikey and set SteamDiscovery:ApiKey "
+                + "(RUSTIQ_STEAM_API_KEY). Discovery is stopped.");
+            return;
+        }
+
         var interval = TimeSpan.FromMinutes(options.Value.RefreshIntervalMinutes);
 
         logger.LogInformation(
-            "Steam discovery worker started. Host: {Host}. Port: {Port}. MaxServersPerRefresh: {MaxServersPerRefresh}. RefreshInterval: {RefreshInterval}.",
-            options.Value.Host,
-            options.Value.Port,
+            "Steam discovery worker started. Source: Steam Web API. MaxServersPerRefresh: {MaxServersPerRefresh}. RefreshInterval: {RefreshInterval}.",
             options.Value.MaxServersPerRefresh,
             interval);
 

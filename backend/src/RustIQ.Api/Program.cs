@@ -89,8 +89,7 @@ builder.Services
 builder.Services
     .AddOptions<SteamDiscoveryOptions>()
     .Bind(builder.Configuration.GetSection(SteamDiscoveryOptions.SectionName))
-    .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.Host), "Steam discovery host is required when enabled.")
-    .Validate(options => !options.Enabled || options.Port is > 0 and <= 65535, "Steam discovery port must be between 1 and 65535 when enabled.")
+    .Validate(options => !options.Enabled || !string.IsNullOrWhiteSpace(options.Filter), "Steam discovery filter is required when enabled.")
     .Validate(options => !options.Enabled || options.TimeoutMilliseconds > 0, "Steam discovery timeout must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.MaxServersPerRefresh > 0, "Steam discovery max servers must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.RefreshIntervalMinutes > 0, "Steam discovery refresh interval minutes must be greater than 0 when enabled.")

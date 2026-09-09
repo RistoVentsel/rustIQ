@@ -55,7 +55,6 @@ public static class DependencyInjection
         services.AddSingleton<ServerUpdateMessageFactory>();
         services.AddScoped<IServerRepository, ServerRepository>();
         services.AddSingleton<IRustServerCatalog, FileBackedRustServerCatalog>();
-        services.AddSingleton<ISteamServerDiscoveryClient, SteamServerDiscoveryClient>();
         services.AddSingleton<IBattleMetricsServerDirectoryClient, BattleMetricsServerDirectoryClient>();
         services.AddSingleton<IBattleMetricsPlayerCountClient, BattleMetricsPlayerCountClient>();
         services.AddSingleton<IBattleMetricsPublicPageFetcher, CurlBattleMetricsPublicPageFetcher>();
@@ -90,6 +89,19 @@ public static class DependencyInjection
                 }
             })
             .AddHttpMessageHandler<BattleMetricsRequestPacingHandler>();
+        services.AddHttpClient(
+            SteamWebApiServerDiscoveryClient.HttpClientName,
+            (serviceProvider, client) =>
+            {
+                var steamDiscoveryOptions = serviceProvider
+                    .GetRequiredService<IOptions<SteamDiscoveryOptions>>()
+                    .Value;
+
+                client.BaseAddress = new Uri("https://api.steampowered.com/");
+                client.Timeout = TimeSpan.FromMilliseconds(steamDiscoveryOptions.TimeoutMilliseconds);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("RustIQ/1.0");
+            });
+        services.AddSingleton<ISteamServerDiscoveryClient, SteamWebApiServerDiscoveryClient>();
         services.AddHttpClient<IRustPatchNoteClient, FacepunchRustPatchNoteClient>(client =>
         {
             client.BaseAddress = new Uri("https://rust.facepunch.com/");

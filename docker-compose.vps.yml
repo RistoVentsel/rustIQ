@@ -37,7 +37,9 @@ services:
       BattleMetricsWipeFallback__Enabled: "true"
       BattleMetricsWipeFallback__RequestTimeoutSeconds: 20
       SteamDiscovery__Enabled: "true"
-      SteamDiscovery__MaxServersPerRefresh: 1000
+      SteamDiscovery__ApiKey: ${RUSTIQ_STEAM_API_KEY:-}
+      SteamDiscovery__TimeoutMilliseconds: 30000
+      SteamDiscovery__MaxServersPerRefresh: 5000
       SteamDiscovery__RefreshIntervalMinutes: 10
       SteamDiscovery__AllowBattleMetricsFallback: "true"
       BattleMetricsDiscovery__Enabled: "false"
