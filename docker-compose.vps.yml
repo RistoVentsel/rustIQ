@@ -52,7 +52,7 @@ services:
       BattleMetricsSummaryRefresh__FastLaneRefreshIntervalSeconds: 45
       BattleMetricsSummaryRefresh__NormalOnlineRefreshIntervalMinutes: 3
       BattleMetricsSummaryRefresh__SlowOfflineRefreshIntervalMinutes: 20
-      BattleMetricsSummaryRefresh__VeryStaleOfflineRefreshIntervalMinutes: 60
+      BattleMetricsSummaryRefresh__VeryStaleOfflineRefreshIntervalMinutes: 15
       BattleMetricsSummaryRefresh__PopularOfflineGraceMinutes: 60
       BattleMetricsSummaryRefresh__SlowOfflineAfterMinutes: 60
       BattleMetricsSummaryRefresh__VeryStaleOfflineAfterHours: 24
@@ -62,8 +62,8 @@ services:
       BattleMetricsSummaryRefresh__RecentPeakWindowMinutes: 60
       BattleMetricsSummaryRefresh__FastLaneBatchSize: 50
       BattleMetricsSummaryRefresh__NormalOnlineLaneBatchSize: 100
-      BattleMetricsSummaryRefresh__SlowOfflineLaneBatchSize: 100
-      BattleMetricsSummaryRefresh__VeryStaleOfflineLaneBatchSize: 100
+      BattleMetricsSummaryRefresh__SlowOfflineLaneBatchSize: 250
+      BattleMetricsSummaryRefresh__VeryStaleOfflineLaneBatchSize: 250
       BattleMetricsSummaryRefresh__RefreshCurrentPlayers: "false"
       BattleMetricsSummaryRefresh__RefreshMapMetadata: "false"
       MapMetadataRefresh__Enabled: "true"

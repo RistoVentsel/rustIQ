@@ -23,7 +23,11 @@ public sealed class BattleMetricsSummaryRefreshOptions
 
     public int SlowOfflineRefreshIntervalMinutes { get; init; } = 20;
 
-    public int VeryStaleOfflineRefreshIntervalMinutes { get; init; } = 60;
+    // Sized against what the lanes can actually do now that polling is concurrent and every query is
+    // bounded: 250 servers finish in about 96 seconds of the 15 minute window. At the old 100 per hour
+    // a stale server waited days for its turn, which is why servers kept showing a status from weeks
+    // earlier. RefreshBudgetTests pins the batch, concurrency and interval against each other.
+    public int VeryStaleOfflineRefreshIntervalMinutes { get; init; } = 15;
 
     public int PopularOfflineGraceMinutes { get; init; } = 60;
 
@@ -43,9 +47,9 @@ public sealed class BattleMetricsSummaryRefreshOptions
 
     public int NormalOnlineLaneBatchSize { get; init; } = 100;
 
-    public int SlowOfflineLaneBatchSize { get; init; } = 100;
+    public int SlowOfflineLaneBatchSize { get; init; } = 250;
 
-    public int VeryStaleOfflineLaneBatchSize { get; init; } = 100;
+    public int VeryStaleOfflineLaneBatchSize { get; init; } = 250;
 
     public int SnapshotIntervalMinutes { get; init; } = 30;
 
