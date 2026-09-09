@@ -31,7 +31,7 @@ services:
       RustServerQuery__TimeoutMilliseconds: 3000
       RustServerQuery__OfflineThresholdSeconds: 600
       RustServerQuery__WatchedOfflineThresholdSeconds: 60
-      BattleMetricsApi__Enabled: "true"
+      BattleMetricsApi__Enabled: "false"
       BattleMetricsApi__Token: ${RUSTIQ_BATTLEMETRICS_TOKEN:-}
       BattleMetricsApi__MinimumRequestIntervalMilliseconds: 1100
       BattleMetricsWipeFallback__Enabled: "true"
@@ -40,7 +40,7 @@ services:
       SteamDiscovery__MaxServersPerRefresh: 1000
       SteamDiscovery__RefreshIntervalMinutes: 10
       SteamDiscovery__AllowBattleMetricsFallback: "true"
-      BattleMetricsDiscovery__Enabled: "true"
+      BattleMetricsDiscovery__Enabled: "false"
       BattleMetricsDiscovery__PageSize: 100
       BattleMetricsDiscovery__MaxPages: 60
       BattleMetricsSummaryRefresh__Enabled: "true"
