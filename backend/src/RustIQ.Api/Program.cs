@@ -143,6 +143,8 @@ builder.Services
     .Bind(builder.Configuration.GetSection(SnapshotRetentionOptions.SectionName))
     .Validate(options => !options.Enabled || options.RetentionDays > 0, "Snapshot retention days must be greater than 0 when retention is enabled.")
     .Validate(options => !options.Enabled || options.CleanupIntervalHours > 0, "Snapshot retention cleanup interval hours must be greater than 0 when retention is enabled.")
+    .Validate(options => !options.Enabled || options.UnreachableServerRetentionDays > 0, "Unreachable server retention days must be greater than 0 when retention is enabled.")
+    .Validate(options => !options.Enabled || options.MaxUnreachableServerDeletesPerRun > 0, "Unreachable server delete cap must be greater than 0 when retention is enabled.")
     .ValidateOnStart();
 builder.Services
     .AddOptions<ServerRankingOptions>()

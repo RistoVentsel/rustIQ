@@ -103,6 +103,11 @@ public interface IServerRepository
         Guid serverId,
         CancellationToken cancellationToken);
 
+    Task<int> DeleteUnreachableServersOlderThanAsync(
+        DateTimeOffset createdBeforeUtc,
+        int maxServers,
+        CancellationToken cancellationToken);
+
     Task<int> DeleteSnapshotsOlderThanAsync(
         DateTimeOffset cutoffUtc,
         CancellationToken cancellationToken);

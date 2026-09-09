@@ -524,6 +524,35 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             .FirstOrDefaultAsync(metadata => metadata.ServerId == serverId, cancellationToken);
     }
 
+    public async Task<int> DeleteUnreachableServersOlderThanAsync(
+        DateTimeOffset createdBeforeUtc,
+        int maxServers,
+        CancellationToken cancellationToken)
+    {
+        // LastSeenAtUtc is only ever set by a successful query, so a null one means RustIQ has never
+        // reached this endpoint. Servers that were online and went down keep their row and history.
+        var serverIds = await dbContext.Servers
+            .AsNoTracking()
+            .Where(server =>
+                server.LastSeenAtUtc == null
+                && server.CreatedAtUtc <= createdBeforeUtc)
+            .OrderBy(server => server.CreatedAtUtc)
+            .Select(server => server.Id)
+            .Take(maxServers)
+            .ToListAsync(cancellationToken);
+
+        if (serverIds.Count == 0)
+        {
+            return 0;
+        }
+
+        // Snapshots, rankings, current players and map metadata all cascade in the database, which
+        // ExecuteDelete relies on because it bypasses the change tracker.
+        return await dbContext.Servers
+            .Where(server => serverIds.Contains(server.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
     public async Task<int> DeleteSnapshotsOlderThanAsync(
         DateTimeOffset cutoffUtc,
         CancellationToken cancellationToken)

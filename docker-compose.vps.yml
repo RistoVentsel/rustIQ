@@ -80,6 +80,8 @@ services:
       SnapshotRetention__Enabled: "true"
       SnapshotRetention__RetentionDays: 14
       SnapshotRetention__CleanupIntervalHours: 12
+      SnapshotRetention__UnreachableServerRetentionDays: 30
+      SnapshotRetention__MaxUnreachableServerDeletesPerRun: 5000
     ports:
       - "127.0.0.1:${RUSTIQ_HTTP_PORT:-5009}:8080"
 

@@ -392,6 +392,28 @@ internal sealed class InMemoryServerRepository : IServerRepository
             ?.MapMetadata);
     }
 
+    public Task<int> DeleteUnreachableServersOlderThanAsync(
+        DateTimeOffset createdBeforeUtc,
+        int maxServers,
+        CancellationToken cancellationToken)
+    {
+        // Mirrors ServerRepository, including the database cascade onto the child collections.
+        var doomedServers = Servers
+            .Where(server => server.LastSeenAtUtc is null && server.CreatedAtUtc <= createdBeforeUtc)
+            .OrderBy(server => server.CreatedAtUtc)
+            .Take(maxServers)
+            .ToArray();
+
+        foreach (var server in doomedServers)
+        {
+            Servers.Remove(server);
+            Snapshots.RemoveAll(snapshot => snapshot.ServerId == server.Id);
+            Rankings.RemoveAll(ranking => ranking.ServerId == server.Id);
+        }
+
+        return Task.FromResult(doomedServers.Length);
+    }
+
     public Task<int> DeleteSnapshotsOlderThanAsync(
         DateTimeOffset cutoffUtc,
         CancellationToken cancellationToken)

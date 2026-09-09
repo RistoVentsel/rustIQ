@@ -7,6 +7,137 @@ namespace RustIQ.Tests.Servers;
 public sealed class SnapshotRetentionServiceTests
 {
     [Fact]
+    public async Task PruneUnreachableServersAsync_DropsEndpointsNeverReachedInsideTheWindow()
+    {
+        var repository = new InMemoryServerRepository();
+        var neverReached = ServerRow("never-reached.test", createdDaysAgo: 40, lastSeenAtUtc: null);
+        repository.Servers.Add(neverReached);
+        var service = CreateService(repository);
+
+        var deleted = await service.PruneUnreachableServersAsync(CancellationToken.None);
+
+        Assert.Equal(1, deleted);
+        Assert.Empty(repository.Servers);
+    }
+
+    [Fact]
+    public async Task PruneUnreachableServersAsync_KeepsServersThatWereOnlineAndWentDown()
+    {
+        var repository = new InMemoryServerRepository();
+
+        // The whole point of Offline is "RustIQ saw this server and cannot reach it right now", so a
+        // server with history has to survive no matter how long it has been down.
+        var longDead = ServerRow(
+            "was-online.test",
+            createdDaysAgo: 400,
+            lastSeenAtUtc: DateTimeOffset.UtcNow.AddDays(-300));
+        repository.Servers.Add(longDead);
+        var service = CreateService(repository);
+
+        var deleted = await service.PruneUnreachableServersAsync(CancellationToken.None);
+
+        Assert.Equal(0, deleted);
+        Assert.Single(repository.Servers);
+    }
+
+    [Fact]
+    public async Task PruneUnreachableServersAsync_LeavesTheDiscoveryBacklogAlone()
+    {
+        var repository = new InMemoryServerRepository();
+
+        // Freshly discovered servers have not been polled yet, so they look identical to unreachable
+        // ones apart from their age. Deleting those would fight discovery in a loop.
+        var justDiscovered = ServerRow("just-discovered.test", createdDaysAgo: 1, lastSeenAtUtc: null);
+        repository.Servers.Add(justDiscovered);
+        var service = CreateService(repository);
+
+        var deleted = await service.PruneUnreachableServersAsync(CancellationToken.None);
+
+        Assert.Equal(0, deleted);
+        Assert.Single(repository.Servers);
+    }
+
+    [Fact]
+    public async Task PruneUnreachableServersAsync_TakesTheChildRowsWithIt()
+    {
+        var repository = new InMemoryServerRepository();
+        var neverReached = ServerRow("never-reached.test", createdDaysAgo: 40, lastSeenAtUtc: null);
+        repository.Servers.Add(neverReached);
+        repository.Snapshots.Add(new ServerSnapshot
+        {
+            Id = Guid.NewGuid(),
+            ServerId = neverReached.Id,
+            CheckedAtUtc = DateTimeOffset.UtcNow.AddDays(-1),
+            Players = 0,
+            MaxPlayers = 0,
+            IsOnline = false
+        });
+        var service = CreateService(repository);
+
+        await service.PruneUnreachableServersAsync(CancellationToken.None);
+
+        // In production this is the database cascade; the double mirrors it so the tests agree.
+        Assert.Empty(repository.Snapshots);
+    }
+
+    [Fact]
+    public async Task PruneUnreachableServersAsync_StopsAtTheDeleteCap()
+    {
+        var repository = new InMemoryServerRepository();
+        for (var index = 0; index < 10; index++)
+        {
+            repository.Servers.Add(ServerRow($"dead-{index}.test", createdDaysAgo: 40, lastSeenAtUtc: null));
+        }
+
+        var service = CreateService(repository, maxDeletesPerRun: 4);
+
+        var deleted = await service.PruneUnreachableServersAsync(CancellationToken.None);
+
+        Assert.Equal(4, deleted);
+        Assert.Equal(6, repository.Servers.Count);
+    }
+
+    [Fact]
+    public async Task PruneUnreachableServersAsync_ReturnsZeroWhenRetentionDisabled()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(ServerRow("never-reached.test", createdDaysAgo: 40, lastSeenAtUtc: null));
+        var service = CreateService(repository, enabled: false);
+
+        Assert.Equal(0, await service.PruneUnreachableServersAsync(CancellationToken.None));
+        Assert.Single(repository.Servers);
+    }
+
+    private static SnapshotRetentionService CreateService(
+        InMemoryServerRepository repository,
+        bool enabled = true,
+        int maxDeletesPerRun = 5000)
+    {
+        return new SnapshotRetentionService(repository, new SnapshotRetentionOptions
+        {
+            Enabled = enabled,
+            RetentionDays = 14,
+            UnreachableServerRetentionDays = 30,
+            MaxUnreachableServerDeletesPerRun = maxDeletesPerRun
+        });
+    }
+
+    private static Server ServerRow(string host, int createdDaysAgo, DateTimeOffset? lastSeenAtUtc)
+    {
+        var createdAtUtc = DateTimeOffset.UtcNow.AddDays(-createdDaysAgo);
+        return new Server
+        {
+            Id = Guid.NewGuid(),
+            Host = host,
+            QueryPort = 28015,
+            Status = lastSeenAtUtc is null ? ServerStatus.Unknown : ServerStatus.Offline,
+            LastSeenAtUtc = lastSeenAtUtc,
+            CreatedAtUtc = createdAtUtc,
+            UpdatedAtUtc = createdAtUtc
+        };
+    }
+
+    [Fact]
     public async Task CleanupOldSnapshotsAsync_DeletesSnapshotsOlderThanRetentionWindow()
     {
         var repository = new InMemoryServerRepository();
