@@ -9,6 +9,50 @@ public sealed class ServerRefreshLaneTests
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-07-10T12:00:00Z");
 
     [Fact]
+    public async Task GetServersForRefreshLaneAsync_TreatsAFailedPollAsHavingTakenItsTurn()
+    {
+        var repository = new InMemoryServerRepository();
+
+        // A server whose poll just failed. LastCheckedAtUtc moved, LastPlayerCountUpdatedAtUtc did not,
+        // because only a successful poll advances that one. Ordering the lanes by it meant servers that
+        // keep failing never left the front of the queue: the same batch was re-polled every tick while
+        // everything behind them went weeks without a single query.
+        var justFailed = CreateServer("just-failed.test", ServerStatus.Offline, players: 0, lastSeenAtUtc: Now.AddDays(-30));
+        justFailed.LastCheckedAtUtc = Now.AddSeconds(-5);
+        justFailed.LastPlayerCountUpdatedAtUtc = Now.AddDays(-30);
+
+        var waitingItsTurn = CreateServer("waiting.test", ServerStatus.Offline, players: 0, lastSeenAtUtc: Now.AddDays(-30));
+        waitingItsTurn.LastCheckedAtUtc = Now.AddHours(-3);
+        waitingItsTurn.LastPlayerCountUpdatedAtUtc = Now.AddDays(-30);
+
+        repository.Servers.AddRange([justFailed, waitingItsTurn]);
+
+        var servers = await GetLaneAsync(repository, ServerRefreshLane.VeryStaleOffline, Now.AddHours(-1));
+
+        Assert.Equal("waiting.test", Assert.Single(servers).Host);
+    }
+
+    [Fact]
+    public async Task GetServersForRefreshLaneAsync_ReachesServersThatHaveNeverBeenPolled()
+    {
+        var repository = new InMemoryServerRepository();
+
+        // Discovery stamps UpdatedAtUtc on every cycle, so a never-polled server looked permanently up
+        // to date while it waited. Falling back to CreatedAtUtc, which never moves, is what lets the
+        // discovery backlog actually drain.
+        var neverPolled = CreateServer("never-polled.test", ServerStatus.Unknown, players: 0);
+        neverPolled.LastCheckedAtUtc = null;
+        neverPolled.LastPlayerCountUpdatedAtUtc = null;
+        neverPolled.CreatedAtUtc = Now.AddDays(-2);
+        neverPolled.UpdatedAtUtc = Now.AddSeconds(-30);
+        repository.Servers.Add(neverPolled);
+
+        var servers = await GetLaneAsync(repository, ServerRefreshLane.VeryStaleOffline, Now.AddHours(-1));
+
+        Assert.Equal("never-polled.test", Assert.Single(servers).Host);
+    }
+
+    [Fact]
     public async Task GetServersForRefreshLaneAsync_FastLaneIncludesPopularServersAndRestartGrace()
     {
         var repository = new InMemoryServerRepository();
@@ -222,6 +266,7 @@ public sealed class ServerRefreshLaneTests
             Status = status,
             PlayerCountSource = ServerPlayerCountSource.BattleMetrics,
             LastSeenAtUtc = lastSeenAtUtc,
+            LastCheckedAtUtc = lastRefreshedAtUtc ?? Now.AddMinutes(-10),
             LastPlayerCountUpdatedAtUtc = lastRefreshedAtUtc ?? Now.AddMinutes(-10),
             CreatedAtUtc = Now.AddDays(-1),
             UpdatedAtUtc = Now.AddMinutes(-10)

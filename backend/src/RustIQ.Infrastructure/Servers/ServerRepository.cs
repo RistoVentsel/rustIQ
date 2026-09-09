@@ -285,12 +285,18 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         // BattleMetricsServerId: the lanes poll servers over A2S via Host:QueryPort, and most servers
         // (everything Steam discovery finds) never get a BattleMetrics id at all. Gating on that id
         // silently froze those servers on whatever status they were last given.
+        // Due-ness and ordering run off LastCheckedAtUtc, which is written on every poll, and fall back
+        // to CreatedAtUtc, which never moves. Both halves matter. LastPlayerCountUpdatedAtUtc is only
+        // advanced by a *successful* poll, so servers that keep failing never left the front of the
+        // queue and the same batch was re-polled every tick while thousands behind them went weeks
+        // without a single query. UpdatedAtUtc is no good as the fallback either: discovery bumps it on
+        // every cycle, so a server that has never been polled would look permanently up to date.
         var query = dbContext.Servers
             .AsNoTracking()
             .Where(server =>
                 server.Host != string.Empty
                 && server.QueryPort > 0
-                && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= dueBeforeUtc));
+                && ((server.LastCheckedAtUtc ?? server.CreatedAtUtc) <= dueBeforeUtc));
 
         if (refreshLane == ServerRefreshLane.Fast)
         {
@@ -317,7 +323,7 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
                                 snapshot.ServerId == server.Id
                                 && snapshot.CheckedAtUtc >= popularOfflineGraceSinceUtc
                                 && snapshot.Players >= popularPeakPlayerThreshold))))
-                .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+                .OrderBy(server => server.LastCheckedAtUtc ?? server.CreatedAtUtc)
                 .ThenByDescending(server => server.Players)
                 .Take(take)
                 .ToListAsync(cancellationToken);
@@ -333,7 +339,7 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
                 .Where(server =>
                     server.ServerType == RustServerType.Official
                     && !popularCandidateIds.Contains(server.Id))
-                .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+                .OrderBy(server => server.LastCheckedAtUtc ?? server.CreatedAtUtc)
                 .ThenByDescending(server => server.Players)
                 .Take(remaining)
                 .ToListAsync(cancellationToken);
@@ -377,7 +383,7 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         };
 
         return await query
-            .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+            .OrderBy(server => server.LastCheckedAtUtc ?? server.CreatedAtUtc)
             .ThenByDescending(server => server.Players)
             .Take(take)
             .ToListAsync(cancellationToken);
@@ -529,14 +535,18 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         int maxServers,
         CancellationToken cancellationToken)
     {
-        // LastSeenAtUtc is only ever set by a successful query, so a null one means RustIQ has never
-        // reached this endpoint. Servers that were online and went down keep their row and history.
+        // Two conditions, both required. LastSeenAtUtc is only ever set by a successful query, so a
+        // null one means RustIQ has never reached this endpoint; servers that were online and went down
+        // keep their row and history. LastDiscoveredAtUtc then has to be stale as well, meaning
+        // discovery has stopped listing it - so an endpoint that is still listed is never pruned, no
+        // matter how long RustIQ has failed to query it. That covers servers which refuse queries
+        // outright, and it stops the delete-then-rediscover loop that gating on age alone would cause.
         var serverIds = await dbContext.Servers
             .AsNoTracking()
             .Where(server =>
                 server.LastSeenAtUtc == null
-                && server.CreatedAtUtc <= createdBeforeUtc)
-            .OrderBy(server => server.CreatedAtUtc)
+                && (server.LastDiscoveredAtUtc ?? server.CreatedAtUtc) <= createdBeforeUtc)
+            .OrderBy(server => server.LastDiscoveredAtUtc ?? server.CreatedAtUtc)
             .Select(server => server.Id)
             .Take(maxServers)
             .ToListAsync(cancellationToken);

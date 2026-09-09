@@ -240,7 +240,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
             .Where(server =>
                 server.Host != string.Empty
                 && server.QueryPort > 0
-                && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= dueBeforeUtc));
+                && ((server.LastCheckedAtUtc ?? server.CreatedAtUtc) <= dueBeforeUtc));
 
         if (refreshLane == ServerRefreshLane.Fast)
         {
@@ -250,7 +250,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
                 .Where(server =>
                     IsPopular(server, popularRankThreshold, popularPlayerThreshold, popularPeakPlayerThreshold, recentPeakSinceUtc)
                     || IsRecentlyPopularOffline(server, popularRankThreshold, popularPeakPlayerThreshold, popularOfflineGraceSinceUtc))
-                .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+                .OrderBy(server => server.LastCheckedAtUtc ?? server.CreatedAtUtc)
                 .ThenByDescending(server => server.Players)
                 .Take(take)
                 .ToArray();
@@ -264,7 +264,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
             var popularCandidateIds = popularCandidates.Select(server => server.Id).ToHashSet();
             var officialCandidates = query
                 .Where(server => server.ServerType == RustServerType.Official && !popularCandidateIds.Contains(server.Id))
-                .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+                .OrderBy(server => server.LastCheckedAtUtc ?? server.CreatedAtUtc)
                 .ThenByDescending(server => server.Players)
                 .Take(remaining)
                 .ToArray();
@@ -291,7 +291,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
         };
 
         return Task.FromResult<IReadOnlyList<Server>>(query
-            .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
+            .OrderBy(server => server.LastCheckedAtUtc ?? server.CreatedAtUtc)
             .ThenByDescending(server => server.Players)
             .Take(take)
             .ToArray());
@@ -399,8 +399,10 @@ internal sealed class InMemoryServerRepository : IServerRepository
     {
         // Mirrors ServerRepository, including the database cascade onto the child collections.
         var doomedServers = Servers
-            .Where(server => server.LastSeenAtUtc is null && server.CreatedAtUtc <= createdBeforeUtc)
-            .OrderBy(server => server.CreatedAtUtc)
+            .Where(server =>
+                server.LastSeenAtUtc is null
+                && (server.LastDiscoveredAtUtc ?? server.CreatedAtUtc) <= createdBeforeUtc)
+            .OrderBy(server => server.LastDiscoveredAtUtc ?? server.CreatedAtUtc)
             .Take(maxServers)
             .ToArray();
 

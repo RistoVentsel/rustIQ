@@ -7,6 +7,39 @@ namespace RustIQ.Tests.Servers;
 public sealed class SnapshotRetentionServiceTests
 {
     [Fact]
+    public async Task PruneUnreachableServersAsync_KeepsUnreachableServersThatDiscoveryStillLists()
+    {
+        var repository = new InMemoryServerRepository();
+
+        // Never reachable over A2S but Steam still lists it - a server refusing queries rather than one
+        // that has gone away. Deleting it would only make discovery add it straight back.
+        var stillListed = ServerRow("refuses-queries.test", createdDaysAgo: 400, lastSeenAtUtc: null);
+        stillListed.LastDiscoveredAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5);
+        repository.Servers.Add(stillListed);
+        var service = CreateService(repository);
+
+        var deleted = await service.PruneUnreachableServersAsync(CancellationToken.None);
+
+        Assert.Equal(0, deleted);
+        Assert.Single(repository.Servers);
+    }
+
+    [Fact]
+    public async Task PruneUnreachableServersAsync_DropsUnreachableServersDiscoveryHasStoppedListing()
+    {
+        var repository = new InMemoryServerRepository();
+        var goneAway = ServerRow("gone-away.test", createdDaysAgo: 400, lastSeenAtUtc: null);
+        goneAway.LastDiscoveredAtUtc = DateTimeOffset.UtcNow.AddDays(-90);
+        repository.Servers.Add(goneAway);
+        var service = CreateService(repository);
+
+        var deleted = await service.PruneUnreachableServersAsync(CancellationToken.None);
+
+        Assert.Equal(1, deleted);
+        Assert.Empty(repository.Servers);
+    }
+
+    [Fact]
     public async Task PruneUnreachableServersAsync_DropsEndpointsNeverReachedInsideTheWindow()
     {
         var repository = new InMemoryServerRepository();

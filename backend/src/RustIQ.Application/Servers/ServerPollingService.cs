@@ -388,9 +388,9 @@ public sealed class ServerPollingService(
         server.SummarySource = queryResult.SummarySource;
         server.PlayerCountSource = queryResult.PlayerCountSource;
         server.PlayerListSource = configuredServer.PlayerListSource;
-        server.LastDiscoveredAtUtc = configuredServer.DiscoverySource == ServerDiscoverySource.Manual
-            ? server.LastDiscoveredAtUtc
-            : updatedAtUtc;
+        // Deliberately not touched here: polling a server is not discovering it. Only the discovery
+        // path stamps LastDiscoveredAtUtc, which is what lets retention tell "no longer listed
+        // anywhere" apart from "listed but not answering".
         server.UpdatedAtUtc = updatedAtUtc;
     }
 
