@@ -9,6 +9,9 @@ namespace RustIQ.Tests.Servers;
 public sealed class ServerPollingServiceTests
 {
     private static readonly TimeSpan DefaultOfflineThreshold = TimeSpan.FromSeconds(60);
+
+    // The production default: it has to exceed the 3-minute interval at which online servers poll.
+    private static readonly TimeSpan LaneOfflineThreshold = TimeSpan.FromSeconds(600);
     private const ServerSummarySource DefaultSummarySource = ServerSummarySource.A2S;
     private const ServerPlayerCountSource DefaultPlayerCountSource = ServerPlayerCountSource.A2S;
 
@@ -692,6 +695,128 @@ public sealed class ServerPollingServiceTests
         Assert.Equal(firstCheck, server.LastSeenAtUtc);
         Assert.Equal(failedCheck, server.LastCheckedAtUtc);
         Assert.Equal(ServerStatus.Offline, result.Status);
+    }
+
+    [Fact]
+    public async Task PollConfiguredServerAsync_KeepsServerOnlineAcrossRepeatedFailuresAtRealisticPollSpacing()
+    {
+        // The lane that polls online servers runs every 3 minutes, so consecutive failures arrive
+        // 3 minutes apart. With the old 60s threshold the very first one flipped a busy server
+        // offline, because the gap between polls already exceeded the grace period.
+        var configuredServer = new ConfiguredRustServer { Host = "example.test", QueryPort = 28015 };
+        var firstCheck = DateTimeOffset.Parse("2026-07-06T12:00:00Z");
+        var repository = new InMemoryServerRepository();
+        var queryClient = new FakeRustServerQueryClient(
+            QueryResult("example.test", 28015, "Busy Server", "Procedural Map", 220, 250, true, 10, firstCheck, null),
+            QueryResult("example.test", 28015, null, null, 0, 0, false, null, firstCheck.AddMinutes(3), "timeout"),
+            QueryResult("example.test", 28015, null, null, 0, 0, false, null, firstCheck.AddMinutes(6), "timeout"),
+            QueryResult("example.test", 28015, "Busy Server", "Procedural Map", 224, 250, true, 12, firstCheck.AddMinutes(9), null));
+        var service = new ServerPollingService(
+            queryClient,
+            new FakeBattleMetricsPlayerCountClient(),
+            new FakeRustServerMapMetadataClient(),
+            repository);
+
+        var results = new List<ServerDto>();
+        for (var poll = 0; poll < 4; poll++)
+        {
+            results.Add(await service.PollConfiguredServerAsync(
+                configuredServer,
+                LaneOfflineThreshold,
+                refreshCurrentPlayers: false,
+                refreshMapMetadata: false,
+                CancellationToken.None));
+        }
+
+        Assert.Equal(
+            [ServerStatus.Online, ServerStatus.Online, ServerStatus.Online, ServerStatus.Online],
+            results.Select(result => result.Status));
+
+        var server = Assert.Single(repository.Servers);
+        Assert.Equal(224, server.Players);
+        Assert.Equal(firstCheck.AddMinutes(9), server.LastSeenAtUtc);
+    }
+
+    [Fact]
+    public async Task PollConfiguredServerAsync_RecordsLastKnownStateInSnapshotsTakenDuringTheOfflineGrace()
+    {
+        var configuredServer = new ConfiguredRustServer { Host = "example.test", QueryPort = 28015 };
+        var firstCheck = DateTimeOffset.Parse("2026-07-06T12:00:00Z");
+        var failedCheck = firstCheck.AddMinutes(3);
+        var repository = new InMemoryServerRepository();
+        var queryClient = new FakeRustServerQueryClient(
+            QueryResult("example.test", 28015, "Busy Server", "Procedural Map", 220, 250, true, 10, firstCheck, null),
+            QueryResult("example.test", 28015, null, null, 0, 0, false, null, failedCheck, "timeout"));
+        var service = new ServerPollingService(
+            queryClient,
+            new FakeBattleMetricsPlayerCountClient(),
+            new FakeRustServerMapMetadataClient(),
+            repository);
+
+        await service.PollConfiguredServerAsync(
+            configuredServer,
+            LaneOfflineThreshold,
+            refreshCurrentPlayers: false,
+            refreshMapMetadata: false,
+            CancellationToken.None);
+        await service.PollConfiguredServerAsync(
+            configuredServer,
+            LaneOfflineThreshold,
+            refreshCurrentPlayers: false,
+            refreshMapMetadata: false,
+            CancellationToken.None);
+
+        // A server still listed as online must not have a 0-player offline point in its history, or
+        // the graph dips and the ranking average drops for an outage that never happened.
+        var graceSnapshot = repository.Snapshots.Single(snapshot => snapshot.CheckedAtUtc == failedCheck);
+        Assert.Equal(220, graceSnapshot.Players);
+        Assert.Equal(250, graceSnapshot.MaxPlayers);
+        Assert.True(graceSnapshot.IsOnline);
+    }
+
+    [Fact]
+    public async Task PollConfiguredServerAsync_MarksServerOfflineOnceUnreachableForLongerThanTheThreshold()
+    {
+        var configuredServer = new ConfiguredRustServer { Host = "example.test", QueryPort = 28015 };
+        var firstCheck = DateTimeOffset.Parse("2026-07-06T12:00:00Z");
+        var lastFailedCheck = firstCheck.Add(LaneOfflineThreshold).AddMinutes(1);
+        var repository = new InMemoryServerRepository();
+        var queryClient = new FakeRustServerQueryClient(
+            QueryResult("example.test", 28015, "Busy Server", "Procedural Map", 220, 250, true, 10, firstCheck, null),
+            QueryResult("example.test", 28015, null, null, 0, 0, false, null, firstCheck.AddMinutes(3), "timeout"),
+            QueryResult("example.test", 28015, null, null, 0, 0, false, null, lastFailedCheck, "timeout"));
+        var service = new ServerPollingService(
+            queryClient,
+            new FakeBattleMetricsPlayerCountClient(),
+            new FakeRustServerMapMetadataClient(),
+            repository);
+
+        for (var poll = 0; poll < 2; poll++)
+        {
+            await service.PollConfiguredServerAsync(
+                configuredServer,
+                LaneOfflineThreshold,
+                refreshCurrentPlayers: false,
+                refreshMapMetadata: false,
+                CancellationToken.None);
+        }
+
+        var result = await service.PollConfiguredServerAsync(
+            configuredServer,
+            LaneOfflineThreshold,
+            refreshCurrentPlayers: false,
+            refreshMapMetadata: false,
+            CancellationToken.None);
+
+        var server = Assert.Single(repository.Servers);
+        Assert.Equal(ServerStatus.Offline, server.Status);
+        Assert.Equal(0, server.Players);
+        Assert.Equal(ServerStatus.Offline, result.Status);
+        Assert.Equal(firstCheck, server.LastSeenAtUtc);
+
+        var offlineSnapshot = repository.Snapshots.Single(snapshot => snapshot.CheckedAtUtc == lastFailedCheck);
+        Assert.False(offlineSnapshot.IsOnline);
+        Assert.Equal(0, offlineSnapshot.Players);
     }
 
     [Fact]

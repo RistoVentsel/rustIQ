@@ -15,6 +15,8 @@ internal sealed class InMemoryServerRepository : IServerRepository
 
     public int? LastPagedTake { get; private set; }
 
+    public int GetAllCallCount { get; private set; }
+
     public int? LastSnapshotLimit { get; private set; }
 
     public Task<int> CountAsync(
@@ -165,6 +167,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
     public Task<IReadOnlyList<Server>> GetAllAsync(
         CancellationToken cancellationToken)
     {
+        GetAllCallCount++;
         return Task.FromResult<IReadOnlyList<Server>>(DeduplicateServers(Servers).ToArray());
     }
 
@@ -213,23 +216,6 @@ internal sealed class InMemoryServerRepository : IServerRepository
             .ToArray());
     }
 
-    public Task<IReadOnlyList<Server>> GetServersForPlayerCountRefreshAsync(
-        ServerPlayerCountSource playerCountSource,
-        DateTimeOffset staleBeforeUtc,
-        int take,
-        CancellationToken cancellationToken)
-    {
-        return Task.FromResult<IReadOnlyList<Server>>(Servers
-            .Where(server =>
-                server.PlayerCountSource == playerCountSource
-                && server.BattleMetricsServerId != null
-                && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= staleBeforeUtc))
-            .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
-            .ThenByDescending(server => server.Players)
-            .Take(take)
-            .ToArray());
-    }
-
     public Task<IReadOnlyList<Server>> GetServersForRefreshLaneAsync(
         ServerRefreshLane refreshLane,
         DateTimeOffset dueBeforeUtc,
@@ -249,9 +235,11 @@ internal sealed class InMemoryServerRepository : IServerRepository
         var slowOfflineBeforeUtc = now.Subtract(slowOfflineAfter);
         var veryStaleOfflineBeforeUtc = now.Subtract(veryStaleOfflineAfter);
 
+        // Mirrors ServerRepository: eligibility follows the queryable endpoint, not a BattleMetrics id.
         var query = Servers
             .Where(server =>
-                server.BattleMetricsServerId != null
+                server.Host != string.Empty
+                && server.QueryPort > 0
                 && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= dueBeforeUtc));
 
         if (refreshLane == ServerRefreshLane.Fast)
@@ -311,6 +299,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
 
     public Task<IReadOnlyList<Server>> GetServersForMapMetadataRefreshAsync(
         DateTimeOffset fetchedBeforeUtc,
+        int take,
         CancellationToken cancellationToken)
     {
         return Task.FromResult<IReadOnlyList<Server>>(Servers
@@ -322,6 +311,7 @@ internal sealed class InMemoryServerRepository : IServerRepository
             .ThenByDescending(server => server.Status == ServerStatus.Online)
             .ThenByDescending(server => server.Players)
             .ThenBy(server => server.Id)
+            .Take(take)
             .ToArray());
     }
 
@@ -418,6 +408,11 @@ internal sealed class InMemoryServerRepository : IServerRepository
         if (status is not null)
         {
             query = query.Where(server => server.Status == status);
+        }
+        else
+        {
+            // Mirrors ServerRepository: servers RustIQ has never reached are not listed.
+            query = query.Where(server => server.Status != ServerStatus.Unknown);
         }
 
         if (serverTypes.Count > 0)

@@ -67,12 +67,6 @@ public interface IServerRepository
         int take,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<Server>> GetServersForPlayerCountRefreshAsync(
-        ServerPlayerCountSource playerCountSource,
-        DateTimeOffset staleBeforeUtc,
-        int take,
-        CancellationToken cancellationToken);
-
     Task<IReadOnlyList<Server>> GetServersForRefreshLaneAsync(
         ServerRefreshLane refreshLane,
         DateTimeOffset dueBeforeUtc,
@@ -89,6 +83,7 @@ public interface IServerRepository
 
     Task<IReadOnlyList<Server>> GetServersForMapMetadataRefreshAsync(
         DateTimeOffset fetchedBeforeUtc,
+        int take,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ServerSnapshot>> GetSnapshotsAsync(

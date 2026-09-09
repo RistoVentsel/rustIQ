@@ -262,24 +262,6 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<Server>> GetServersForPlayerCountRefreshAsync(
-        ServerPlayerCountSource playerCountSource,
-        DateTimeOffset staleBeforeUtc,
-        int take,
-        CancellationToken cancellationToken)
-    {
-        return await dbContext.Servers
-            .AsNoTracking()
-            .Where(server =>
-                server.PlayerCountSource == playerCountSource
-                && server.BattleMetricsServerId != null
-                && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= staleBeforeUtc))
-            .OrderBy(server => server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc)
-            .ThenByDescending(server => server.Players)
-            .Take(take)
-            .ToListAsync(cancellationToken);
-    }
-
     public async Task<IReadOnlyList<Server>> GetServersForRefreshLaneAsync(
         ServerRefreshLane refreshLane,
         DateTimeOffset dueBeforeUtc,
@@ -299,10 +281,15 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         var slowOfflineBeforeUtc = now.Subtract(slowOfflineAfter);
         var veryStaleOfflineBeforeUtc = now.Subtract(veryStaleOfflineAfter);
 
+        // Eligibility is deliberately based on having a queryable endpoint, not on having a
+        // BattleMetricsServerId: the lanes poll servers over A2S via Host:QueryPort, and most servers
+        // (everything Steam discovery finds) never get a BattleMetrics id at all. Gating on that id
+        // silently froze those servers on whatever status they were last given.
         var query = dbContext.Servers
             .AsNoTracking()
             .Where(server =>
-                server.BattleMetricsServerId != null
+                server.Host != string.Empty
+                && server.QueryPort > 0
                 && ((server.LastPlayerCountUpdatedAtUtc ?? server.UpdatedAtUtc) <= dueBeforeUtc));
 
         if (refreshLane == ServerRefreshLane.Fast)
@@ -398,6 +385,7 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
 
     public async Task<IReadOnlyList<Server>> GetServersForMapMetadataRefreshAsync(
         DateTimeOffset fetchedBeforeUtc,
+        int take,
         CancellationToken cancellationToken)
     {
         return await dbContext.Servers
@@ -410,6 +398,7 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
             .ThenByDescending(server => server.Status == ServerStatus.Online)
             .ThenByDescending(server => server.Players)
             .ThenBy(server => server.Id)
+            .Take(take)
             .ToListAsync(cancellationToken);
     }
 
@@ -513,6 +502,15 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
         if (status is not null)
         {
             query = query.Where(server => server.Status == status);
+        }
+        else
+        {
+            // A server RustIQ has never reached has no status to report, so it stays out of the
+            // browsable list until a poll gives it one. Discovery registers far more servers than the
+            // refresh lanes can check straight away, and listing those alongside verified servers
+            // would state something RustIQ does not know. Requesting Unknown explicitly still
+            // returns them, so the unverified backlog stays inspectable.
+            query = query.Where(server => server.Status != ServerStatus.Unknown);
         }
 
         if (serverTypes.Count > 0)

@@ -6,15 +6,16 @@ public sealed class BattleMetricsSummaryRefreshOptions
 
     public bool Enabled { get; init; }
 
-    public int BatchSize { get; init; } = 50;
-
-    public int RefreshIntervalSeconds { get; init; } = 30;
-
-    public int StaleAfterSeconds { get; init; } = 120;
-
     public int WorkerTickSeconds { get; init; } = 15;
 
     public int DirectoryRefreshIntervalMinutes { get; init; } = 3;
+
+    // Servers in a lane batch are polled concurrently. Without this the batches were polled one at a
+    // time, so a lane of 100 servers took up to 100 * MaxQueryAttempts * TimeoutMilliseconds to get
+    // through - far longer than the lane's own interval, which made the intervals below meaningless and
+    // could push a server past its offline threshold purely because the batch was slow. Each poll takes
+    // its own DI scope, so this also bounds how many database connections a lane holds at once.
+    public int RefreshConcurrency { get; init; } = 16;
 
     public int FastLaneRefreshIntervalSeconds { get; init; } = 45;
 

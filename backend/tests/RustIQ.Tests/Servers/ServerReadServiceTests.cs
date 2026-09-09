@@ -7,6 +7,75 @@ namespace RustIQ.Tests.Servers;
 public sealed class ServerReadServiceTests
 {
     [Fact]
+    public async Task GetServersAsync_ExcludesServersThatHaveNeverBeenPolled()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.AddRange(
+        [
+            CreateServer("polled.test", "Polled Server", ServerStatus.Online),
+            CreateServer("never-polled.test", name: null, ServerStatus.Unknown)
+        ]);
+        var service = new ServerReadService(repository);
+
+        var result = await GetFirstPageAsync(service, status: null);
+
+        Assert.Equal("polled.test", Assert.Single(result.Items).Host);
+
+        // The unverified backlog must not inflate the count either, or the site reports thousands of
+        // servers it has never actually reached.
+        Assert.Equal(1, result.TotalItems);
+    }
+
+    [Fact]
+    public async Task GetServersAsync_ReturnsNeverPolledServersWhenUnknownStatusIsRequested()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.AddRange(
+        [
+            CreateServer("polled.test", "Polled Server", ServerStatus.Online),
+            CreateServer("never-polled.test", name: null, ServerStatus.Unknown)
+        ]);
+        var service = new ServerReadService(repository);
+
+        var result = await GetFirstPageAsync(service, ServerStatus.Unknown);
+
+        Assert.Equal("never-polled.test", Assert.Single(result.Items).Host);
+        Assert.Equal(1, result.TotalItems);
+    }
+
+    private static Task<PagedResult<ServerListItemDto>> GetFirstPageAsync(
+        ServerReadService service,
+        ServerStatus? status)
+    {
+        return service.GetServersAsync(
+            search: null,
+            status: status,
+            page: 1,
+            pageSize: 25,
+            sortBy: ServerReadService.SortByPlayers,
+            sortDirection: ServerReadService.SortDescending,
+            serverTypes: null,
+            refreshMode: ServerReadService.RefreshNoneMode,
+            CancellationToken.None);
+    }
+
+    private static Server CreateServer(string host, string? name, ServerStatus status)
+    {
+        return new Server
+        {
+            Id = Guid.NewGuid(),
+            Host = host,
+            QueryPort = 28015,
+            Name = name,
+            Players = 0,
+            MaxPlayers = 100,
+            Status = status,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        };
+    }
+
+    [Fact]
     public async Task GetServersAsync_ClampsPageSizeToMaximum()
     {
         var repository = new InMemoryServerRepository();

@@ -58,7 +58,9 @@ builder.Services
     .AddOptions<RustServerQueryOptions>()
     .Bind(builder.Configuration.GetSection(RustServerQueryOptions.SectionName))
     .Validate(options => options.TimeoutMilliseconds > 0, "Rust server query timeout must be greater than 0.")
+    .Validate(options => options.MaxQueryAttempts > 0, "Rust server query attempts must be greater than 0.")
     .Validate(options => options.OfflineThresholdSeconds > 0, "Rust server offline threshold must be greater than 0.")
+    .Validate(options => options.WatchedOfflineThresholdSeconds > 0, "Rust server watched offline threshold must be greater than 0.")
     .Validate(options => options.Servers.All(server => !string.IsNullOrWhiteSpace(server.Host)), "Each configured Rust server must have a host.")
     .Validate(options => options.Servers.All(server => server.QueryPort is > 0 and <= 65535), "Each configured Rust server query port must be between 1 and 65535.")
     .Validate(options => options.Servers
@@ -103,9 +105,6 @@ builder.Services
 builder.Services
     .AddOptions<BattleMetricsSummaryRefreshOptions>()
     .Bind(builder.Configuration.GetSection(BattleMetricsSummaryRefreshOptions.SectionName))
-    .Validate(options => !options.Enabled || options.BatchSize > 0, "BattleMetrics summary refresh batch size must be greater than 0 when enabled.")
-    .Validate(options => !options.Enabled || options.RefreshIntervalSeconds > 0, "BattleMetrics summary refresh interval seconds must be greater than 0 when enabled.")
-    .Validate(options => !options.Enabled || options.StaleAfterSeconds > 0, "BattleMetrics summary refresh stale-after seconds must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.WorkerTickSeconds > 0, "BattleMetrics summary refresh worker tick seconds must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.DirectoryRefreshIntervalMinutes > 0, "BattleMetrics directory refresh interval minutes must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.FastLaneRefreshIntervalSeconds > 0, "BattleMetrics fast lane refresh interval seconds must be greater than 0 when enabled.")
@@ -119,6 +118,7 @@ builder.Services
     .Validate(options => !options.Enabled || options.PopularPlayerThreshold > 0, "BattleMetrics popular player threshold must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.PopularPeakPlayerThreshold > 0, "BattleMetrics popular peak player threshold must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.RecentPeakWindowMinutes > 0, "BattleMetrics recent peak window minutes must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || options.RefreshConcurrency > 0, "BattleMetrics refresh concurrency must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.FastLaneBatchSize > 0, "BattleMetrics fast lane batch size must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.NormalOnlineLaneBatchSize > 0, "BattleMetrics normal online lane batch size must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.SlowOfflineLaneBatchSize > 0, "BattleMetrics slow offline lane batch size must be greater than 0 when enabled.")
@@ -135,6 +135,7 @@ builder.Services
     .Validate(options => !options.Enabled || options.LocalHours.Distinct().Count() == options.LocalHours.Length, "Map metadata refresh local hours must be unique.")
     .Validate(options => !options.Enabled || options.StartupStaleAfterHours > 0, "Map metadata startup stale-after hours must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.BatchSize > 0, "Map metadata refresh batch size must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || options.MaxServersPerRun > 0, "Map metadata refresh server cap must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || options.DelayBetweenServersMilliseconds >= 0, "Map metadata refresh server delay must not be negative.")
     .Validate(options => !options.Enabled || options.DelayBetweenBatchesSeconds >= 0, "Map metadata refresh batch delay must not be negative.")
     .ValidateOnStart();

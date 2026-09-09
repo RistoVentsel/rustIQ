@@ -58,7 +58,6 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
         {
             await using var scope = serviceScopeFactory.CreateAsyncScope();
             var repository = scope.ServiceProvider.GetRequiredService<IServerRepository>();
-            var pollingService = scope.ServiceProvider.GetRequiredService<ServerPollingService>();
             var refreshService = scope.ServiceProvider.GetRequiredService<IServerRefreshService>();
 
             var now = DateTimeOffset.UtcNow;
@@ -83,7 +82,6 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
                 TimeSpan.FromSeconds(options.Value.FastLaneRefreshIntervalSeconds),
                 options.Value.FastLaneBatchSize,
                 repository,
-                pollingService,
                 refreshedServerIds,
                 now,
                 cancellationToken);
@@ -95,7 +93,6 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
                 TimeSpan.FromMinutes(options.Value.NormalOnlineRefreshIntervalMinutes),
                 options.Value.NormalOnlineLaneBatchSize,
                 repository,
-                pollingService,
                 refreshedServerIds,
                 now,
                 cancellationToken);
@@ -107,7 +104,6 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
                 TimeSpan.FromMinutes(options.Value.SlowOfflineRefreshIntervalMinutes),
                 options.Value.SlowOfflineLaneBatchSize,
                 repository,
-                pollingService,
                 refreshedServerIds,
                 now,
                 cancellationToken);
@@ -119,7 +115,6 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
                 TimeSpan.FromMinutes(options.Value.VeryStaleOfflineRefreshIntervalMinutes),
                 options.Value.VeryStaleOfflineLaneBatchSize,
                 repository,
-                pollingService,
                 refreshedServerIds,
                 now,
                 cancellationToken);
@@ -167,7 +162,6 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
         TimeSpan interval,
         int batchSize,
         IServerRepository repository,
-        ServerPollingService pollingService,
         HashSet<Guid> refreshedServerIds,
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -181,7 +175,6 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
                 interval,
                 batchSize,
                 repository,
-                pollingService,
                 refreshedServerIds,
                 now,
                 cancellationToken);
@@ -199,7 +192,6 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
         TimeSpan interval,
         int batchSize,
         IServerRepository repository,
-        ServerPollingService pollingService,
         HashSet<Guid> refreshedServerIds,
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -223,41 +215,13 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
             TimeSpan.FromMinutes(options.Value.SlowOfflineAfterMinutes),
             TimeSpan.FromHours(options.Value.VeryStaleOfflineAfterHours),
             cancellationToken);
-        var refreshedCount = 0;
 
-        foreach (var server in servers)
-        {
-            if (!refreshedServerIds.Add(server.Id))
-            {
-                continue;
-            }
+        // Claimed up front on this thread, so the set shared between lanes never needs a lock.
+        var dueServers = servers
+            .Where(server => refreshedServerIds.Add(server.Id))
+            .ToArray();
 
-            try
-            {
-                var configuredServer = ToConfiguredServer(server);
-                var result = await pollingService.PollConfiguredServerAsync(
-                    configuredServer,
-                    TimeSpan.FromSeconds(queryOptions.Value.OfflineThresholdSeconds),
-                    options.Value.RefreshCurrentPlayers,
-                    options.Value.RefreshMapMetadata,
-                    cancellationToken);
-                var updateMessage = serverUpdateMessageFactory.Create(result, DateTimeOffset.UtcNow);
-
-                await hubContext.Clients
-                    .Group(ServerUpdatesHub.GetServerGroupName(result.Id))
-                    .SendAsync("ServerUpdated", updateMessage, cancellationToken);
-                refreshedCount++;
-            }
-            catch (Exception exception) when (!WorkerExceptionHandling.IsExpectedShutdownException(exception, cancellationToken))
-            {
-                logger.LogError(
-                    exception,
-                    "BattleMetrics {RefreshLane} refresh failed for server {Host}:{QueryPort}.",
-                    refreshLane,
-                    server.Host,
-                    server.QueryPort);
-            }
-        }
+        var refreshedCount = await PollLaneServersAsync(refreshLane, dueServers, cancellationToken);
 
         setLastRefreshUtc(now);
 
@@ -268,6 +232,64 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
                 refreshLane,
                 refreshedCount);
         }
+    }
+
+    private async Task<int> PollLaneServersAsync(
+        ServerRefreshLane refreshLane,
+        IReadOnlyList<Server> servers,
+        CancellationToken cancellationToken)
+    {
+        if (servers.Count == 0)
+        {
+            return 0;
+        }
+
+        var offlineThreshold = TimeSpan.FromSeconds(queryOptions.Value.OfflineThresholdSeconds);
+        using var semaphore = new SemaphoreSlim(Math.Max(1, options.Value.RefreshConcurrency));
+        var refreshedCount = 0;
+
+        await Task.WhenAll(servers.Select(async server =>
+        {
+            await semaphore.WaitAsync(cancellationToken);
+
+            try
+            {
+                // A scope per server: polling writes through EF, and a DbContext cannot be shared across
+                // concurrent work. It also keeps the change tracker down to one server per poll instead
+                // of accumulating every server and snapshot touched during the tick.
+                await using var scope = serviceScopeFactory.CreateAsyncScope();
+                var pollingService = scope.ServiceProvider.GetRequiredService<ServerPollingService>();
+
+                var result = await pollingService.PollConfiguredServerAsync(
+                    ToConfiguredServer(server),
+                    offlineThreshold,
+                    options.Value.RefreshCurrentPlayers,
+                    options.Value.RefreshMapMetadata,
+                    cancellationToken);
+                var updateMessage = serverUpdateMessageFactory.Create(result, DateTimeOffset.UtcNow);
+
+                await hubContext.Clients
+                    .Group(ServerUpdatesHub.GetServerGroupName(result.Id))
+                    .SendAsync("ServerUpdated", updateMessage, cancellationToken);
+
+                Interlocked.Increment(ref refreshedCount);
+            }
+            catch (Exception exception) when (!WorkerExceptionHandling.IsExpectedShutdownException(exception, cancellationToken))
+            {
+                logger.LogError(
+                    exception,
+                    "BattleMetrics {RefreshLane} refresh failed for server {Host}:{QueryPort}.",
+                    refreshLane,
+                    server.Host,
+                    server.QueryPort);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }));
+
+        return refreshedCount;
     }
 
     private static ConfiguredRustServer ToConfiguredServer(Server server)

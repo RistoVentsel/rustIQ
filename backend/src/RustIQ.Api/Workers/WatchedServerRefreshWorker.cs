@@ -104,7 +104,7 @@ public sealed class WatchedServerRefreshWorker(
         };
         var result = await pollingService.PollConfiguredServerAsync(
             configuredServer,
-            TimeSpan.FromSeconds(queryOptions.Value.OfflineThresholdSeconds),
+            TimeSpan.FromSeconds(queryOptions.Value.WatchedOfflineThresholdSeconds),
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
             cancellationToken);

@@ -6,6 +6,27 @@ namespace RustIQ.Tests.Servers;
 public sealed class MapMetadataRefreshSelectionTests
 {
     [Fact]
+    public async Task GetServersForMapMetadataRefreshAsync_StopsAtTheRequestedCap()
+    {
+        var cutoffUtc = DateTimeOffset.Parse("2026-07-18T15:00:00Z");
+        var repository = new InMemoryServerRepository();
+        for (var index = 0; index < 10; index++)
+        {
+            repository.Servers.Add(ServerWithMap(index + 1, null, ServerStatus.Online, index));
+        }
+
+        var result = await repository.GetServersForMapMetadataRefreshAsync(
+            cutoffUtc,
+            take: 4,
+            CancellationToken.None);
+
+        // Unbounded, this pulled every server missing map metadata into memory at once. Discovery
+        // registers far more than a scheduled run could ever query, so a run has to take a slice and
+        // leave the rest for the next one.
+        Assert.Equal(4, result.Count);
+    }
+
+    [Fact]
     public async Task GetServersForMapMetadataRefreshAsync_SelectsMissingAndStaleMapsOnly()
     {
         var cutoffUtc = DateTimeOffset.Parse("2026-07-18T15:00:00Z");
@@ -20,6 +41,7 @@ public sealed class MapMetadataRefreshSelectionTests
 
         var result = await repository.GetServersForMapMetadataRefreshAsync(
             cutoffUtc,
+            take: 100,
             CancellationToken.None);
 
         Assert.Equal(

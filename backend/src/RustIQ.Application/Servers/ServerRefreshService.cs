@@ -42,21 +42,34 @@ public sealed class ServerRefreshService(
         bool captureSnapshots,
         CancellationToken cancellationToken)
     {
+        // The directory is asked first on purpose. When the BattleMetrics API is disabled it answers
+        // with nothing, and loading every row in the server table to match against an empty directory
+        // was pure waste - this sweep runs every few minutes and the table only grows with discovery.
+        IReadOnlyList<BattleMetricsServerSummary> summaries;
+        try
+        {
+            summaries = await battleMetricsServerDirectoryClient.GetRustServerSummariesAsync(
+                battleMetricsDirectoryPageSize,
+                battleMetricsDirectoryMaxPages,
+                cancellationToken);
+        }
+        catch (BattleMetricsRateLimitException exception)
+        {
+            summaries = exception.PartialSummaries;
+        }
+
+        if (summaries.Count == 0)
+        {
+            return 0;
+        }
+
         var servers = await serverRepository.GetAllAsync(cancellationToken);
         if (servers.Count == 0)
         {
             return 0;
         }
 
-        Dictionary<Guid, PlayerCountRefreshResult> directoryRefreshResults;
-        try
-        {
-            directoryRefreshResults = await FetchDirectoryPlayerCountsAsync(servers, cancellationToken);
-        }
-        catch (BattleMetricsRateLimitException exception)
-        {
-            directoryRefreshResults = BuildDirectoryPlayerCounts(servers, exception.PartialSummaries);
-        }
+        var directoryRefreshResults = BuildDirectoryPlayerCounts(servers, summaries);
 
         await ApplyPlayerCountRefreshesAsync(directoryRefreshResults, captureSnapshots, cancellationToken);
 

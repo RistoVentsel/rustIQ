@@ -11,7 +11,19 @@ public sealed class SteamServerDiscoveryClient(
     IOptions<SteamDiscoveryOptions> options)
     : ISteamServerDiscoveryClient
 {
+    private const byte MasterServerQueryOpcode = 0x31;
+    private const byte AllRegionsByte = 0xFF;
+    private const byte StringTerminator = 0x00;
+    private const string ListStartSeed = "0.0.0.0:0";
+
     private readonly SteamDiscoveryOptions _options = options.Value;
+
+    // The master server pages by "give me the servers listed after this address", so one refresh only
+    // ever sees MaxServersPerRefresh entries. Remembering where the previous refresh stopped lets
+    // successive refreshes walk the whole list without making any single refresh more expensive. It
+    // restarts once the master reports the end of the list, so newly listed servers get picked up on
+    // the next pass. Only the discovery worker calls this, one refresh at a time.
+    private string _resumeSeed = ListStartSeed;
 
     public async Task<IReadOnlyList<ConfiguredRustServer>> DiscoverServersAsync(
         int maxServers,
@@ -52,13 +64,16 @@ public sealed class SteamServerDiscoveryClient(
         CancellationToken cancellationToken)
     {
         var masterEndpoints = await GetMasterEndpointsAsync(cancellationToken);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
         Exception? lastException = null;
 
         foreach (var masterEndpoint in masterEndpoints)
         {
+            // Scoped per master server: falling back to another master has to start from a clean
+            // slate, otherwise endpoints get dropped as "already seen" from a master that then failed.
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             var results = new List<IPEndPoint>();
-            var seed = "0.0.0.0:0";
+            var seed = _resumeSeed;
+            var reachedEndOfList = false;
 
             try
             {
@@ -76,38 +91,56 @@ public sealed class SteamServerDiscoveryClient(
                         break;
                     }
 
-                    var reachedTerminator = false;
+                    var newEndpointsFromResponse = 0;
                     foreach (var endpoint in parsedEndpoints)
                     {
                         if (endpoint.Address.Equals(IPAddress.Any) && endpoint.Port == 0)
                         {
-                            reachedTerminator = true;
+                            reachedEndOfList = true;
                             break;
                         }
 
                         var key = $"{endpoint.Address}:{endpoint.Port}";
+                        seed = key;
+
                         if (seen.Add(key))
                         {
                             results.Add(endpoint);
+                            newEndpointsFromResponse++;
                             if (results.Count >= maxServers)
                             {
                                 break;
                             }
                         }
-
-                        seed = key;
                     }
 
-                    if (reachedTerminator)
+                    if (reachedEndOfList)
                     {
                         break;
+                    }
+
+                    // A page that only repeats endpoints we already hold means the seed is no longer
+                    // advancing the master's cursor. Stop rather than request the same page forever.
+                    if (newEndpointsFromResponse == 0)
+                    {
+                        break;
+                    }
+
+                    if (_options.RequestDelayMilliseconds > 0)
+                    {
+                        await Task.Delay(_options.RequestDelayMilliseconds, cancellationToken);
                     }
                 }
 
                 if (results.Count > 0)
                 {
+                    _resumeSeed = reachedEndOfList ? ListStartSeed : seed;
                     return results;
                 }
+
+                // Nothing usable came back for this slice, so restart the walk on the next refresh
+                // instead of parking on a seed the master will not advance past.
+                _resumeSeed = ListStartSeed;
             }
             catch (Exception exception) when (exception is SocketException or OperationCanceledException)
             {
@@ -178,8 +211,22 @@ public sealed class SteamServerDiscoveryClient(
     private static byte[] BuildRequest(string seed, string filter)
     {
         var filterText = string.IsNullOrWhiteSpace(filter) ? string.Empty : filter;
-        var payload = $"1{(char)0xFF}{seed}{(char)0x00}{filterText}{(char)0x00}";
-        return Encoding.ASCII.GetBytes(payload);
+
+        // The region byte has to be written as a raw byte. Building this as a string and running it
+        // through Encoding.ASCII replaced 0xFF ("all regions") with '?' (0x3F), which is not a valid
+        // region, so the master server had no reason to return any servers at all.
+        var request = new List<byte>(seed.Length + filterText.Length + 4)
+        {
+            MasterServerQueryOpcode,
+            AllRegionsByte
+        };
+
+        request.AddRange(Encoding.ASCII.GetBytes(seed));
+        request.Add(StringTerminator);
+        request.AddRange(Encoding.ASCII.GetBytes(filterText));
+        request.Add(StringTerminator);
+
+        return request.ToArray();
     }
 
     private static IReadOnlyList<IPEndPoint> ParseResponse(byte[] buffer)

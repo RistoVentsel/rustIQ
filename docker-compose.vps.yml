@@ -29,7 +29,8 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=rustiq;Username=rustiq;Password=${RUSTIQ_POSTGRES_PASSWORD:?Set RUSTIQ_POSTGRES_PASSWORD in .env}
       RustServerQuery__TimeoutMilliseconds: 3000
-      RustServerQuery__OfflineThresholdSeconds: 60
+      RustServerQuery__OfflineThresholdSeconds: 600
+      RustServerQuery__WatchedOfflineThresholdSeconds: 60
       BattleMetricsApi__Enabled: "false"
       BattleMetricsApi__MinimumRequestIntervalMilliseconds: 1100
       BattleMetricsWipeFallback__Enabled: "true"
@@ -43,10 +44,8 @@ services:
       BattleMetricsDiscovery__MaxPages: 60
       BattleMetricsDiscovery__RefreshIntervalMinutes: 10
       BattleMetricsSummaryRefresh__Enabled: "true"
-      BattleMetricsSummaryRefresh__BatchSize: 25
-      BattleMetricsSummaryRefresh__RefreshIntervalSeconds: 120
-      BattleMetricsSummaryRefresh__StaleAfterSeconds: 300
       BattleMetricsSummaryRefresh__WorkerTickSeconds: 15
+      BattleMetricsSummaryRefresh__RefreshConcurrency: 16
       BattleMetricsSummaryRefresh__DirectoryRefreshIntervalMinutes: 3
       BattleMetricsSummaryRefresh__FastLaneRefreshIntervalSeconds: 45
       BattleMetricsSummaryRefresh__NormalOnlineRefreshIntervalMinutes: 3
@@ -72,6 +71,7 @@ services:
       MapMetadataRefresh__LocalHours__0: 3
       MapMetadataRefresh__LocalHours__1: 18
       MapMetadataRefresh__LocalHours__2: 22
+      MapMetadataRefresh__MaxServersPerRun: 1000
       MapMetadataRefresh__BatchSize: 25
       MapMetadataRefresh__DelayBetweenServersMilliseconds: 0
       MapMetadataRefresh__DelayBetweenBatchesSeconds: 1

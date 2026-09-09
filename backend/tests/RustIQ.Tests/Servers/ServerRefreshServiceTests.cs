@@ -233,6 +233,47 @@ public sealed class ServerRefreshServiceTests
     }
 
     [Fact]
+    public async Task RefreshBattleMetricsDirectoryServersAsync_DoesNotLoadEveryServerWhenTheDirectoryIsEmpty()
+    {
+        var repository = new InMemoryServerRepository();
+        repository.Servers.Add(new Server
+        {
+            Id = Guid.NewGuid(),
+            Host = "203.0.113.10",
+            QueryPort = 28015,
+            BattleMetricsServerId = 42,
+            Status = ServerStatus.Online,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        });
+        var battleMetricsClient = new FakeBattleMetricsPlayerCountClient();
+        var service = new ServerRefreshService(
+            repository,
+            new FakeRustServerCatalog(),
+            new FakeBattleMetricsServerDirectoryClient([]),
+            battleMetricsClient,
+            new ServerPollingService(
+                new FakeRustServerQueryClient(),
+                battleMetricsClient,
+                new FakeRustServerMapMetadataClient(),
+                repository),
+            battleMetricsDirectoryPageSize: 100,
+            battleMetricsDirectoryMaxPages: 20,
+            TimeSpan.FromSeconds(600));
+
+        var refreshedServers = await service.RefreshBattleMetricsDirectoryServersAsync(
+            captureSnapshots: false,
+            CancellationToken.None);
+
+        Assert.Equal(0, refreshedServers);
+
+        // This sweep runs every few minutes. When the BattleMetrics API is disabled the directory is
+        // always empty, and loading the whole server table to match against nothing was pure waste -
+        // waste that grows with every server discovery adds.
+        Assert.Equal(0, repository.GetAllCallCount);
+    }
+
+    [Fact]
     public async Task RefreshBattleMetricsDirectoryServersAsync_UpdatesPopulationWithoutPerServerFallback()
     {
         var checkedAtUtc = DateTimeOffset.Parse("2026-07-07T12:00:00Z");

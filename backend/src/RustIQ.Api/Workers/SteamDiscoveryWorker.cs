@@ -89,25 +89,23 @@ public sealed class SteamDiscoveryWorker(
             var discoveredServers = MergeDiscoveredServers(steamDiscoveredServers, battleMetricsDiscoveredServers);
             await using var scope = serviceScopeFactory.CreateAsyncScope();
             var pollingService = scope.ServiceProvider.GetRequiredService<ServerPollingService>();
-            await pollingService.EnsureConfiguredServersExistAsync(discoveredServers, cancellationToken);
+            var createdServers = await pollingService.EnsureConfiguredServersExistAsync(
+                discoveredServers,
+                cancellationToken);
 
-            var offlineThreshold = TimeSpan.FromSeconds(queryOptions.Value.OfflineThresholdSeconds);
-            foreach (var server in steamDiscoveredServers)
-            {
-                await pollingService.PollConfiguredServerAsync(
-                    server,
-                    offlineThreshold,
-                    refreshCurrentPlayers: false,
-                    refreshMapMetadata: false,
-                    cancellationToken);
-            }
+            // Only servers that were just created need a poll from here: they have no name and no
+            // status yet. Everything already tracked is refreshed by the refresh lanes, so re-polling
+            // the whole discovery batch every cycle would only duplicate that work - and, since these
+            // polls are sequential, a large batch would take longer than the refresh interval itself.
+            var polledServers = await PollNewServersAsync(pollingService, createdServers, cancellationToken);
 
             logger.LogInformation(
-                "Server discovery refresh completed. SteamServers: {SteamServers}. BattleMetricsServers: {BattleMetricsServers}. ImportedServers: {ImportedServers}. PolledServers: {PolledServers}.",
+                "Server discovery refresh completed. SteamServers: {SteamServers}. BattleMetricsServers: {BattleMetricsServers}. ImportedServers: {ImportedServers}. NewServers: {NewServers}. PolledServers: {PolledServers}.",
                 steamDiscoveredServers.Count,
                 battleMetricsDiscoveredServers.Count,
                 discoveredServers.Count,
-                steamDiscoveredServers.Count);
+                createdServers.Count,
+                polledServers);
         }
         catch (Exception exception)
         {
@@ -118,6 +116,52 @@ public sealed class SteamDiscoveryWorker(
 
             logger.LogError(exception, "Steam discovery refresh failed.");
         }
+    }
+
+    private async Task<int> PollNewServersAsync(
+        ServerPollingService pollingService,
+        IReadOnlyList<ConfiguredRustServer> createdServers,
+        CancellationToken cancellationToken)
+    {
+        if (createdServers.Count == 0)
+        {
+            return 0;
+        }
+
+        var offlineThreshold = TimeSpan.FromSeconds(queryOptions.Value.OfflineThresholdSeconds);
+        var maxPolls = Math.Max(0, options.Value.MaxNewServerPollsPerRefresh);
+        var polledServers = 0;
+
+        foreach (var server in createdServers.Take(maxPolls))
+        {
+            try
+            {
+                await pollingService.PollConfiguredServerAsync(
+                    server,
+                    offlineThreshold,
+                    refreshCurrentPlayers: false,
+                    refreshMapMetadata: false,
+                    cancellationToken);
+                polledServers++;
+            }
+            catch (Exception exception) when (!WorkerExceptionHandling.IsExpectedShutdownException(exception, cancellationToken))
+            {
+                logger.LogWarning(
+                    exception,
+                    "First poll failed for newly discovered server {Host}:{QueryPort}.",
+                    server.Host,
+                    server.QueryPort);
+            }
+        }
+
+        if (createdServers.Count > maxPolls)
+        {
+            logger.LogInformation(
+                "Deferred the first poll of {DeferredServers} newly discovered servers to the refresh lanes.",
+                createdServers.Count - maxPolls);
+        }
+
+        return polledServers;
     }
 
     private async Task<IReadOnlyList<ConfiguredRustServer>> DiscoverViaBattleMetricsAsync(CancellationToken cancellationToken)

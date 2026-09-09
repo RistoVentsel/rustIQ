@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Globalization;
 using System.Net.Sockets;
 using Microsoft.Extensions.Options;
@@ -13,17 +12,9 @@ public sealed class A2sRustServerMapMetadataClient(
     : IRustServerMapMetadataClient
 {
     private const string SourceName = "A2S";
-    private const byte ChallengeResponseType = 0x41;
     private const byte RulesRequestType = 0x56;
-    private const int SimplePacketHeader = -1;
-    private const int SplitPacketHeader = -2;
 
-    private static readonly byte[] RulesChallengeRequest =
-    [
-        0xff, 0xff, 0xff, 0xff,
-        RulesRequestType,
-        0xff, 0xff, 0xff, 0xff
-    ];
+    private static readonly byte[] RulesChallengeRequest = A2sPacket.BuildChallengeRequest(RulesRequestType);
 
     private readonly RustServerQueryOptions _options = options.Value;
 
@@ -106,107 +97,23 @@ public sealed class A2sRustServerMapMetadataClient(
 
         await client.SendAsync(RulesChallengeRequest, timeoutToken);
         var challengeResponse = (await client.ReceiveAsync(timeoutToken)).Buffer;
-        if (!IsChallengeResponse(challengeResponse))
-        {
-            throw new InvalidDataException("The server returned an invalid A2S challenge.");
-        }
+        var challenge = A2sPacket.CopyChallenge(challengeResponse);
 
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            var rulesRequest = new byte[9];
-            BinaryPrimitives.WriteInt32LittleEndian(rulesRequest, SimplePacketHeader);
-            rulesRequest[4] = RulesRequestType;
-            challengeResponse.AsSpan(5, 4).CopyTo(rulesRequest.AsSpan(5));
+            var rulesRequest = A2sPacket.BuildRequest(RulesRequestType, [], challenge);
 
             await client.SendAsync(rulesRequest, timeoutToken);
-            var rulesPayload = await ReceiveResponseAsync(client, timeoutToken);
-            if (!IsChallengeResponse(rulesPayload))
+            var rulesPayload = await A2sPacket.ReceiveResponseAsync(client, timeoutToken);
+            if (!A2sPacket.IsChallengeResponse(rulesPayload))
             {
                 return RustServerRuleParser.Parse(rulesPayload);
             }
 
-            challengeResponse = rulesPayload;
+            challenge = A2sPacket.CopyChallenge(rulesPayload);
         }
 
         throw new InvalidDataException("The server repeatedly replaced its A2S rules challenge.");
-    }
-
-    private static bool IsChallengeResponse(byte[] payload)
-    {
-        return payload.Length >= 9
-               && BinaryPrimitives.ReadInt32LittleEndian(payload) == SimplePacketHeader
-               && payload[4] == ChallengeResponseType;
-    }
-
-    private static async Task<byte[]> ReceiveResponseAsync(
-        UdpClient client,
-        CancellationToken cancellationToken)
-    {
-        var firstPacket = (await client.ReceiveAsync(cancellationToken)).Buffer;
-        if (firstPacket.Length < 4)
-        {
-            throw new InvalidDataException("The server returned an incomplete A2S response.");
-        }
-
-        var header = BinaryPrimitives.ReadInt32LittleEndian(firstPacket);
-        if (header == SimplePacketHeader)
-        {
-            return firstPacket;
-        }
-
-        if (header != SplitPacketHeader || firstPacket.Length < 12)
-        {
-            throw new InvalidDataException("The server returned an invalid A2S packet header.");
-        }
-
-        var responseId = BinaryPrimitives.ReadInt32LittleEndian(firstPacket.AsSpan(4));
-        if ((responseId & int.MinValue) != 0)
-        {
-            throw new InvalidDataException("Compressed split A2S responses are not supported.");
-        }
-
-        var packetCount = firstPacket[8];
-        if (packetCount is 0 or > 32)
-        {
-            throw new InvalidDataException("The server returned an invalid A2S split-packet count.");
-        }
-
-        var fragments = new byte[packetCount][];
-        AddSplitPacket(firstPacket, responseId, fragments);
-
-        while (fragments.Any(fragment => fragment is null))
-        {
-            var packet = (await client.ReceiveAsync(cancellationToken)).Buffer;
-            AddSplitPacket(packet, responseId, fragments);
-        }
-
-        var length = fragments.Sum(fragment => fragment.Length);
-        var payload = new byte[length];
-        var offset = 0;
-        foreach (var fragment in fragments)
-        {
-            fragment.CopyTo(payload, offset);
-            offset += fragment.Length;
-        }
-
-        return payload;
-    }
-
-    private static void AddSplitPacket(
-        byte[] packet,
-        int expectedResponseId,
-        byte[][] fragments)
-    {
-        if (packet.Length < 12
-            || BinaryPrimitives.ReadInt32LittleEndian(packet) != SplitPacketHeader
-            || BinaryPrimitives.ReadInt32LittleEndian(packet.AsSpan(4)) != expectedResponseId
-            || packet[8] != fragments.Length
-            || packet[9] >= fragments.Length)
-        {
-            throw new InvalidDataException("The server returned an invalid A2S split packet.");
-        }
-
-        fragments[packet[9]] = packet[12..];
     }
 
     private static int? GetIntRule(

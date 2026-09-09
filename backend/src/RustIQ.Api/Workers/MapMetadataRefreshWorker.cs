@@ -74,6 +74,7 @@ public sealed class MapMetadataRefreshWorker(
                 var repository = targetScope.ServiceProvider.GetRequiredService<IServerRepository>();
                 targets = await repository.GetServersForMapMetadataRefreshAsync(
                     fetchedBeforeUtc,
+                    options.Value.MaxServersPerRun,
                     cancellationToken);
             }
 

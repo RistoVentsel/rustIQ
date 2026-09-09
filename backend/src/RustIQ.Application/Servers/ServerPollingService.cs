@@ -10,12 +10,17 @@ public sealed class ServerPollingService(
     IRustServerMapMetadataClient mapMetadataClient,
     IServerRepository serverRepository)
 {
-    public async Task EnsureConfiguredServersExistAsync(
+    /// <summary>
+    /// Registers every configured server that is not tracked yet and returns the ones that were
+    /// newly created, so callers can give those a first poll without re-polling known servers.
+    /// </summary>
+    public async Task<IReadOnlyList<ConfiguredRustServer>> EnsureConfiguredServersExistAsync(
         IReadOnlyList<ConfiguredRustServer> configuredServers,
         CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
         var hasChanges = false;
+        var createdServers = new List<ConfiguredRustServer>();
 
         foreach (var configuredServer in configuredServers)
         {
@@ -50,6 +55,7 @@ public sealed class ServerPollingService(
                     CreatedAtUtc = now,
                     UpdatedAtUtc = now
                 });
+                createdServers.Add(configuredServer);
                 hasChanges = true;
                 continue;
             }
@@ -61,6 +67,8 @@ public sealed class ServerPollingService(
         {
             await serverRepository.SaveChangesAsync(cancellationToken);
         }
+
+        return createdServers;
     }
 
     public Task<ServerDto> PollConfiguredServerAsync(
@@ -106,7 +114,7 @@ public sealed class ServerPollingService(
         ApplySummaryIdentity(server, configuredServer, normalizedQueryResult, now);
         ApplyLatestServerState(server, normalizedQueryResult, now, offlineThreshold);
 
-        var snapshot = CreateSnapshot(server.Id, normalizedQueryResult);
+        var snapshot = CreateSnapshot(server, normalizedQueryResult);
         serverRepository.AddSnapshot(snapshot);
 
         var effectiveConfiguredServer = new ConfiguredRustServer
@@ -422,16 +430,21 @@ public sealed class ServerPollingService(
         server.LastValidationReason = queryResult.Error;
     }
 
-    private static ServerSnapshot CreateSnapshot(Guid serverId, RustServerQueryResult queryResult)
+    private static ServerSnapshot CreateSnapshot(Server server, RustServerQueryResult queryResult)
     {
+        // Taken from the server's resulting state rather than the raw query result, so history agrees
+        // with the status being shown. A failed query inside the offline grace period keeps the last
+        // known counts, and recording a 0/offline point for it would put a dip in the player graph and
+        // drag down the ranking average for a server still listed as online. This matches how
+        // ServerRefreshService records its snapshots.
         return new ServerSnapshot
         {
             Id = Guid.NewGuid(),
-            ServerId = serverId,
+            ServerId = server.Id,
             CheckedAtUtc = queryResult.CheckedAtUtc,
-            Players = queryResult.Players,
-            MaxPlayers = queryResult.MaxPlayers,
-            IsOnline = queryResult.IsOnline,
+            Players = server.Players,
+            MaxPlayers = server.MaxPlayers,
+            IsOnline = server.Status == ServerStatus.Online,
             PingMilliseconds = queryResult.PingMilliseconds
         };
     }

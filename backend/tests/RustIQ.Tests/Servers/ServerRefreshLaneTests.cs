@@ -110,11 +110,46 @@ public sealed class ServerRefreshLaneTests
             players: 30,
             lastRefreshedAtUtc: Now.AddMinutes(-4));
         server.PlayerCountSource = ServerPlayerCountSource.A2S;
+        server.BattleMetricsServerId = null;
         repository.Servers.Add(server);
 
         var servers = await GetLaneAsync(repository, ServerRefreshLane.NormalOnline, Now.AddMinutes(-3));
 
         Assert.Equal(server.Id, Assert.Single(servers).Id);
+    }
+
+    [Fact]
+    public async Task GetServersForRefreshLaneAsync_SlowOfflineIncludesServersWithoutBattleMetricsId()
+    {
+        var repository = new InMemoryServerRepository();
+        var steamDiscovered = CreateServer(
+            "steam-only.test",
+            ServerStatus.Offline,
+            players: 0,
+            lastSeenAtUtc: Now.AddHours(-2),
+            lastRefreshedAtUtc: Now.AddMinutes(-30));
+        steamDiscovered.BattleMetricsServerId = null;
+        steamDiscovered.DiscoverySource = ServerDiscoverySource.Steam;
+        steamDiscovered.PlayerCountSource = ServerPlayerCountSource.A2S;
+        repository.Servers.Add(steamDiscovered);
+
+        var servers = await GetLaneAsync(repository, ServerRefreshLane.SlowOffline, Now.AddMinutes(-20));
+
+        Assert.Equal(steamDiscovered.Id, Assert.Single(servers).Id);
+    }
+
+    [Fact]
+    public async Task GetServersForRefreshLaneAsync_ExcludesServersWithoutQueryableEndpoint()
+    {
+        var repository = new InMemoryServerRepository();
+        var missingHost = CreateServer(string.Empty, ServerStatus.Online, players: 30, lastRefreshedAtUtc: Now.AddMinutes(-4));
+        var missingQueryPort = CreateServer("no-query-port.test", ServerStatus.Online, players: 30, lastRefreshedAtUtc: Now.AddMinutes(-4));
+        missingQueryPort.QueryPort = 0;
+        repository.Servers.AddRange([missingHost, missingQueryPort]);
+
+        var servers = await GetLaneAsync(repository, ServerRefreshLane.NormalOnline, Now.AddMinutes(-3));
+
+        Assert.Empty(servers);
     }
 
     [Fact]
