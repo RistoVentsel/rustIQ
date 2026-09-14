@@ -102,6 +102,19 @@ public static class DependencyInjection
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("RustIQ/1.0");
             });
         services.AddSingleton<ISteamServerDiscoveryClient, SteamWebApiServerDiscoveryClient>();
+        services.AddHttpClient(
+            FacepunchServerDirectoryClient.HttpClientName,
+            (serviceProvider, client) =>
+            {
+                var facepunchDiscoveryOptions = serviceProvider
+                    .GetRequiredService<IOptions<FacepunchDiscoveryOptions>>()
+                    .Value;
+
+                client.BaseAddress = new Uri("https://api.facepunch.com/");
+                client.Timeout = TimeSpan.FromMilliseconds(facepunchDiscoveryOptions.TimeoutMilliseconds);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("RustIQ/1.0");
+            });
+        services.AddSingleton<IFacepunchServerDirectoryClient, FacepunchServerDirectoryClient>();
         services.AddHttpClient<IRustPatchNoteClient, FacepunchRustPatchNoteClient>(client =>
         {
             client.BaseAddress = new Uri("https://rust.facepunch.com/");

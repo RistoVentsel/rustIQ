@@ -95,6 +95,12 @@ builder.Services
     .Validate(options => !options.Enabled || options.RefreshIntervalMinutes > 0, "Steam discovery refresh interval minutes must be greater than 0 when enabled.")
     .ValidateOnStart();
 builder.Services
+    .AddOptions<FacepunchDiscoveryOptions>()
+    .Bind(builder.Configuration.GetSection(FacepunchDiscoveryOptions.SectionName))
+    .Validate(options => !options.Enabled || options.TimeoutMilliseconds > 0, "Facepunch discovery timeout must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || options.MaxServersPerRefresh > 0, "Facepunch discovery max servers must be greater than 0 when enabled.")
+    .ValidateOnStart();
+builder.Services
     .AddOptions<BattleMetricsDiscoveryOptions>()
     .Bind(builder.Configuration.GetSection(BattleMetricsDiscoveryOptions.SectionName))
     .Validate(options => !options.Enabled || options.PageSize is > 0 and <= 100, "BattleMetrics discovery page size must be between 1 and 100 when enabled.")

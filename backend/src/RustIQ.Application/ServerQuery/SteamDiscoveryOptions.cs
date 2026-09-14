@@ -28,6 +28,4 @@ public sealed class SteamDiscoveryOptions
     // that rate (90 * 6s = 9 minutes against a 10 minute interval). The refresh lanes pick up
     // whatever is left over.
     public int MaxNewServerPollsPerRefresh { get; init; } = 90;
-
-    public bool AllowBattleMetricsFallback { get; init; } = true;
 }

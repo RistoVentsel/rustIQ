@@ -41,7 +41,9 @@ services:
       SteamDiscovery__TimeoutMilliseconds: 30000
       SteamDiscovery__MaxServersPerRefresh: 5000
       SteamDiscovery__RefreshIntervalMinutes: 10
-      SteamDiscovery__AllowBattleMetricsFallback: "true"
+      FacepunchDiscovery__Enabled: "true"
+      FacepunchDiscovery__TimeoutMilliseconds: 60000
+      FacepunchDiscovery__MaxServersPerRefresh: 15000
       BattleMetricsDiscovery__Enabled: "false"
       BattleMetricsDiscovery__PageSize: 100
       BattleMetricsDiscovery__MaxPages: 60
