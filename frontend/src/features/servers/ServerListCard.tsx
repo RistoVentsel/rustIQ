@@ -71,6 +71,14 @@ export function ServerListCard({
   // The pill is a fixed-width cell, so the badge carries the short code only and
   // the spelled-out country stays in the label and tooltip.
   const countryBadge = server.country?.trim().toUpperCase() || '--'
+  // A missing trend is spelled out in the tooltip rather than in the pill, which
+  // otherwise has to be sized for "No trend" on every row that has a trend.
+  const trendLabel = formatPlayerTrend(server, language)
+  const hasTrend = server.playersDeltaLastHour !== null && server.playersDeltaLastHour !== undefined
+  const peak = server.playersPeakLastHour
+  const trendTitle = peak === null || peak === undefined
+    ? (hasTrend ? undefined : trendLabel)
+    : copy.peakLastHour(peak)
 
   return (
     <article className={isOffline ? 'server-list-card server-list-card--offline' : 'server-list-card'}>
@@ -126,14 +134,13 @@ export function ServerListCard({
       >
         {formatPlayerCount(server)}
       </div>
-      <div className="server-list-card__cell">
+      <div className="server-list-card__cell server-list-card__cell--trend">
         <span
           className={getPlayerTrendClassName(server)}
-          title={server.playersPeakLastHour === null || server.playersPeakLastHour === undefined
-            ? undefined
-            : copy.peakLastHour(server.playersPeakLastHour)}
+          aria-label={hasTrend ? undefined : trendLabel}
+          title={trendTitle}
         >
-          {formatPlayerTrend(server, language)}
+          {hasTrend ? trendLabel : '--'}
         </span>
       </div>
       <div className="server-list-card__cell">{formatRelativeTimestamp(server.lastWipeAtUtc, nowMs, language)}</div>

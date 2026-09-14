@@ -583,7 +583,7 @@ select {
 .server-list-table__header,
 .server-list-card {
   display: grid;
-  grid-template-columns: 62px 52px minmax(170px, 1fr) minmax(96px, 0.28fr) minmax(112px, 0.32fr) minmax(66px, 0.22fr) minmax(84px, 0.28fr) minmax(84px, 0.28fr) 96px;
+  grid-template-columns: 62px 52px minmax(170px, 1fr) minmax(96px, 0.28fr) minmax(112px, 0.32fr) minmax(76px, 0.22fr) minmax(84px, 0.28fr) minmax(84px, 0.28fr) 96px;
   column-gap: 12px;
   row-gap: 8px;
   align-items: center;
@@ -609,7 +609,9 @@ select {
 .server-list-table__header > :nth-child(1),
 .server-list-card > :nth-child(1),
 .server-list-table__header > :nth-child(2),
-.server-list-card > :nth-child(2) {
+.server-list-card > :nth-child(2),
+.server-list-table__header > :nth-child(5),
+.server-list-table__header > :nth-child(6) {
   justify-self: center;
 }
 
@@ -763,9 +765,14 @@ select {
 }
 
 .server-list-card__cell--players {
+  justify-self: center;
   overflow: visible;
   text-overflow: clip;
   font-variant-numeric: tabular-nums;
+}
+
+.server-list-card__cell--trend {
+  justify-self: center;
 }
 
 .server-rank-badge {
@@ -2254,6 +2261,17 @@ select {
   border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.server-list-card .server-trend {
+  display: inline-block;
+  max-width: 100%;
+  height: 26px;
+  line-height: 24px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: center;
+  text-overflow: ellipsis;
 }
 
 .server-trend--up {
