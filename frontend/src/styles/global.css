@@ -583,7 +583,7 @@ select {
 .server-list-table__header,
 .server-list-card {
   display: grid;
-  grid-template-columns: 62px 52px minmax(170px, 1fr) minmax(76px, 0.28fr) minmax(112px, 0.32fr) minmax(66px, 0.22fr) minmax(84px, 0.28fr) minmax(84px, 0.28fr) 96px;
+  grid-template-columns: 62px 52px minmax(170px, 1fr) minmax(96px, 0.28fr) minmax(112px, 0.32fr) minmax(66px, 0.22fr) minmax(84px, 0.28fr) minmax(84px, 0.28fr) 96px;
   column-gap: 12px;
   row-gap: 8px;
   align-items: center;
@@ -2205,6 +2205,20 @@ select {
   border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+/* In a list row the badge is bounded by its column: it truncates rather than
+   reaching into the players column next to it. The detail page, where the badge
+   sits in free-flowing text, keeps the inline-flex sizing above. */
+.server-list-card .server-type-badge {
+  display: inline-block;
+  max-width: 100%;
+  height: 28px;
+  line-height: 26px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: center;
+  text-overflow: ellipsis;
 }
 
 .server-type-badge--official {
