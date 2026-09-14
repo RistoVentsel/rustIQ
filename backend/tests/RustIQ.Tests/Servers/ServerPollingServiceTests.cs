@@ -1092,7 +1092,8 @@ public sealed class ServerPollingServiceTests
         bool isOnline,
         long? pingMilliseconds,
         DateTimeOffset checkedAtUtc,
-        string? error)
+        string? error,
+        RustServerType serverType = RustServerType.Unknown)
     {
         return new RustServerQueryResult(
             BattleMetricsServerId: null,
@@ -1115,6 +1116,7 @@ public sealed class ServerPollingServiceTests
             CheckedAtUtc: checkedAtUtc,
             PlayerCountSource: DefaultPlayerCountSource,
             SummarySource: DefaultSummarySource,
+            ServerType: serverType,
             Error: error);
     }
 }

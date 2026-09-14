@@ -95,17 +95,25 @@ public sealed class SteamWebApiServerDiscoveryClient(
             return null;
         }
 
+        // Steam calls the A2S keyword string "gametype". Rust puts its live counts and its server
+        // browser tags in there.
+        var keywords = GetString(server, "gametype");
+        var name = NullIfWhiteSpace(GetString(server, "name"));
+
         return new ConfiguredRustServer
         {
             Host = host,
             QueryPort = queryPort,
             GamePort = GetInt(server, "gameport"),
-            Name = NullIfWhiteSpace(GetString(server, "name")),
+            Name = name,
             Map = NullIfWhiteSpace(GetString(server, "map")),
 
-            // Steam calls the A2S keyword string "gametype". Rust puts its live counts in there, and
-            // the queue depth is the one field worth carrying before the first poll.
-            QueuePlayers = RustServerKeywordParser.GetQueuePlayers(GetString(server, "gametype")),
+            // The queue depth is the one count worth carrying before the first poll.
+            QueuePlayers = RustServerKeywordParser.GetQueuePlayers(keywords),
+
+            // Discovery is the first and, for a server that never answers A2S, the only chance to
+            // categorise it. Without this every Steam-discovered server sat at Unknown.
+            ServerType = RustServerTypeParser.GetServerType(name, keywords),
 
             DiscoverySource = ServerDiscoverySource.Steam,
             SummarySource = ServerSummarySource.A2S,

@@ -381,9 +381,13 @@ public sealed class ServerPollingService(
         server.LastWipeAtUtc = queryResult.LastWipeAtUtc ?? configuredServer.LastWipeAtUtc ?? server.LastWipeAtUtc;
         server.NextWipeAtUtc = queryResult.NextWipeAtUtc ?? configuredServer.NextWipeAtUtc ?? server.NextWipeAtUtc;
         server.QueuePlayers = NormalizeQueuePlayers(queryResult.QueuePlayers ?? configuredServer.QueuePlayers ?? server.QueuePlayers);
-        server.ServerType = configuredServer.ServerType == RustServerType.Unknown
-            ? server.ServerType
-            : configuredServer.ServerType;
+        // The poll result leads: it carries what the server advertised just now. The configured value
+        // is what discovery saw, and the stored one is the last thing we knew. First known wins, so a
+        // server that stops answering keeps the category it had instead of falling back to Unknown.
+        server.ServerType = FirstKnownServerType(
+            queryResult.ServerType,
+            configuredServer.ServerType,
+            server.ServerType);
         server.DiscoverySource = configuredServer.DiscoverySource;
         server.SummarySource = queryResult.SummarySource;
         server.PlayerCountSource = queryResult.PlayerCountSource;
@@ -590,14 +594,14 @@ public sealed class ServerPollingService(
             };
         }
 
-        if (battleMetricsPlayerCount.ServerType != RustServerType.Unknown)
-        {
-            server.ServerType = battleMetricsPlayerCount.ServerType;
-        }
-
         return queryResult with
         {
             BattleMetricsServerId = battleMetricsServerId,
+            // BattleMetrics keeps Facepunch's own list of official servers, so when it answers its
+            // category beats the one read off the server's tags.
+            ServerType = FirstKnownServerType(
+                battleMetricsPlayerCount.ServerType,
+                queryResult.ServerType),
             Country = battleMetricsPlayerCount.Country ?? queryResult.Country,
             Latitude = battleMetricsPlayerCount.Latitude ?? queryResult.Latitude,
             Longitude = battleMetricsPlayerCount.Longitude ?? queryResult.Longitude,
@@ -855,6 +859,19 @@ public sealed class ServerPollingService(
     private static bool UpdatePlayerListSource(Server server, PlayerListSource nextValue)
     {
         return UpdateIfDifferent(server.PlayerListSource, nextValue, value => server.PlayerListSource = value);
+    }
+
+    private static RustServerType FirstKnownServerType(params RustServerType[] candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (candidate != RustServerType.Unknown)
+            {
+                return candidate;
+            }
+        }
+
+        return RustServerType.Unknown;
     }
 
     private static bool UpdateServerType(Server server, RustServerType nextValue)

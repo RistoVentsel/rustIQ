@@ -20,7 +20,7 @@ public sealed class SteamWebApiServerDiscoveryClientTests
             "map": "Procedural Map",
             "players": 220,
             "max_players": 250,
-            "gametype": "mp250,cp220,qp14,born1757000000"
+            "gametype": "mp250,cp220,qp14,^b,^o^z,OC,born1757000000,gmrust"
           },
           {
             "addr": "203.0.113.11:28015",
@@ -29,7 +29,7 @@ public sealed class SteamWebApiServerDiscoveryClientTests
             "map": "Barren",
             "players": 12,
             "max_players": 100,
-            "gametype": "mp100,cp12,qp0"
+            "gametype": "mp100,cp12,qp0,^m,^v,EU,gmrust"
           }
         ]
       }
@@ -73,6 +73,20 @@ public sealed class SteamWebApiServerDiscoveryClientTests
         // Steam calls the A2S keyword string "gametype"; Rust reports its queue in there.
         Assert.Equal(14, servers[0].QueuePlayers);
         Assert.Equal(0, servers[1].QueuePlayers);
+    }
+
+    [Fact]
+    public async Task DiscoverServersAsync_ReadsTheServerTypeFromTheKeywordString()
+    {
+        var handler = new StubHandler(ServersJson);
+        var client = CreateClient(handler, apiKey: "test-key");
+
+        var servers = await client.DiscoverServersAsync(5000, CancellationToken.None);
+
+        // Steam discovery replaced BattleMetrics, which used to be the only thing that set this.
+        // Without reading the tags here every discovered server would sit at Unknown.
+        Assert.Equal(RustServerType.Modded, servers[0].ServerType);
+        Assert.Equal(RustServerType.Community, servers[1].ServerType);
     }
 
     [Fact]

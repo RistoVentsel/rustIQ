@@ -23,4 +23,5 @@ public sealed record RustServerQueryResult(
     DateTimeOffset CheckedAtUtc,
     ServerPlayerCountSource PlayerCountSource,
     ServerSummarySource SummarySource,
+    RustServerType ServerType,
     string? Error);

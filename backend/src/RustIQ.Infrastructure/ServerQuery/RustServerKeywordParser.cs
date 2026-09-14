@@ -4,13 +4,20 @@ namespace RustIQ.Infrastructure.ServerQuery;
 
 public static class RustServerKeywordParser
 {
+    // Rust publishes its server browser tags as caret letters inside the keyword string, documented
+    // at https://wiki.facepunch.com/rust/server-browser-tags. They are not reliably comma separated:
+    // a modded Oxide server sends the single token "^o^z", so the tags are scanned as flags.
+    public const char BrowserTagPrefix = '^';
+    public const char ModdedBrowserTag = 'z';
+
     private const string BornPrefix = "born";
     private const string CurrentPlayersPrefix = "cp";
+    private const string GameModePrefix = "gm";
     private const string MaxPlayersPrefix = "mp";
     private const string QueuePlayersPrefix = "qp";
-    private const string WeeklyWipeTag = "^w";
-    private const string BiweeklyWipeTag = "^b";
-    private const string MonthlyWipeTag = "^m";
+    private const char WeeklyWipeTag = 'w';
+    private const char BiweeklyWipeTag = 'b';
+    private const char MonthlyWipeTag = 'm';
     private const int DefaultWipeHour = 19;
 
     public static int? GetCurrentPlayers(string? keywords)
@@ -100,6 +107,60 @@ public static class RustServerKeywordParser
         return null;
     }
 
+    /// <summary>
+    /// Tells whether the keyword string carries a Rust server browser tag, for example 'z' for the
+    /// modded tag that Rust writes as "^z".
+    /// </summary>
+    public static bool HasBrowserTag(string? keywords, char browserTag)
+    {
+        if (string.IsNullOrWhiteSpace(keywords))
+        {
+            return false;
+        }
+
+        // Scanned rather than split on commas: Rust runs neighbouring tags together, so "^o^z" is one
+        // token and a token-by-token comparison would miss the modded flag on every Oxide server.
+        for (var index = 0; index < keywords.Length - 1; index++)
+        {
+            if (keywords[index] == BrowserTagPrefix
+                && char.ToLowerInvariant(keywords[index + 1]) == char.ToLowerInvariant(browserTag))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Tells whether the keyword string carries a spelled out tag, for example "modded". Servers on
+    /// older builds, and admins writing sv_tags by hand, still use the long form.
+    /// </summary>
+    public static bool HasWordTag(string? keywords, string wordTag)
+    {
+        return EnumerateKeywords(keywords)
+            .Any(keyword => keyword.Equals(wordTag, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Tells whether the keyword string came from a Rust server at all. A server that answered with
+    /// Rust keywords is at least a community server; one that told us nothing stays unknown.
+    /// </summary>
+    public static bool LooksLikeRustKeywords(string? keywords)
+    {
+        foreach (var keyword in EnumerateKeywords(keywords))
+        {
+            if (keyword[0] == BrowserTagPrefix
+                || keyword.StartsWith(GameModePrefix, StringComparison.OrdinalIgnoreCase)
+                || keyword.StartsWith(BornPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return GetMaxPlayers(keywords) is not null;
+    }
+
     private static WipeFrequency? GetWipeFrequency(string? keywords)
     {
         if (string.IsNullOrWhiteSpace(keywords))
@@ -107,28 +168,29 @@ public static class RustServerKeywordParser
             return null;
         }
 
-        foreach (var keyword in keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        if (HasBrowserTag(keywords, WeeklyWipeTag) || HasWordTag(keywords, "weekly"))
         {
-            if (keyword.Equals(WeeklyWipeTag, StringComparison.OrdinalIgnoreCase)
-                || keyword.Equals("weekly", StringComparison.OrdinalIgnoreCase))
-            {
-                return WipeFrequency.Weekly;
-            }
+            return WipeFrequency.Weekly;
+        }
 
-            if (keyword.Equals(BiweeklyWipeTag, StringComparison.OrdinalIgnoreCase)
-                || keyword.Equals("biweekly", StringComparison.OrdinalIgnoreCase))
-            {
-                return WipeFrequency.Biweekly;
-            }
+        if (HasBrowserTag(keywords, BiweeklyWipeTag) || HasWordTag(keywords, "biweekly"))
+        {
+            return WipeFrequency.Biweekly;
+        }
 
-            if (keyword.Equals(MonthlyWipeTag, StringComparison.OrdinalIgnoreCase)
-                || keyword.Equals("monthly", StringComparison.OrdinalIgnoreCase))
-            {
-                return WipeFrequency.Monthly;
-            }
+        if (HasBrowserTag(keywords, MonthlyWipeTag) || HasWordTag(keywords, "monthly"))
+        {
+            return WipeFrequency.Monthly;
         }
 
         return null;
+    }
+
+    private static IEnumerable<string> EnumerateKeywords(string? keywords)
+    {
+        return string.IsNullOrWhiteSpace(keywords)
+            ? []
+            : keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     private static bool IsScheduledWipeDate(DateTime date, WipeFrequency frequency)

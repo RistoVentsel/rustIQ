@@ -209,6 +209,9 @@ public sealed class SteamRustServerQueryClient(
             checkedAtUtc,
             ServerPlayerCountSource.A2S,
             ServerSummarySource.A2S,
+            // A poll is the freshest view of what a server calls itself, so it re-reads the type
+            // every time: a community server that installs mods changes category mid-wipe.
+            RustServerTypeParser.GetServerType(serverInfo.Name, serverInfo.Keywords),
             Error: null);
     }
 
@@ -241,6 +244,9 @@ public sealed class SteamRustServerQueryClient(
             checkedAtUtc,
             configuredServer.PlayerCountSource,
             configuredServer.SummarySource,
+            // A server that did not answer tells us nothing new about its category, so the one we
+            // already had stands.
+            configuredServer.ServerType,
             error);
     }
 
