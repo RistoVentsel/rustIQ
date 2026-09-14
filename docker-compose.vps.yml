@@ -49,7 +49,7 @@ services:
       BattleMetricsDiscovery__MaxPages: 60
       BattleMetricsSummaryRefresh__Enabled: "true"
       BattleMetricsSummaryRefresh__WorkerTickSeconds: 15
-      BattleMetricsSummaryRefresh__RefreshConcurrency: 16
+      BattleMetricsSummaryRefresh__RefreshConcurrency: 32
       BattleMetricsSummaryRefresh__DirectoryRefreshIntervalMinutes: 15
       BattleMetricsSummaryRefresh__FastLaneRefreshIntervalSeconds: 45
       BattleMetricsSummaryRefresh__NormalOnlineRefreshIntervalMinutes: 3
@@ -62,10 +62,10 @@ services:
       BattleMetricsSummaryRefresh__PopularPlayerThreshold: 100
       BattleMetricsSummaryRefresh__PopularPeakPlayerThreshold: 100
       BattleMetricsSummaryRefresh__RecentPeakWindowMinutes: 60
-      BattleMetricsSummaryRefresh__FastLaneBatchSize: 50
-      BattleMetricsSummaryRefresh__NormalOnlineLaneBatchSize: 100
-      BattleMetricsSummaryRefresh__SlowOfflineLaneBatchSize: 250
-      BattleMetricsSummaryRefresh__VeryStaleOfflineLaneBatchSize: 250
+      BattleMetricsSummaryRefresh__FastLaneBatchSize: 100
+      BattleMetricsSummaryRefresh__NormalOnlineLaneBatchSize: 400
+      BattleMetricsSummaryRefresh__SlowOfflineLaneBatchSize: 500
+      BattleMetricsSummaryRefresh__VeryStaleOfflineLaneBatchSize: 500
       BattleMetricsSummaryRefresh__RefreshCurrentPlayers: "false"
       BattleMetricsSummaryRefresh__RefreshMapMetadata: "false"
       MapMetadataRefresh__Enabled: "true"
