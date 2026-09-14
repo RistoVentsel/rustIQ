@@ -574,13 +574,16 @@ select {
   display: grid;
   gap: 8px;
   width: 100%;
+  min-width: 0;
   padding-top: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
 .server-list-table__header,
 .server-list-card {
   display: grid;
-  grid-template-columns: 62px 52px minmax(170px, 1fr) minmax(76px, 0.28fr) minmax(112px, 0.32fr) minmax(66px, 0.22fr) minmax(84px, 0.28fr) minmax(84px, 0.28fr) 88px;
+  grid-template-columns: 62px 52px minmax(170px, 1fr) minmax(76px, 0.28fr) minmax(112px, 0.32fr) minmax(66px, 0.22fr) minmax(84px, 0.28fr) minmax(84px, 0.28fr) 96px;
   column-gap: 12px;
   row-gap: 8px;
   align-items: center;
@@ -756,6 +759,7 @@ select {
 
 .server-list-card__cell--location {
   min-width: 0;
+  overflow: visible;
 }
 
 .server-list-card__cell--players {
@@ -2290,11 +2294,11 @@ select {
 
 .server-location {
   position: relative;
-  display: inline-flex;
+  display: flex;
   gap: 6px;
   align-items: center;
-  min-width: 82px;
-  min-height: 30px;
+  width: 96px;
+  height: 30px;
   padding: 4px 22px 4px 6px;
   border: 1px solid var(--location-border);
   border-radius: 999px;
@@ -2330,6 +2334,24 @@ select {
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.04em;
+}
+
+/* Inside the list pill the badge never grows the pill: it fills the space the
+   flag leaves over and clips anything longer than a country code. */
+.server-location .server-location__initials {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 22px;
+  line-height: 22px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: center;
+  text-overflow: ellipsis;
+}
+
+.server-location .server-location__flag {
+  flex: 0 0 auto;
 }
 
 .server-location__flag {

@@ -68,6 +68,9 @@ export function ServerListCard({
   const flagSrc = countryCode && /^[a-z]{2}$/.test(countryCode)
     ? `https://flagcdn.com/w40/${countryCode}.png`
     : null
+  // The pill is a fixed-width cell, so the badge carries the short code only and
+  // the spelled-out country stays in the label and tooltip.
+  const countryBadge = server.country?.trim().toUpperCase() || '--'
 
   return (
     <article className={isOffline ? 'server-list-card server-list-card--offline' : 'server-list-card'}>
@@ -136,8 +139,8 @@ export function ServerListCard({
       <div className="server-list-card__cell">{formatRelativeTimestamp(server.lastWipeAtUtc, nowMs, language)}</div>
       <div className="server-list-card__cell">{formatRelativeTimestamp(server.nextWipeAtUtc, nowMs, language)}</div>
       <div className="server-list-card__cell server-list-card__cell--location">
-        <span className="server-location" aria-label={copy.location(country)}>
-          <span className="server-location__initials">{country}</span>
+        <span className="server-location" aria-label={copy.location(country)} title={country}>
+          <span className="server-location__initials">{countryBadge}</span>
           {flagSrc ? (
             <img className="server-location__flag" src={flagSrc} alt="" loading="lazy" />
           ) : (
