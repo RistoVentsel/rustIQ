@@ -86,7 +86,7 @@ public sealed class SteamWebApiServerDiscoveryClientTests
         // Steam discovery replaced BattleMetrics, which used to be the only thing that set this.
         // Without reading the tags here every discovered server would sit at Unknown.
         Assert.Equal(RustServerType.Modded, servers[0].ServerType);
-        Assert.Equal(RustServerType.Community, servers[1].ServerType);
+        Assert.Equal(RustServerType.Official, servers[1].ServerType);
     }
 
     [Fact]

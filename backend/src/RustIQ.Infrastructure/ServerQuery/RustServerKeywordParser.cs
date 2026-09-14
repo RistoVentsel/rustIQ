@@ -9,6 +9,7 @@ public static class RustServerKeywordParser
     // a modded Oxide server sends the single token "^o^z", so the tags are scanned as flags.
     public const char BrowserTagPrefix = '^';
     public const char ModdedBrowserTag = 'z';
+    public const char VanillaBrowserTag = 'v';
 
     private const string BornPrefix = "born";
     private const string CurrentPlayersPrefix = "cp";
