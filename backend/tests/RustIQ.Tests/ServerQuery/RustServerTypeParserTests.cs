@@ -18,8 +18,18 @@ public sealed class RustServerTypeParserTests
     private const string VanillaKeywords =
         "mp250,cp89,ptrak,qp0,$ruk1,v2633,^w,^v,EU,^t,born1789048903,gmrust,cs163794,ts16";
 
+    // Tagged vanilla and Oxide at once. Servers really do ship this pair, and it is the pair RustIQ
+    // reads as the vanilla tag being false.
     private const string OxideVanillaKeywords =
         "mp150,cp31,ptrak,qp0,$r?,v2633,^w,^v,EU,^t,born1789045019,gmrust,cs163794,ts16,^o,rustmaps";
+
+    // The keywords "666 RUST /DLYA NOVICHKOV /ROSSIYA 15.09" was sending when it turned up in the
+    // Official list. Note "^o" alone rather than the "^o^z" its sibling servers send.
+    private const string LyingVanillaKeywords =
+        "mp650,cp507,ptrak,qp0,$r?,v2633,^m,^v,EU,born1789462690,gmrust,cs163794,ts16,^o";
+
+    private const string CarbonVanillaKeywords =
+        "mp650,cp341,ptrak,qp0,$r?,v2633,^m,^v,^y,EU,born1789462690,gmrust,cs163794,ts16";
 
     // Facepunch's Softcore, Hardcore and Primitive servers send no vanilla tag at all.
     private const string FacepunchSoftcoreKeywords =
@@ -45,14 +55,31 @@ public sealed class RustServerTypeParserTests
             RustServerTypeParser.GetServerType("Rustoria.co - EU Main", VanillaKeywords));
     }
 
-    [Fact]
-    public void GetServerType_KeepsAVanillaServerOfficialWhenItRunsAPluginFramework()
+    [Theory]
+    [InlineData("Rustopia.gg - EU Large", OxideVanillaKeywords)]
+    [InlineData("666 RUST /ДЛЯ НОВИЧКОВ /РОССИЯ 15.09", LyingVanillaKeywords)]
+    [InlineData("STEEL RUST /ДЛЯ НОВИЧКОВ /КАЗАНЬ", CarbonVanillaKeywords)]
+    [InlineData("Some Server", "mp200,cp10,monthly,vanilla,oxide,gmrust")]
+    [InlineData("Some Server", "mp200,cp10,monthly,vanilla,umod,gmrust")]
+    public void GetServerType_DoesNotTrustTheVanillaTagFromAServerRunningAPluginFramework(
+        string name,
+        string keywords)
     {
-        // "^o" is Oxide and "^y" is Carbon. Both only say a plugin framework is installed, which
-        // plenty of vanilla servers run, so neither downgrades a server that tagged itself vanilla.
+        // A server that really runs the game as shipped has no plugin framework to declare, so "^v"
+        // next to Oxide or Carbon is the tag being false. "666 RUST" is the server this rule was
+        // written for: it sends the pair while its own sibling servers send "^o^z".
+        Assert.Equal(
+            RustServerType.Community,
+            RustServerTypeParser.GetServerType(name, keywords));
+    }
+
+    [Fact]
+    public void GetServerType_KeepsFacepunchOfficialEvenAlongsideAPluginFrameworkTag()
+    {
+        // The name is the only thing marking a server Facepunch runs, so it is read before the tags.
         Assert.Equal(
             RustServerType.Official,
-            RustServerTypeParser.GetServerType("Rustopia.gg - EU Large", OxideVanillaKeywords));
+            RustServerTypeParser.GetServerType("[EU] Facepunch 16", OxideVanillaKeywords));
     }
 
     [Fact]

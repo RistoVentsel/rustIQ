@@ -10,6 +10,8 @@ public static class RustServerKeywordParser
     public const char BrowserTagPrefix = '^';
     public const char ModdedBrowserTag = 'z';
     public const char VanillaBrowserTag = 'v';
+    public const char OxideBrowserTag = 'o';
+    public const char CarbonBrowserTag = 'y';
 
     private const string BornPrefix = "born";
     private const string CurrentPlayersPrefix = "cp";
