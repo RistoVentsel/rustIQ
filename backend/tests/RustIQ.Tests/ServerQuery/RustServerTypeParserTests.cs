@@ -5,8 +5,8 @@ namespace RustIQ.Tests.ServerQuery;
 
 public sealed class RustServerTypeParserTests
 {
-    // Every keyword string below was read off a live Rust server, so the tag spellings are the ones
-    // the game actually sends rather than the ones the wiki documents.
+    // Every keyword string below was read off the live Facepunch server list, so the tag spellings
+    // are the ones the game actually sends rather than the ones the wiki documents.
     private const string ModdedKeywords =
         "mp200,cp61,ptrak,qp0,$r?,v2633,^b,^o^z,NA,^t,born1789048903,gmrust,cs163794,ts16";
 
@@ -15,36 +15,27 @@ public sealed class RustServerTypeParserTests
     private const string CommunityKeywords =
         "mp150,cp1,ptrak,qp0,$r?,v2633,born1789347129,gmrust,cs163794,ts8,^o";
 
-    private const string VanillaKeywords =
-        "mp250,cp89,ptrak,qp0,$ruk1,v2633,^w,^v,EU,^t,born1789048903,gmrust,cs163794,ts16";
+    // "Intoxicated ZA Vanilla 3 - 03 Sep - Full wipe", tagged vanilla and running no framework.
+    private const string CommunityVanillaKeywords =
+        "mp150,cp26,ptrak,qp0,$raf,v2633,^m,^v,born1788458331,gmrust,cs162929,ts8";
 
-    // Tagged vanilla and Oxide at once. Servers really do ship this pair, and it is the pair RustIQ
-    // reads as the vanilla tag being false.
-    private const string OxideVanillaKeywords =
-        "mp150,cp31,ptrak,qp0,$r?,v2633,^w,^v,EU,^t,born1789045019,gmrust,cs163794,ts16,^o,rustmaps";
+    // "[EU] Facepunch 15".
+    private const string FacepunchKeywords =
+        "mp300,cp214,ptrak,qp0,$r?,v2633,^m,^v,^t,born1788457930,gmrust,cs163794,ts8";
 
-    // The keywords "666 RUST /DLYA NOVICHKOV /ROSSIYA 15.09" was sending when it turned up in the
-    // Official list. Note "^o" alone rather than the "^o^z" its sibling servers send.
-    private const string LyingVanillaKeywords =
-        "mp650,cp507,ptrak,qp0,$r?,v2633,^m,^v,EU,born1789462690,gmrust,cs163794,ts16,^o";
-
-    private const string CarbonVanillaKeywords =
-        "mp650,cp341,ptrak,qp0,$r?,v2633,^m,^v,^y,EU,born1789462690,gmrust,cs163794,ts16";
-
-    // "Magic Rust - Long | Классика x1", tagged vanilla and declaring no framework, but publishing a
-    // "jp" join queue count that Rust never writes.
-    private const string JoinQueueVanillaKeywords =
-        "mp300,cp179,ptrak,jp7,qp0,$r?,v2633,^m,^v,EU,born1788457667,gmrust,cs163794,ts150";
-
-    // What the listings impersonating Rustafied, Rustoria, Atlas, Bestrust and RustForNoobs.com
-    // answer with: not one caret tag, the vanilla claim spelled out by hand, and a "cp" nowhere near
-    // the players actually on the server.
-    private const string ImpersonatedVanillaKeywords =
-        "mp100,cp80,ptrak,qp0,v2633,monthly,official,tutorial,vanilla,hd4c17cf0,stok,born1789505589,gmrust";
-
-    // Facepunch's Softcore, Hardcore and Primitive servers send no vanilla tag at all.
+    // "[EA] Softcore 1". Facepunch's Softcore, Hardcore and Primitive servers send no vanilla tag.
     private const string FacepunchSoftcoreKeywords =
-        "mp400,cp80,ptrak,qp0,$r?,v2633,^m,^t,born1788457305,gmsoftcore,cs163794,ts4";
+        "mp350,cp152,ptrak,qp0,$r?,v2633,^m,^t,born1788457267,gmsoftcore,cs163794,ts4";
+
+    // What the listings on 34.185.214.166 answer with under the names of Rustafied, Rustoria, Atlas,
+    // Bestrust - and "[EU] Facepunch 1". Not one caret tag, every claim spelled out by hand, none of
+    // the bookkeeping the game writes, and a "cp" nowhere near the players actually on the server.
+    private const string ImpersonatedKeywords =
+        "mp100,cp53,ptrak,qp0,v2633,monthly,official,tutorial,vanilla,h1d09a7a0,stok,born1789530758,gmrust";
+
+    // What answers as "[KR] Facepunch 1" from a Google Cloud address in Korea, with nobody on it.
+    private const string CarbonFacepunchKeywords =
+        "mp100,cp0,ptrak,qp0,$r?,v2633,^y,^m,^v,^t,born1788535091,gmrust,cs163794,ts8";
 
     [Fact]
     public void GetServerType_ReadsTheModdedTagEvenWhenRustRunsItIntoTheOxideTag()
@@ -57,59 +48,31 @@ public sealed class RustServerTypeParserTests
     }
 
     [Fact]
-    public void GetServerType_TreatsTheVanillaTagAsOfficial()
+    public void GetServerType_ReadsTheSpelledOutModdedTag()
     {
-        // This is the grouping BattleMetrics reported as rust_type "official" and the one RustIQ has
-        // always shown: a server declaring it runs the game as shipped.
         Assert.Equal(
-            RustServerType.Official,
-            RustServerTypeParser.GetServerType("Rustoria.co - EU Main", VanillaKeywords));
+            RustServerType.Modded,
+            RustServerTypeParser.GetServerType("Some Server", "mp200,cp10,modded,gmrust"));
     }
 
     [Theory]
-    [InlineData("Rustopia.gg - EU Large", OxideVanillaKeywords)]
-    [InlineData("666 RUST /ДЛЯ НОВИЧКОВ /РОССИЯ 15.09", LyingVanillaKeywords)]
-    [InlineData("STEEL RUST /ДЛЯ НОВИЧКОВ /КАЗАНЬ", CarbonVanillaKeywords)]
-    [InlineData("Some Server", "mp200,cp10,^v,oxide,gmrust")]
-    [InlineData("Some Server", "mp200,cp10,^v,umod,gmrust")]
-    [InlineData("Magic Rust — Long | Классика x1 | Русский", JoinQueueVanillaKeywords)]
-    public void GetServerType_DoesNotTrustTheVanillaTagFromAServerRunningPlugins(
-        string name,
-        string keywords)
+    [InlineData("Intoxicated ZA Vanilla 3 - 03 Sep - Full wipe", CommunityVanillaKeywords)]
+    [InlineData("Rustoria.co - EU Main", "mp250,cp89,ptrak,qp0,$ruk1,v2633,^w,^v,EU,^t,born1789048903,gmrust,cs163794,ts16")]
+    [InlineData("Some Server", "mp200,cp10,^v,gmrust,cs163794,ts8")]
+    [InlineData("Some Server", "mp200,cp10,vanilla,gmrust,cs163794,ts8")]
+    public void GetServerType_DoesNotTreatTheVanillaTagAsOfficial(string name, string keywords)
     {
-        // A server that really runs the game as shipped has no framework to declare and no join queue
-        // to count, so "^v" next to either is the tag being false. "666 RUST" and Magic Rust are the
-        // servers these rules were written for: both send it while their own sibling servers send
-        // "^o^z".
+        // "^v" says the server runs the game as shipped, which is a claim about how it plays and not
+        // about who runs it. The Rust browser files every community server carrying it - 394 of them
+        // in the live list - under Community, and reading it as Official is what put Intoxicated,
+        // Rustafied, Rustoria and Rusty Moose in RustIQ's Official list.
         Assert.Equal(
             RustServerType.Community,
             RustServerTypeParser.GetServerType(name, keywords));
     }
 
     [Fact]
-    public void GetServerType_KeepsFacepunchOfficialEvenAlongsideAPluginTag()
-    {
-        // The name is the only thing marking a server Facepunch runs, so it is read before the tags.
-        Assert.Equal(
-            RustServerType.Official,
-            RustServerTypeParser.GetServerType("[EU] Facepunch 16", OxideVanillaKeywords));
-    }
-
-    [Theory]
-    [InlineData("Rustoria.co - EU Long | JUST WIPED 16.09", ImpersonatedVanillaKeywords)]
-    [InlineData("Some Server", "mp200,cp10,monthly,vanilla,gmrust")]
-    public void GetServerType_DoesNotPromoteOnTheSpelledOutVanillaTag(string name, string keywords)
-    {
-        // Rust writes "^v" itself; the word is typed into sv_tags by hand, and in the live list it is
-        // typed by servers copying somebody else's name. No server sends the word next to the caret,
-        // so refusing the word on its own costs nothing.
-        Assert.Equal(
-            RustServerType.Community,
-            RustServerTypeParser.GetServerType(name, keywords));
-    }
-
-    [Fact]
-    public void GetServerType_FallsBackToCommunityForAServerThatClaimsNeither()
+    public void GetServerType_FallsBackToCommunityForAServerThatClaimsNothing()
     {
         Assert.Equal(
             RustServerType.Community,
@@ -117,17 +80,19 @@ public sealed class RustServerTypeParserTests
     }
 
     [Theory]
-    [InlineData("[EU] Facepunch Softcore 1")]
-    [InlineData("[EU East] Facepunch Primitive 1")]
-    [InlineData("[US East] Facepunch Hardcore 1")]
-    [InlineData("Facepunch Staging Procgen 4k")]
-    public void GetServerType_RecognisesFacepunchsOwnServersThatSendNoVanillaTag(string name)
+    [InlineData("[EU] Facepunch 15", FacepunchKeywords)]
+    [InlineData("[EU East] Facepunch Premium 2", FacepunchKeywords)]
+    [InlineData("Facepunch Staging Procgen 4k", FacepunchKeywords)]
+    [InlineData("[EU] Facepunch Softcore 1", FacepunchSoftcoreKeywords)]
+    [InlineData("[EU East] Facepunch Primitive 1", FacepunchSoftcoreKeywords)]
+    [InlineData("[US East] Facepunch Hardcore 1", FacepunchSoftcoreKeywords)]
+    public void GetServerType_RecognisesTheServersFacepunchRuns(string name, string keywords)
     {
-        // Rust never advertises official in its tags, and these game modes are not tagged vanilla
-        // either, so the naming Facepunch uses for every server it runs is all there is to go on.
+        // Nothing a Rust server publishes says who runs it, so the naming Facepunch uses for every
+        // server it runs is all there is to go on.
         Assert.Equal(
             RustServerType.Official,
-            RustServerTypeParser.GetServerType(name, FacepunchSoftcoreKeywords));
+            RustServerTypeParser.GetServerType(name, keywords));
     }
 
     [Fact]
@@ -138,6 +103,35 @@ public sealed class RustServerTypeParserTests
         Assert.Equal(
             RustServerType.Official,
             RustServerTypeParser.GetServerType("[EA] Softcore 1", FacepunchSoftcoreKeywords));
+    }
+
+    [Theory]
+    [InlineData("[EU] Facepunch 1")]
+    [InlineData("[EU] Facepunch Softcore 2")]
+    public void GetServerType_DoesNotTakeTheFacepunchNameFromAListingTheGameDidNotWrite(string name)
+    {
+        // The name is copied, but the keyword string is typed rather than published: no content
+        // revision, no team size and no relay code, which is what separates the whole Google Cloud
+        // block these sit in from the 11,405 servers that answer for themselves.
+        Assert.Equal(
+            RustServerType.Community,
+            RustServerTypeParser.GetServerType(name, ImpersonatedKeywords));
+    }
+
+    [Theory]
+    [InlineData(CarbonFacepunchKeywords)]
+    [InlineData("mp300,cp10,^v,^o,gmrust,cs163794,ts8")]
+    [InlineData("mp300,cp10,^v,oxide,gmrust,cs163794,ts8")]
+    [InlineData("mp300,cp10,^v,umod,gmrust,cs163794,ts8")]
+    [InlineData("mp300,cp10,jp7,^v,gmrust,cs163794,ts8")]
+    public void GetServerType_DoesNotTakeTheFacepunchNameFromAServerRunningPlugins(string keywords)
+    {
+        // A server Facepunch runs has no framework to declare and no join queue to count, so either
+        // next to the name is the name being borrowed - as it is by the Carbon server answering as
+        // "[KR] Facepunch 1" from a Google Cloud address with nobody on it.
+        Assert.Equal(
+            RustServerType.Community,
+            RustServerTypeParser.GetServerType("[KR] Facepunch 1", keywords));
     }
 
     [Theory]
@@ -160,20 +154,16 @@ public sealed class RustServerTypeParserTests
             RustServerTypeParser.GetServerType("[EU] Facepunch 15", ModdedKeywords));
     }
 
-    [Fact]
-    public void GetServerType_KeepsAModdedServerModdedEvenWhenItAlsoTagsItselfVanilla()
+    [Theory]
+    [InlineData("mp300,cp10,^m,gmrust,cs163794")]
+    [InlineData("mp300,cp10,^m,gmrust,ts8")]
+    [InlineData("mp300,cp10,$r?,^m,gmrust")]
+    public void GetServerType_TakesAnyOneOfTheTokensRustWritesAsProofTheGameAnswered(string keywords)
     {
+        // Three tokens rather than one because any single one of them is Facepunch's to stop sending.
         Assert.Equal(
-            RustServerType.Modded,
-            RustServerTypeParser.GetServerType("Some Server", "mp200,cp10,^v,^z,gmrust"));
-    }
-
-    [Fact]
-    public void GetServerType_ReadsTheSpelledOutModdedTag()
-    {
-        Assert.Equal(
-            RustServerType.Modded,
-            RustServerTypeParser.GetServerType("Some Server", "mp200,cp10,modded,gmrust"));
+            RustServerType.Official,
+            RustServerTypeParser.GetServerType("[EU] Facepunch 15", keywords));
     }
 
     [Theory]

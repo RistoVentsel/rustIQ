@@ -21,7 +21,7 @@ public sealed class FacepunchServerDirectoryClientTests
           "map": "Rustafied Custom Map",
           "players": 707,
           "maxplayers": 600,
-          "tags": "mp600,cp583,ptrak,qp117,v2633,^w,^v,OC,born1789361918,gmrust",
+          "tags": "mp600,cp583,ptrak,qp117,$rau1,v2633,^w,^v,OC,born1789361918,gmrust,cs163794,ts8",
           "ip": "103.193.80.196",
           "port": 28015,
           "query_port": 28018,
@@ -35,7 +35,7 @@ public sealed class FacepunchServerDirectoryClientTests
           "map": "Procedural Map",
           "players": 172,
           "maxplayers": 300,
-          "tags": "mp300,cp172,qp0,v2633,^m,^v,born1788457930,gmrust",
+          "tags": "mp300,cp172,ptrak,qp0,$r?,v2633,^m,^v,^t,born1788457930,gmrust,cs163794,ts8",
           "ip": "79.137.98.17",
           "port": 28015,
           "query_port": 28016,
@@ -89,8 +89,8 @@ public sealed class FacepunchServerDirectoryClientTests
 
         var servers = await client.GetRustServersAsync(15000, CancellationToken.None);
 
-        // Both are Official: the first tagged itself vanilla, and the second is one Facepunch runs.
-        Assert.Equal(RustServerType.Official, servers[0].ServerType);
+        // Both tag themselves vanilla, and only the second is one Facepunch runs.
+        Assert.Equal(RustServerType.Community, servers[0].ServerType);
         Assert.Equal(RustServerType.Official, servers[1].ServerType);
     }
 

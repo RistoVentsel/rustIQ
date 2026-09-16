@@ -8,40 +8,29 @@ namespace RustIQ.Infrastructure.ServerQuery;
 /// advertises about itself.
 /// </summary>
 /// <remarks>
-/// BattleMetrics used to hand this over as details.rust_type, but discovery runs off Steam and A2S
-/// now, so the type has to come out of the keyword string every Rust server publishes.
+/// Official means a server Facepunch runs, which is what the Official tab of the Rust server browser
+/// lists and what BattleMetrics reported as details.rust_type "official" before it closed its API to
+/// anonymous callers. It is not a claim a server can make about itself, and nothing in this file
+/// treats it as one.
 ///
-/// The categories follow what BattleMetrics reported, because that is what RustIQ has always shown:
-/// the modded tag ("^z") is Modded, and the vanilla tag ("^v") - a server declaring it runs the game
-/// as shipped - is Official.
+/// There is no published flag to read. Facepunch's own list at
+/// https://api.facepunch.com/api/public/serverlist - the list the Rust client seeds its browser from,
+/// and the one RustIQ discovers servers through - carries hostname, map, players, tags, address and
+/// location, and nothing else; the wiki's tag table at
+/// https://wiki.facepunch.com/rust/server-browser-tags documents no official tag, because the caret
+/// tags are written by the server and an official tag would be the first thing an impostor typed;
+/// Steam's ISteamApps/GetServersAtAddress shows Facepunch's servers logging in anonymously like
+/// everyone else's; and the servers answer no differently over A2S. The word "official" does turn up
+/// in sv_tags on 34 servers in the live list, and 32 of them are impersonators.
 ///
-/// Only the caret spelling promotes. Rust writes the caret tags itself; the spelled out "vanilla"
-/// is typed into sv_tags by hand, and in the live public list it is typed almost exclusively by
-/// servers impersonating somebody else. Of the 81 servers spelling it out, 72 are listings copying
-/// the names of Rustafied, Rustoria, Rusty Moose, Atlas, Bestrust and RustForNoobs.com from a
-/// handful of Google Cloud addresses, answering with no caret tag at all and a made up player count,
-/// and the other 9 are the MIRAGE RUST 2x servers, which carry the modded tag anyway. Not one server
-/// in the list spells the word out next to the "^v" the game writes, so nothing honest is lost.
+/// So the only thing that marks a server as Facepunch's is the naming they use for every server they
+/// run, and the rules below are about not taking that name at face value.
 ///
-/// The vanilla tag is then only taken at face value from a server running no plugins. Nothing stops
-/// an admin writing "^v" over a server that plays nothing like vanilla, and the ones that do give
-/// themselves away elsewhere in the keyword string:
-///
-///   - by advertising Oxide ("^o") or Carbon ("^y") alongside it, the way "666 RUST /ДЛЯ НОВИЧКОВ
-///     /РОССИЯ" sends "^m,^v,...,^o" while its own sibling servers send "^o^z";
-///   - by publishing a "jp" join queue count, which Rust does not write. None of the 125 Facepunch
-///     servers in the list sends one, and of the 158 servers that do, 156 also declare Oxide or
-///     Carbon. The two that do not are Magic Rust's "Классика x1" pair, whose three dozen sibling
-///     servers all send "^o^z".
-///
-/// This does demote the handful of genuinely vanilla servers that run a framework for admin tooling
-/// - Rustopia.gg, Rusticated.com, Reddit.com/r/PlayRust and RustSpain.com among them - to Community.
-///
-/// Facepunch's own servers are Official too, and they are the reason the name still matters: the
-/// Softcore, Hardcore and Primitive ones send no vanilla tag at all, so nothing but the name marks
-/// them. Rust publishes no official tag - the game client gets that list from Facepunch - and every
-/// one of those servers is named "[Region] Facepunch ...", "Facepunch ..." or, for the single odd
-/// one out, "[Region] Softcore 1".
+/// The vanilla tag is deliberately not part of this. A server tagging itself "^v" is telling the
+/// browser it runs the game as shipped, which is a claim about how it plays and not about who runs
+/// it: in the live list 394 servers carry it without Facepunch having anything to do with them -
+/// Rustafied, Rustoria, Rusty Moose, Intoxicated and the rest - and the Rust browser files every one
+/// of them under Community. Reading "^v" as Official is what put them in RustIQ's Official list.
 /// </remarks>
 public static class RustServerTypeParser
 {
@@ -61,30 +50,12 @@ public static class RustServerTypeParser
 
     public static RustServerType GetServerType(string? name, string? keywords)
     {
-        var isModded = HasTag(keywords, RustServerKeywordParser.ModdedBrowserTag, ModdedWordTag);
-
-        if (isModded)
+        if (HasTag(keywords, RustServerKeywordParser.ModdedBrowserTag, ModdedWordTag))
         {
             return RustServerType.Modded;
         }
 
-        // Checked ahead of the tags so that the servers Facepunch runs are read off the name alone.
-        if (name is not null && OfficialNamePattern.IsMatch(name))
-        {
-            return RustServerType.Official;
-        }
-
-        var isVanilla = RustServerKeywordParser.HasBrowserTag(
-            keywords,
-            RustServerKeywordParser.VanillaBrowserTag);
-
-        var runsPlugins =
-            HasTag(keywords, RustServerKeywordParser.OxideBrowserTag, OxideWordTag)
-            || RustServerKeywordParser.HasWordTag(keywords, UmodWordTag)
-            || HasTag(keywords, RustServerKeywordParser.CarbonBrowserTag, CarbonWordTag)
-            || RustServerKeywordParser.HasJoinQueueCount(keywords);
-
-        if (isVanilla && !runsPlugins)
+        if (IsFacepunchOperated(name, keywords))
         {
             return RustServerType.Official;
         }
@@ -94,6 +65,35 @@ public static class RustServerTypeParser
         return RustServerKeywordParser.LooksLikeRustKeywords(keywords)
             ? RustServerType.Community
             : RustServerType.Unknown;
+    }
+
+    /// <summary>
+    /// Tells whether the server is one Facepunch runs: named the way they name theirs, answering the
+    /// way the game answers, and running nothing on top of it.
+    /// </summary>
+    /// <remarks>
+    /// The name alone is not enough. Servers copying the names of the big communities also copy
+    /// "[EU] Facepunch 1" and "[EU] Facepunch Softcore 2", and a Google Cloud address in Korea
+    /// answers as "[KR] Facepunch 1" while declaring Carbon. The two corroborating checks cost
+    /// nothing against the real ones - all 122 genuine Facepunch servers in the live list pass both,
+    /// and the 3 impostors fail one or the other - and they are checks an impostor cannot satisfy
+    /// while still being what it claims: the bookkeeping is written by the game rather than the
+    /// admin, and a server Facepunch runs has no framework to declare and no join queue to count.
+    /// </remarks>
+    private static bool IsFacepunchOperated(string? name, string? keywords)
+    {
+        return name is not null
+            && OfficialNamePattern.IsMatch(name)
+            && RustServerKeywordParser.HasGameWrittenBookkeeping(keywords)
+            && !RunsPlugins(keywords);
+    }
+
+    private static bool RunsPlugins(string? keywords)
+    {
+        return HasTag(keywords, RustServerKeywordParser.OxideBrowserTag, OxideWordTag)
+            || RustServerKeywordParser.HasWordTag(keywords, UmodWordTag)
+            || HasTag(keywords, RustServerKeywordParser.CarbonBrowserTag, CarbonWordTag)
+            || RustServerKeywordParser.HasJoinQueueCount(keywords);
     }
 
     /// <summary>

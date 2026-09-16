@@ -14,11 +14,14 @@ public static class RustServerKeywordParser
     public const char CarbonBrowserTag = 'y';
 
     private const string BornPrefix = "born";
+    private const string ContentRevisionPrefix = "cs";
     private const string CurrentPlayersPrefix = "cp";
     private const string GameModePrefix = "gm";
     private const string JoinQueuePrefix = "jp";
     private const string MaxPlayersPrefix = "mp";
     private const string QueuePlayersPrefix = "qp";
+    private const string RelayPrefix = "$r";
+    private const string TeamSizePrefix = "ts";
     private const char WeeklyWipeTag = 'w';
     private const char BiweeklyWipeTag = 'b';
     private const char MonthlyWipeTag = 'm';
@@ -158,6 +161,37 @@ public static class RustServerKeywordParser
     public static bool HasJoinQueueCount(string? keywords)
     {
         return GetNonNegativeInt(keywords, JoinQueuePrefix) is not null;
+    }
+
+    /// <summary>
+    /// Tells whether Rust itself wrote the keyword string, rather than a listing that typed one out
+    /// to look like a server.
+    /// </summary>
+    /// <remarks>
+    /// Rust fills the keyword string with bookkeeping the admin never touches: a content revision
+    /// ("cs163794"), a team size ("ts8") and a relay code ("$r?", "$rfra"). 11,405 of the 11,521
+    /// servers in the public list send at least one of the three.
+    ///
+    /// The 116 that send none are not real listings. They sit in blocks of a dozen on a handful of
+    /// Google Cloud addresses, all answering with the same hand typed word tags ("monthly,official,
+    /// tutorial,vanilla"), a made up player count and the names of Rustafied, Rustoria, Atlas,
+    /// Bestrust and RustForNoobs.com - and, on one of those addresses, "[EU] Facepunch 1" and
+    /// "[EU] Facepunch Softcore 2" alongside them.
+    ///
+    /// Three tokens rather than one because any single one of them is Facepunch's to stop sending.
+    /// </remarks>
+    public static bool HasGameWrittenBookkeeping(string? keywords)
+    {
+        foreach (var keyword in EnumerateKeywords(keywords))
+        {
+            if (keyword.StartsWith(RelayPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return GetNonNegativeInt(keywords, ContentRevisionPrefix) is not null
+            || GetNonNegativeInt(keywords, TeamSizePrefix) is not null;
     }
 
     /// <summary>
