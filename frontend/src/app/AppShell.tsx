@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 
+import { FeedbackBanner, feedbackFormUrl } from '../components/FeedbackBanner'
 import { languageOptions, type Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
 import { useDocumentMeta } from '../seo/useDocumentMeta'
@@ -36,6 +37,7 @@ const appShellCopy: Record<Language, {
   privacyPolicy: string
   about: string
   contact: string
+  feedback: string
   disclaimer: string
 }> = {
   en: {
@@ -55,6 +57,7 @@ const appShellCopy: Record<Language, {
     privacyPolicy: 'Privacy Policy',
     about: 'About',
     contact: 'Contact',
+    feedback: 'Feedback survey',
     disclaimer: 'rustIQ is an independent project and is not affiliated with or endorsed by Facepunch Studios. Rust is a trademark of Facepunch Studios.',
   },
   ru: {
@@ -74,6 +77,7 @@ const appShellCopy: Record<Language, {
     privacyPolicy: 'Политика конфиденциальности',
     about: 'О проекте',
     contact: 'Контакты',
+    feedback: 'Опрос',
     disclaimer: 'rustIQ — независимый проект, не аффилированный с Facepunch Studios и не одобренный ими. Rust — торговая марка Facepunch Studios.',
   },
 }
@@ -169,6 +173,7 @@ export function AppShell() {
       </header>
 
       <main className={isServerRoute ? 'app-main app-main--wide' : 'app-main'}>
+        <FeedbackBanner />
         <Outlet />
       </main>
 
@@ -178,6 +183,7 @@ export function AppShell() {
           <Link to="/contact">{copy.contact}</Link>
           <Link to="/rust-knowledge">{copy.nav.knowledge.label}</Link>
           <Link to="/privacy">{copy.privacyPolicy}</Link>
+          <a href={feedbackFormUrl} target="_blank" rel="noreferrer">{copy.feedback}</a>
         </nav>
         <p>
           {copy.sponsorInquiries}:{' '}
