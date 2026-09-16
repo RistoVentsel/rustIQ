@@ -89,8 +89,8 @@ public sealed class FacepunchServerDirectoryClientTests
 
         var servers = await client.GetRustServersAsync(15000, CancellationToken.None);
 
-        // Both tag themselves vanilla, and only the second is one Facepunch runs.
-        Assert.Equal(RustServerType.Community, servers[0].ServerType);
+        // Both are Official: the first is Rustafied's, the second is one Facepunch runs.
+        Assert.Equal(RustServerType.Official, servers[0].ServerType);
         Assert.Equal(RustServerType.Official, servers[1].ServerType);
     }
 

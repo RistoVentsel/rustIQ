@@ -33,6 +33,15 @@ public sealed class RustServerTypeParserTests
     private const string ImpersonatedKeywords =
         "mp100,cp53,ptrak,qp0,v2633,monthly,official,tutorial,vanilla,h1d09a7a0,stok,born1789530758,gmrust";
 
+    // "Rustafied.com - EU Main": tagged vanilla, running no framework.
+    private const string RustafiedKeywords =
+        "mp250,cp89,ptrak,qp0,$ruk1,v2633,^w,^v,EU,^t,born1789048903,gmrust,cs163794,ts16";
+
+    // "Rustopia.gg - EU Large": the same, next to the Oxide tag. Rustopia, Rusticated,
+    // Reddit.com/r/PlayRust and RustSpain all run a framework for admin tooling.
+    private const string OxideOperatorKeywords =
+        "mp150,cp31,ptrak,qp0,$r?,v2633,^w,^v,EU,^t,born1789045019,gmrust,cs163794,ts16,^o,rustmaps";
+
     // What answers as "[KR] Facepunch 1" from a Google Cloud address in Korea, with nobody on it.
     private const string CarbonFacepunchKeywords =
         "mp100,cp0,ptrak,qp0,$r?,v2633,^y,^m,^v,^t,born1788535091,gmrust,cs163794,ts8";
@@ -57,15 +66,14 @@ public sealed class RustServerTypeParserTests
 
     [Theory]
     [InlineData("Intoxicated ZA Vanilla 3 - 03 Sep - Full wipe", CommunityVanillaKeywords)]
-    [InlineData("Rustoria.co - EU Main", "mp250,cp89,ptrak,qp0,$ruk1,v2633,^w,^v,EU,^t,born1789048903,gmrust,cs163794,ts16")]
+    [InlineData("EU|DK VANILLA | LOW UPKEEP | MONTHLY", CommunityVanillaKeywords)]
     [InlineData("Some Server", "mp200,cp10,^v,gmrust,cs163794,ts8")]
     [InlineData("Some Server", "mp200,cp10,vanilla,gmrust,cs163794,ts8")]
     public void GetServerType_DoesNotTreatTheVanillaTagAsOfficial(string name, string keywords)
     {
         // "^v" says the server runs the game as shipped, which is a claim about how it plays and not
-        // about who runs it. The Rust browser files every community server carrying it - 394 of them
-        // in the live list - under Community, and reading it as Official is what put Intoxicated,
-        // Rustafied, Rustoria and Rusty Moose in RustIQ's Official list.
+        // about who runs it, and 997 servers in the live list carry it without being anybody RustIQ
+        // lists as Official. Reading it as Official is what put Intoxicated in that list.
         Assert.Equal(
             RustServerType.Community,
             RustServerTypeParser.GetServerType(name, keywords));
@@ -132,6 +140,68 @@ public sealed class RustServerTypeParserTests
         Assert.Equal(
             RustServerType.Community,
             RustServerTypeParser.GetServerType("[KR] Facepunch 1", keywords));
+    }
+
+    [Theory]
+    [InlineData("Rustafied.com - EU Main", RustafiedKeywords)]
+    [InlineData("Rustoria.co - EU Mondays", RustafiedKeywords)]
+    [InlineData("Rusty Moose |US Monthly|", RustafiedKeywords)]
+    [InlineData("Reddit.com/r/PlayRust - EU Trio", RustafiedKeywords)]
+    [InlineData("RustSpain.com | EU Main", RustafiedKeywords)]
+    [InlineData("Rustopia.gg - EU Large", OxideOperatorKeywords)]
+    [InlineData("Rusticated.com - US Main", OxideOperatorKeywords)]
+    [InlineData("[EU] Rustoria.co - 2x Vanilla | No BP Wipes", OxideOperatorKeywords)]
+    [InlineData("[AU] Rusticated.com - Creative Sandbox | Build | Never Wipes", OxideOperatorKeywords)]
+    public void GetServerType_ListsTheEstablishedOperatorsAlongsideFacepunch(string name, string keywords)
+    {
+        // Unlike Facepunch, several of these run Oxide or Carbon for admin tooling on servers that
+        // otherwise play as shipped, so the framework check that guards the Facepunch name is not
+        // applied to theirs.
+        Assert.Equal(
+            RustServerType.Official,
+            RustServerTypeParser.GetServerType(name, keywords));
+    }
+
+    [Theory]
+    [InlineData("Rustafied.com - EU Main | JUST WIPED 16.09")]
+    [InlineData("Rustoria.co - EU Small")]
+    [InlineData("Rusty Moose |EU Biweekly|")]
+    [InlineData("RustSpain.com | EU Trio Mondays")]
+    public void GetServerType_DoesNotTakeAnOperatorNameFromAListingTheGameDidNotWrite(string name)
+    {
+        // The whole point of the bookkeeping check: these operators are the names the Google Cloud
+        // listing blocks copy, and copying the name is all those listings do.
+        Assert.Equal(
+            RustServerType.Community,
+            RustServerTypeParser.GetServerType(name, ImpersonatedKeywords));
+    }
+
+    [Theory]
+    [InlineData("Rustoriafun.co")]
+    [InlineData("OnlyRustaFied |PVE|X0.5|EVENT|NPC+|Bosses|XP|RP|NOkill|")]
+    [InlineData("Steady's Rustopia")]
+    [InlineData("Rusticated Rust")]
+    [InlineData("Moose Knuckle Solo/Duo/Trio,  08/28")]
+    [InlineData("[EU] Rustoria |x5||Events||VIP||wipe every month|")]
+    public void GetServerType_DoesNotPromoteAServerThatOnlyBorrowsAnOperatorsBrand(string name)
+    {
+        // Matched on the domain each operator puts in front of its own servers, so the brand on its
+        // own - which belongs to these people too - does not promote.
+        Assert.Equal(
+            RustServerType.Community,
+            RustServerTypeParser.GetServerType(name, RustafiedKeywords));
+    }
+
+    [Fact]
+    public void GetServerType_LeavesAnOperatorsOwnModdedServersUnderModded()
+    {
+        // Rustoria's 10x and Base Invaders, Rusticated's Creative and Bedwars. Somebody filtering for
+        // modded servers should still find them.
+        Assert.Equal(
+            RustServerType.Modded,
+            RustServerTypeParser.GetServerType(
+                "Rustoria.co 15/9 - 10X | No BPs | Kits | Shop -> JUST WIPED",
+                ModdedKeywords));
     }
 
     [Theory]
