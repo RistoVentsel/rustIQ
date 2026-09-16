@@ -16,6 +16,7 @@ public static class RustServerKeywordParser
     private const string BornPrefix = "born";
     private const string CurrentPlayersPrefix = "cp";
     private const string GameModePrefix = "gm";
+    private const string JoinQueuePrefix = "jp";
     private const string MaxPlayersPrefix = "mp";
     private const string QueuePlayersPrefix = "qp";
     private const char WeeklyWipeTag = 'w';
@@ -143,6 +144,20 @@ public static class RustServerKeywordParser
     {
         return EnumerateKeywords(keywords)
             .Any(keyword => keyword.Equals(wordTag, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Tells whether the keyword string carries a join queue count, for example "jp7".
+    /// </summary>
+    /// <remarks>
+    /// Rust publishes its own counts as "mp", "cp" and "qp" and writes no "jp" at all - none of the
+    /// 125 Facepunch servers in the public list sends one - so a server publishing it is running
+    /// something on top of the game. Across the list 156 of the 158 servers that send it also
+    /// declare Oxide or Carbon outright.
+    /// </remarks>
+    public static bool HasJoinQueueCount(string? keywords)
+    {
+        return GetNonNegativeInt(keywords, JoinQueuePrefix) is not null;
     }
 
     /// <summary>

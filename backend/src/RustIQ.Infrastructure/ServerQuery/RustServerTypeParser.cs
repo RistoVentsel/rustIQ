@@ -15,11 +15,25 @@ namespace RustIQ.Infrastructure.ServerQuery;
 /// the modded tag ("^z") is Modded, and the vanilla tag ("^v") - a server declaring it runs the game
 /// as shipped - is Official.
 ///
-/// The vanilla tag is only taken at face value from a server that runs no plugin framework. Nothing
-/// stops an admin writing "^v" over a server that plays nothing like vanilla, and the ones that do
-/// give themselves away by also advertising Oxide ("^o") or Carbon ("^y"): "666 RUST /ДЛЯ НОВИЧКОВ
-/// /РОССИЯ" sends "^m,^v,...,^o" while its own sibling servers send "^o^z". A vanilla server that
-/// really is vanilla has no framework to declare, so the pair is treated as the tag being false.
+/// Only the caret spelling promotes. Rust writes the caret tags itself; the spelled out "vanilla"
+/// is typed into sv_tags by hand, and in the live public list it is typed almost exclusively by
+/// servers impersonating somebody else. Of the 81 servers spelling it out, 72 are listings copying
+/// the names of Rustafied, Rustoria, Rusty Moose, Atlas, Bestrust and RustForNoobs.com from a
+/// handful of Google Cloud addresses, answering with no caret tag at all and a made up player count,
+/// and the other 9 are the MIRAGE RUST 2x servers, which carry the modded tag anyway. Not one server
+/// in the list spells the word out next to the "^v" the game writes, so nothing honest is lost.
+///
+/// The vanilla tag is then only taken at face value from a server running no plugins. Nothing stops
+/// an admin writing "^v" over a server that plays nothing like vanilla, and the ones that do give
+/// themselves away elsewhere in the keyword string:
+///
+///   - by advertising Oxide ("^o") or Carbon ("^y") alongside it, the way "666 RUST /ДЛЯ НОВИЧКОВ
+///     /РОССИЯ" sends "^m,^v,...,^o" while its own sibling servers send "^o^z";
+///   - by publishing a "jp" join queue count, which Rust does not write. None of the 125 Facepunch
+///     servers in the list sends one, and of the 158 servers that do, 156 also declare Oxide or
+///     Carbon. The two that do not are Magic Rust's "Классика x1" pair, whose three dozen sibling
+///     servers all send "^o^z".
+///
 /// This does demote the handful of genuinely vanilla servers that run a framework for admin tooling
 /// - Rustopia.gg, Rusticated.com, Reddit.com/r/PlayRust and RustSpain.com among them - to Community.
 ///
@@ -32,7 +46,6 @@ namespace RustIQ.Infrastructure.ServerQuery;
 public static class RustServerTypeParser
 {
     private const string ModdedWordTag = "modded";
-    private const string VanillaWordTag = "vanilla";
     private const string OxideWordTag = "oxide";
     private const string UmodWordTag = "umod";
     private const string CarbonWordTag = "carbon";
@@ -61,14 +74,17 @@ public static class RustServerTypeParser
             return RustServerType.Official;
         }
 
-        var isVanilla = HasTag(keywords, RustServerKeywordParser.VanillaBrowserTag, VanillaWordTag);
+        var isVanilla = RustServerKeywordParser.HasBrowserTag(
+            keywords,
+            RustServerKeywordParser.VanillaBrowserTag);
 
-        var runsPluginFramework =
+        var runsPlugins =
             HasTag(keywords, RustServerKeywordParser.OxideBrowserTag, OxideWordTag)
             || RustServerKeywordParser.HasWordTag(keywords, UmodWordTag)
-            || HasTag(keywords, RustServerKeywordParser.CarbonBrowserTag, CarbonWordTag);
+            || HasTag(keywords, RustServerKeywordParser.CarbonBrowserTag, CarbonWordTag)
+            || RustServerKeywordParser.HasJoinQueueCount(keywords);
 
-        if (isVanilla && !runsPluginFramework)
+        if (isVanilla && !runsPlugins)
         {
             return RustServerType.Official;
         }

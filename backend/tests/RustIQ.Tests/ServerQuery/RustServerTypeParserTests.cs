@@ -31,6 +31,17 @@ public sealed class RustServerTypeParserTests
     private const string CarbonVanillaKeywords =
         "mp650,cp341,ptrak,qp0,$r?,v2633,^m,^v,^y,EU,born1789462690,gmrust,cs163794,ts16";
 
+    // "Magic Rust - Long | Классика x1", tagged vanilla and declaring no framework, but publishing a
+    // "jp" join queue count that Rust never writes.
+    private const string JoinQueueVanillaKeywords =
+        "mp300,cp179,ptrak,jp7,qp0,$r?,v2633,^m,^v,EU,born1788457667,gmrust,cs163794,ts150";
+
+    // What the listings impersonating Rustafied, Rustoria, Atlas, Bestrust and RustForNoobs.com
+    // answer with: not one caret tag, the vanilla claim spelled out by hand, and a "cp" nowhere near
+    // the players actually on the server.
+    private const string ImpersonatedVanillaKeywords =
+        "mp100,cp80,ptrak,qp0,v2633,monthly,official,tutorial,vanilla,hd4c17cf0,stok,born1789505589,gmrust";
+
     // Facepunch's Softcore, Hardcore and Primitive servers send no vanilla tag at all.
     private const string FacepunchSoftcoreKeywords =
         "mp400,cp80,ptrak,qp0,$r?,v2633,^m,^t,born1788457305,gmsoftcore,cs163794,ts4";
@@ -59,22 +70,24 @@ public sealed class RustServerTypeParserTests
     [InlineData("Rustopia.gg - EU Large", OxideVanillaKeywords)]
     [InlineData("666 RUST /ДЛЯ НОВИЧКОВ /РОССИЯ 15.09", LyingVanillaKeywords)]
     [InlineData("STEEL RUST /ДЛЯ НОВИЧКОВ /КАЗАНЬ", CarbonVanillaKeywords)]
-    [InlineData("Some Server", "mp200,cp10,monthly,vanilla,oxide,gmrust")]
-    [InlineData("Some Server", "mp200,cp10,monthly,vanilla,umod,gmrust")]
-    public void GetServerType_DoesNotTrustTheVanillaTagFromAServerRunningAPluginFramework(
+    [InlineData("Some Server", "mp200,cp10,^v,oxide,gmrust")]
+    [InlineData("Some Server", "mp200,cp10,^v,umod,gmrust")]
+    [InlineData("Magic Rust — Long | Классика x1 | Русский", JoinQueueVanillaKeywords)]
+    public void GetServerType_DoesNotTrustTheVanillaTagFromAServerRunningPlugins(
         string name,
         string keywords)
     {
-        // A server that really runs the game as shipped has no plugin framework to declare, so "^v"
-        // next to Oxide or Carbon is the tag being false. "666 RUST" is the server this rule was
-        // written for: it sends the pair while its own sibling servers send "^o^z".
+        // A server that really runs the game as shipped has no framework to declare and no join queue
+        // to count, so "^v" next to either is the tag being false. "666 RUST" and Magic Rust are the
+        // servers these rules were written for: both send it while their own sibling servers send
+        // "^o^z".
         Assert.Equal(
             RustServerType.Community,
             RustServerTypeParser.GetServerType(name, keywords));
     }
 
     [Fact]
-    public void GetServerType_KeepsFacepunchOfficialEvenAlongsideAPluginFrameworkTag()
+    public void GetServerType_KeepsFacepunchOfficialEvenAlongsideAPluginTag()
     {
         // The name is the only thing marking a server Facepunch runs, so it is read before the tags.
         Assert.Equal(
@@ -82,12 +95,17 @@ public sealed class RustServerTypeParserTests
             RustServerTypeParser.GetServerType("[EU] Facepunch 16", OxideVanillaKeywords));
     }
 
-    [Fact]
-    public void GetServerType_ReadsTheSpelledOutVanillaTag()
+    [Theory]
+    [InlineData("Rustoria.co - EU Long | JUST WIPED 16.09", ImpersonatedVanillaKeywords)]
+    [InlineData("Some Server", "mp200,cp10,monthly,vanilla,gmrust")]
+    public void GetServerType_DoesNotPromoteOnTheSpelledOutVanillaTag(string name, string keywords)
     {
+        // Rust writes "^v" itself; the word is typed into sv_tags by hand, and in the live list it is
+        // typed by servers copying somebody else's name. No server sends the word next to the caret,
+        // so refusing the word on its own costs nothing.
         Assert.Equal(
-            RustServerType.Official,
-            RustServerTypeParser.GetServerType("Some Server", "mp200,cp10,monthly,vanilla,gmrust"));
+            RustServerType.Community,
+            RustServerTypeParser.GetServerType(name, keywords));
     }
 
     [Fact]
