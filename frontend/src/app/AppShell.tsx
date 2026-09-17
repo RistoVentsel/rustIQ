@@ -173,7 +173,6 @@ export function AppShell() {
       </header>
 
       <main className={isServerRoute ? 'app-main app-main--wide' : 'app-main'}>
-        <FeedbackBanner />
         <Outlet />
       </main>
 
@@ -191,6 +190,13 @@ export function AppShell() {
         </p>
         <p className="app-footer__disclaimer">{copy.disclaimer}</p>
       </footer>
+
+      {/*
+        * Pinned to the viewport rather than dropped into <main>, so it rides
+        * along with the scroll and shows on every route the shell wraps - the
+        * server list and the server detail page included.
+        */}
+      <FeedbackBanner />
     </div>
   )
 }
