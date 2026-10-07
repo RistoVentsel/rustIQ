@@ -16,6 +16,7 @@ import { ServerListCard } from '../features/servers/ServerListCard'
 import { getRustServerTypeLabel } from '../features/servers/serverPresentation'
 import { useFavoriteServers } from '../features/servers/useFavoriteServers'
 import { ContentAd } from '../components/ContentAd'
+import { GameHostingAd } from '../components/GameHostingAd'
 import { useAdsGate, useNow } from '../hooks'
 import { formatRussianCount, type Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
@@ -456,6 +457,8 @@ export function ServersPage() {
           {copy.intro}
         </p>
       </div>
+
+      <GameHostingAd />
 
       <SectionCard
         title={copy.sectionTitle}

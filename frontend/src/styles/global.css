@@ -4450,6 +4450,83 @@ select {
   min-height: 90px;
 }
 
+/* --- Game Hosting affiliate banner ---------------------------------------- */
+
+.game-hosting-ad {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  text-align: center;
+}
+
+.game-hosting-ad .content-ad__label {
+  justify-self: start;
+}
+
+.game-hosting-ad__link {
+  display: block;
+  max-width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  line-height: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.game-hosting-ad__link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(9, 10, 9, 0.32);
+}
+
+.game-hosting-ad__link:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 3px;
+}
+
+.game-hosting-ad__image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.game-hosting-ad__picture--light {
+  display: none;
+}
+
+:root[data-theme='light'] .game-hosting-ad__picture--dark {
+  display: none;
+}
+
+:root[data-theme='light'] .game-hosting-ad__picture--light {
+  display: block;
+}
+
+.game-hosting-ad__offer,
+.game-hosting-ad__disclosure {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.game-hosting-ad__offer {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.game-hosting-ad__disclosure {
+  opacity: 0.8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-hosting-ad__link {
+    transition: none;
+  }
+
+  .game-hosting-ad__link:hover {
+    transform: none;
+  }
+}
+
 .feedback-ad {
   position: fixed;
   right: 24px;
