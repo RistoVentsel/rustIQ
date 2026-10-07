@@ -475,6 +475,83 @@ select {
   gap: 24px;
 }
 
+/*
+ * Static article markup written by scripts/prerender.mjs. It is what crawlers
+ * index and what visitors see until React mounts and replaces it, so it is
+ * styled like the app's own written pages.
+ */
+.app-title--static {
+  font-weight: 800;
+}
+
+.prerender {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+  color: var(--backdrop-text-muted);
+  line-height: 1.6;
+}
+
+.prerender section {
+  display: grid;
+  gap: 10px;
+}
+
+.prerender h1,
+.prerender h2,
+.prerender h3,
+.prerender strong {
+  color: var(--backdrop-text);
+}
+
+.prerender h1,
+.prerender h2,
+.prerender h3,
+.prerender p,
+.prerender ul {
+  margin: 0;
+}
+
+.prerender h1 {
+  font-size: clamp(1.75rem, 3vw, 2.4rem);
+  line-height: 1.1;
+}
+
+.prerender h2 {
+  margin-top: 16px;
+  font-size: 1.3rem;
+  line-height: 1.2;
+}
+
+.prerender h3 {
+  margin-top: 6px;
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.prerender ul {
+  display: grid;
+  gap: 6px;
+  padding-left: 1.2em;
+}
+
+.prerender a {
+  color: var(--backdrop-text);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: var(--backdrop-accent);
+  text-underline-offset: 3px;
+}
+
+.prerender code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--row-bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.9em;
+}
+
 .server-detail-page {
   zoom: 0.9;
 }
@@ -4450,9 +4527,9 @@ select {
   min-height: 90px;
 }
 
-/* --- Game Hosting affiliate banner ---------------------------------------- */
+/* --- Game Hosting card (Rust server hosting) ---------------------------------------- */
 
-.game-hosting-ad {
+.hosting-card {
   display: grid;
   justify-items: center;
   gap: 6px;
@@ -4460,11 +4537,17 @@ select {
   text-align: center;
 }
 
-.game-hosting-ad .content-ad__label {
+.hosting-card__label {
   justify-self: start;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
 }
 
-.game-hosting-ad__link {
+.hosting-card__link {
   display: block;
   max-width: 100%;
   border-radius: 10px;
@@ -4473,56 +4556,47 @@ select {
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.game-hosting-ad__link:hover {
+.hosting-card__link:hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 24px rgba(9, 10, 9, 0.32);
 }
 
-.game-hosting-ad__link:focus-visible {
+.hosting-card__link:focus-visible {
   outline: 2px solid var(--accent-strong);
   outline-offset: 3px;
 }
 
-.game-hosting-ad__image {
+.hosting-card__image {
   display: block;
   max-width: 100%;
   height: auto;
 }
 
-.game-hosting-ad__picture--light {
+.hosting-card__picture--light {
   display: none;
 }
 
-:root[data-theme='light'] .game-hosting-ad__picture--dark {
+:root[data-theme='light'] .hosting-card__picture--dark {
   display: none;
 }
 
-:root[data-theme='light'] .game-hosting-ad__picture--light {
+:root[data-theme='light'] .hosting-card__picture--light {
   display: block;
 }
 
-.game-hosting-ad__offer,
-.game-hosting-ad__disclosure {
+.hosting-card__disclosure {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.78rem;
-}
-
-.game-hosting-ad__offer {
-  font-weight: 700;
-  color: var(--text);
-}
-
-.game-hosting-ad__disclosure {
   opacity: 0.8;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .game-hosting-ad__link {
+  .hosting-card__link {
     transition: none;
   }
 
-  .game-hosting-ad__link:hover {
+  .hosting-card__link:hover {
     transform: none;
   }
 }
