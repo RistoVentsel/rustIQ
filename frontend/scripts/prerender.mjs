@@ -247,7 +247,7 @@ function buildPage({ template, meta, content, siteUrl }) {
     isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'}"${
     isActive ? ' aria-current="page"' : ''}><span class="app-nav__label">${label}</span><span class="app-nav__meta">${navMeta}</span></a></li>`
 
-  const shell = `<div class="app-shell">
+  const shell = `<div class="app-shell app-shell--static">
 <header class="app-header"><div class="app-header__inner">
 <a class="app-brand" href="/"><img class="app-brand__logo" src="/rustiq-logo.png" alt="rustIQ" /><div><p class="app-eyebrow">rustIQ</p><p class="app-title app-title--static">Server Monitor</p></div></a>
 <nav aria-label="Primary"><ul class="app-nav">${[

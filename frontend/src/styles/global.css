@@ -484,6 +484,16 @@ select {
   font-weight: 800;
 }
 
+/*
+ * index.html sets prerender-pending when JS is on: only the background and
+ * header show until React mounts, instead of a flash of the text-only page.
+ * visibility keeps the text in the document for crawlers and the layout stable.
+ */
+.prerender-pending .app-shell--static .app-main,
+.prerender-pending .app-shell--static .app-footer {
+  visibility: hidden;
+}
+
 .prerender {
   display: grid;
   gap: 12px;

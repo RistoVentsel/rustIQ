@@ -21,6 +21,15 @@
         document.documentElement.dataset.theme =
           localStorage.getItem('rustiq-theme') === 'light' ? 'light' : 'dark'
       } catch {}
+
+      // The prerendered text is for crawlers and no-JS visitors; with JS on,
+      // React replaces it within moments, so keep it hidden until then rather
+      // than flashing a text-only page. If the app has not mounted after a few
+      // seconds (bundle failed to load), show the static text after all.
+      document.documentElement.classList.add('prerender-pending')
+      setTimeout(function () {
+        document.documentElement.classList.remove('prerender-pending')
+      }, 4000)
     </script>
     <script async src="https://fundingchoicesmessages.google.com/i/pub-1494964558491486?ers=1"></script>
     <script>
