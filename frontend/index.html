@@ -14,6 +14,14 @@
     <meta property="og:title" content="rustIQ | Rust Server Monitor" />
     <meta property="og:description" content="Track Rust servers, compare populations, browse wipe timing, and use Rust-focused minigames and guides." />
     <!--/rustiq:head-->
+    <script>
+      // Apply the saved theme before first paint so the prerendered markup does
+      // not flash dark for light-theme users (AppShell.tsx owns it afterwards).
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem('rustiq-theme') === 'light' ? 'light' : 'dark'
+      } catch {}
+    </script>
     <script async src="https://fundingchoicesmessages.google.com/i/pub-1494964558491486?ers=1"></script>
     <script>
       (function () {

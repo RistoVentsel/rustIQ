@@ -62,8 +62,8 @@ function renderStaticPage(copy) {
     }</section>`)
     .join('')
 
-  return `<article>
-<p>${escapeHtml(copy.eyebrow)}</p>
+  return `<article class="prerender">
+<p class="page-eyebrow">${escapeHtml(copy.eyebrow)}</p>
 <h1>${escapeHtml(copy.heading)}</h1>
 ${copy.lead ? `<p>${escapeHtml(copy.lead)}</p>` : ''}
 <p>${escapeHtml(copy.intro)}</p>
@@ -130,8 +130,8 @@ function renderGuide(guide, knowledge) {
         `<a href="${escapeHtml(source.url)}" rel="noopener nofollow">${escapeHtml(source.label)}</a>`))}`
     : ''
 
-  return `<article>
-<p>Rust Knowledge</p>
+  return `<article class="prerender">
+<p class="page-eyebrow">Rust Knowledge</p>
 <h1>${escapeHtml(guide.title)}</h1>
 <p>${escapeHtml(guide.readTime)}</p>
 <p>${escapeHtml(guide.summary)}</p>
@@ -145,8 +145,8 @@ ${sources}
 }
 
 function renderKnowledgeHub(guides) {
-  return `<article>
-<p>Rust Knowledge</p>
+  return `<article class="prerender">
+<p class="page-eyebrow">Rust Knowledge</p>
 <h1>Rust guides, genetics, keybinds and progression</h1>
 <p>Practical Rust guides written for players who already play the game. Each guide explains the mechanic rather than restating it, and links the official Facepunch source where the behaviour is documented.</p>
 <section><h2>Guides</h2>
@@ -161,7 +161,7 @@ ${guides.map((guide) => `<div>
 }
 
 function renderHome(guides) {
-  return `<article>
+  return `<article class="prerender">
 <h1>rustIQ &mdash; Rust server monitor and population tracker</h1>
 <p>rustIQ tracks Rust servers and answers one question quickly: is this server worth joining right now? Search and filter every Rust server rustIQ has discovered, compare live populations, check wipe schedules and maps, then open a server page for a live player count that updates while you watch.</p>
 <section><h2>How the server list works</h2>
@@ -181,7 +181,7 @@ ${renderList(guides.map((guide) =>
 }
 
 function renderMinigamesHub() {
-  return `<article>
+  return `<article class="prerender">
 <h1>Rust minigames</h1>
 <p>Short Rust challenges, refreshed daily. Two run on the same live server data the tracker uses: guess which server a population snapshot belongs to, or compare two servers and pick the busier one. Two more run on Rust crafting data: identify an item from its recipe clues, or read a recipe and name what it builds. Progress is stored in your own browser, so there is no account and nothing to sign up for.</p>
 <section><h2>Server data games</h2>
@@ -215,8 +215,8 @@ function renderMinigame(meta, games, items) {
       }<p>${escapeHtml(gameCopy.sourceNote)} Answers are drawn from a set of ${items.rustItemCount} craftable Rust items.</p></section>`
     : `<p>The puzzle is generated from live rustIQ server data and refreshes daily. Your streak is stored in your own browser, so there is no account and nothing to sign up for.</p>`
 
-  return `<article>
-<p>Rust Minigames</p>
+  return `<article class="prerender">
+<p class="page-eyebrow">Rust Minigames</p>
 <h1>${escapeHtml(meta.title.split('|')[0].trim())}</h1>
 <p>${escapeHtml(meta.description)}</p>
 ${rules}
@@ -239,22 +239,28 @@ function buildPage({ template, meta, content, siteUrl }) {
     `<meta property="og:description" content="${escapeHtml(meta.description)}" />`,
   ].filter(Boolean).join('\n    ')
 
+  // Mirrors AppShell.tsx class-for-class: global.css is already loaded when
+  // this markup paints, so the moment before React mounts looks like the app
+  // instead of an unstyled document.
+  const isServerRoute = meta.path === '/' || meta.path.startsWith('/servers')
+  const navLink = (to, label, navMeta, isActive) => `<li><a href="${to}" class="${
+    isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'}"${
+    isActive ? ' aria-current="page"' : ''}><span class="app-nav__label">${label}</span><span class="app-nav__meta">${navMeta}</span></a></li>`
+
   const shell = `<div class="app-shell">
-<header><a href="/">rustIQ</a>
-<nav aria-label="Primary">${renderList([
-  '<a href="/">Servers</a>',
-  '<a href="/minigames">Minigames</a>',
-  '<a href="/rust-knowledge">Rust Knowledge</a>',
-])}</nav>
-</header>
-<main>${content}</main>
-<footer>
-<nav aria-label="Footer">${renderList([
-  '<a href="/about">About</a>',
-  '<a href="/contact">Contact</a>',
-  '<a href="/privacy">Privacy Policy</a>',
-])}</nav>
-<p>rustIQ is an independent project and is not affiliated with or endorsed by Facepunch Studios. Rust is a trademark of Facepunch Studios.</p>
+<header class="app-header"><div class="app-header__inner">
+<a class="app-brand" href="/"><img class="app-brand__logo" src="/rustiq-logo.png" alt="rustIQ" /><div><p class="app-eyebrow">rustIQ</p><p class="app-title app-title--static">Server Monitor</p></div></a>
+<nav aria-label="Primary"><ul class="app-nav">${[
+  navLink('/', 'Servers', 'Live browser', isServerRoute),
+  navLink('/minigames', 'Minigames', 'Daily challenges', meta.path.startsWith('/minigames')),
+  navLink('/rust-knowledge', 'Rust Knowledge', 'Guides &amp; facts', meta.path.startsWith('/rust-knowledge')),
+].join('')}</ul></nav>
+<div class="app-controls"></div>
+</div></header>
+<main class="${isServerRoute ? 'app-main app-main--wide' : 'app-main'}">${content}</main>
+<footer class="app-footer">
+<nav class="app-footer__links" aria-label="Footer"><a href="/about">About</a><a href="/contact">Contact</a><a href="/rust-knowledge">Rust Knowledge</a><a href="/privacy">Privacy Policy</a></nav>
+<p class="app-footer__disclaimer">rustIQ is an independent project and is not affiliated with or endorsed by Facepunch Studios. Rust is a trademark of Facepunch Studios.</p>
 </footer>
 </div>`
 
@@ -344,7 +350,7 @@ await writePage('/servers', buildPage({
     // wrong. useDocumentMeta() sets the real per-server canonical on the client.
     omitCanonical: true,
   },
-  content: `<article>
+  content: `<article class="prerender">
 <h1>Rust server details</h1>
 <p>This page shows live population, map, wipe schedule and uptime history for a single Rust server, refreshed every few seconds while the page is open.</p>
 <p><a href="/">Browse all Rust servers</a></p>
