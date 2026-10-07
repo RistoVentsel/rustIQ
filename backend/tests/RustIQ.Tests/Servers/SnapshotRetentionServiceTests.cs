@@ -54,12 +54,11 @@ public sealed class SnapshotRetentionServiceTests
     }
 
     [Fact]
-    public async Task PruneUnreachableServersAsync_KeepsServersThatWereOnlineAndWentDown()
+    public async Task PruneUnreachableServersAsync_LeavesServersThatWereOnlineToTheOfflineRule()
     {
         var repository = new InMemoryServerRepository();
 
-        // The whole point of Offline is "RustIQ saw this server and cannot reach it right now", so a
-        // server with history has to survive no matter how long it has been down.
+        // A server with history is PruneOfflineServersAsync's to judge, never this rule's.
         var longDead = ServerRow(
             "was-online.test",
             createdDaysAgo: 400,
@@ -141,6 +140,117 @@ public sealed class SnapshotRetentionServiceTests
         Assert.Single(repository.Servers);
     }
 
+    [Fact]
+    public async Task PruneOfflineServersAsync_DropsServersSilentAndUnlistedForTheWholeWindow()
+    {
+        var repository = new InMemoryServerRepository();
+        var wentAway = ServerRow("went-away.test", createdDaysAgo: 60, lastSeenAtUtc: DateTimeOffset.UtcNow.AddDays(-10));
+        wentAway.LastDiscoveredAtUtc = DateTimeOffset.UtcNow.AddDays(-10);
+        repository.Servers.Add(wentAway);
+        repository.Snapshots.Add(new ServerSnapshot
+        {
+            Id = Guid.NewGuid(),
+            ServerId = wentAway.Id,
+            CheckedAtUtc = DateTimeOffset.UtcNow.AddDays(-10),
+            Players = 12,
+            MaxPlayers = 100,
+            IsOnline = true
+        });
+        var service = CreateService(repository);
+
+        var deleted = await service.PruneOfflineServersAsync(CancellationToken.None);
+
+        Assert.Equal(1, deleted);
+        Assert.Empty(repository.Servers);
+        Assert.Empty(repository.Snapshots);
+    }
+
+    [Fact]
+    public async Task PruneOfflineServersAsync_KeepsSilentServersDiscoveryStillLists()
+    {
+        var repository = new InMemoryServerRepository();
+
+        // Still listed, so deleting it would only make discovery add it straight back.
+        var stillListed = ServerRow("still-listed.test", createdDaysAgo: 60, lastSeenAtUtc: DateTimeOffset.UtcNow.AddDays(-10));
+        stillListed.LastDiscoveredAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5);
+        repository.Servers.Add(stillListed);
+        var service = CreateService(repository);
+
+        Assert.Equal(0, await service.PruneOfflineServersAsync(CancellationToken.None));
+        Assert.Single(repository.Servers);
+    }
+
+    [Fact]
+    public async Task PruneOfflineServersAsync_KeepsServersSeenInsideTheWindow()
+    {
+        var repository = new InMemoryServerRepository();
+
+        // A short outage, even with discovery gone quiet too, keeps the server and its history.
+        var briefOutage = ServerRow("brief-outage.test", createdDaysAgo: 60, lastSeenAtUtc: DateTimeOffset.UtcNow.AddDays(-2));
+        briefOutage.LastDiscoveredAtUtc = DateTimeOffset.UtcNow.AddDays(-10);
+        repository.Servers.Add(briefOutage);
+        var service = CreateService(repository);
+
+        Assert.Equal(0, await service.PruneOfflineServersAsync(CancellationToken.None));
+        Assert.Single(repository.Servers);
+    }
+
+    [Fact]
+    public async Task PruneOfflineServersAsync_LeavesNeverReachedServersToTheUnreachableRule()
+    {
+        var repository = new InMemoryServerRepository();
+        var neverReached = ServerRow("never-reached.test", createdDaysAgo: 40, lastSeenAtUtc: null);
+        repository.Servers.Add(neverReached);
+        var service = CreateService(repository);
+
+        Assert.Equal(0, await service.PruneOfflineServersAsync(CancellationToken.None));
+        Assert.Single(repository.Servers);
+    }
+
+    [Fact]
+    public async Task PruneOfflineServersAsync_NeverDropsAServerMarkedOnline()
+    {
+        var repository = new InMemoryServerRepository();
+        var online = ServerRow("online.test", createdDaysAgo: 60, lastSeenAtUtc: DateTimeOffset.UtcNow.AddDays(-10));
+        online.Status = ServerStatus.Online;
+        online.LastDiscoveredAtUtc = DateTimeOffset.UtcNow.AddDays(-10);
+        repository.Servers.Add(online);
+        var service = CreateService(repository);
+
+        Assert.Equal(0, await service.PruneOfflineServersAsync(CancellationToken.None));
+        Assert.Single(repository.Servers);
+    }
+
+    [Fact]
+    public async Task PruneOfflineServersAsync_StopsAtTheDeleteCap()
+    {
+        var repository = new InMemoryServerRepository();
+        for (var index = 0; index < 10; index++)
+        {
+            var server = ServerRow($"gone-{index}.test", createdDaysAgo: 60, lastSeenAtUtc: DateTimeOffset.UtcNow.AddDays(-10));
+            server.LastDiscoveredAtUtc = DateTimeOffset.UtcNow.AddDays(-10);
+            repository.Servers.Add(server);
+        }
+
+        var service = CreateService(repository, maxDeletesPerRun: 4);
+
+        Assert.Equal(4, await service.PruneOfflineServersAsync(CancellationToken.None));
+        Assert.Equal(6, repository.Servers.Count);
+    }
+
+    [Fact]
+    public async Task PruneOfflineServersAsync_ReturnsZeroWhenRetentionDisabled()
+    {
+        var repository = new InMemoryServerRepository();
+        var server = ServerRow("gone.test", createdDaysAgo: 60, lastSeenAtUtc: DateTimeOffset.UtcNow.AddDays(-10));
+        server.LastDiscoveredAtUtc = DateTimeOffset.UtcNow.AddDays(-10);
+        repository.Servers.Add(server);
+        var service = CreateService(repository, enabled: false);
+
+        Assert.Equal(0, await service.PruneOfflineServersAsync(CancellationToken.None));
+        Assert.Single(repository.Servers);
+    }
+
     private static SnapshotRetentionService CreateService(
         InMemoryServerRepository repository,
         bool enabled = true,
@@ -150,7 +260,8 @@ public sealed class SnapshotRetentionServiceTests
         {
             Enabled = enabled,
             RetentionDays = 14,
-            UnreachableServerRetentionDays = 30,
+            UnreachableServerRetentionDays = 3,
+            OfflineServerRetentionDays = 7,
             MaxUnreachableServerDeletesPerRun = maxDeletesPerRun
         });
     }

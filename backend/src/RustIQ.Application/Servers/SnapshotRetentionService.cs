@@ -35,4 +35,24 @@ public sealed class SnapshotRetentionService(
             Math.Max(1, options.MaxUnreachableServerDeletesPerRun),
             cancellationToken);
     }
+
+    /// <summary>
+    /// Drops servers that were reachable once but have since gone quiet: no successful query and no
+    /// discovery listing for the whole retention window. If one comes back, discovery adds it again as
+    /// a new server, so the cost of a wrong guess is the lost history, not a missing server.
+    /// </summary>
+    public Task<int> PruneOfflineServersAsync(CancellationToken cancellationToken)
+    {
+        if (!options.Enabled)
+        {
+            return Task.FromResult(0);
+        }
+
+        var cutoffUtc = DateTimeOffset.UtcNow.AddDays(-options.OfflineServerRetentionDays);
+
+        return serverRepository.DeleteOfflineServersOlderThanAsync(
+            cutoffUtc,
+            Math.Max(1, options.MaxUnreachableServerDeletesPerRun),
+            cancellationToken);
+    }
 }

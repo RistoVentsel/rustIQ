@@ -34,7 +34,7 @@ const aboutCopy: Record<Language, StaticPageCopy> = {
         heading: 'What rustIQ deliberately does not do',
         body: [
           'rustIQ does not build permanent player profiles. Current player names are shown when a server chooses to publish them, and they are treated as temporary live data, not as a searchable history of where individual people have played. Long-term player tracking adds real privacy obligations and storage cost for very little benefit to someone who is just picking a server, so the project skips it.',
-          'rustIQ also does not delete servers when they go offline. A server that has been seen before keeps its history and is marked offline instead, because "this server was reachable last week and is not reachable now" is useful information. What rustIQ cannot know about is a server that went offline before it was ever discovered.',
+          'rustIQ also does not delete a server the moment it goes offline. A server that has been seen before keeps its history and is marked offline instead, because "this server was reachable yesterday and is not reachable now" is useful information. Only once a server has stopped answering for a week and has dropped off the public server lists as well is it removed, so the list is not buried under servers that are gone for good. If it comes back, it is picked up again automatically.',
         ],
       },
       {
@@ -69,7 +69,7 @@ const aboutCopy: Record<Language, StaticPageCopy> = {
         heading: 'Чего rustIQ намеренно не делает',
         body: [
           'rustIQ не строит постоянные профили игроков. Имена текущих игроков показываются, когда сервер сам их публикует, и считаются временными живыми данными, а не историей того, где играли конкретные люди. Долгосрочное отслеживание игроков создает реальные обязательства по приватности и расходы на хранение при очень малой пользе для того, кто просто выбирает сервер, поэтому проект от него отказывается.',
-          'Также rustIQ не удаляет серверы, когда они уходят в офлайн. Ранее увиденный сервер сохраняет свою историю и помечается офлайн, потому что «этот сервер был доступен на прошлой неделе и недоступен сейчас» — полезная информация. Чего rustIQ знать не может, так это о серверах, которые ушли в офлайн до того, как были обнаружены.',
+          'Также rustIQ не удаляет сервер в тот же момент, когда он уходит в офлайн. Ранее увиденный сервер сохраняет свою историю и помечается офлайн, потому что «этот сервер был доступен вчера и недоступен сейчас» — полезная информация. Сервер удаляется только тогда, когда он неделю не отвечает и при этом исчез из публичных списков серверов, чтобы список не забивался серверами, которые закрылись навсегда. Если сервер вернется, он будет найден снова автоматически.',
         ],
       },
       {

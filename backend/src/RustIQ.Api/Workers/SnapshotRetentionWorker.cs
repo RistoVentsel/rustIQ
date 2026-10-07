@@ -20,9 +20,10 @@ public sealed class SnapshotRetentionWorker(
         var interval = TimeSpan.FromHours(options.Value.CleanupIntervalHours);
 
         logger.LogInformation(
-            "Snapshot retention worker started. RetentionDays: {RetentionDays}. UnreachableServerRetentionDays: {UnreachableServerRetentionDays}. CleanupInterval: {CleanupInterval}.",
+            "Snapshot retention worker started. RetentionDays: {RetentionDays}. UnreachableServerRetentionDays: {UnreachableServerRetentionDays}. OfflineServerRetentionDays: {OfflineServerRetentionDays}. CleanupInterval: {CleanupInterval}.",
             options.Value.RetentionDays,
             options.Value.UnreachableServerRetentionDays,
+            options.Value.OfflineServerRetentionDays,
             interval);
 
         await CleanupOnceAsync(stoppingToken);
@@ -42,11 +43,13 @@ public sealed class SnapshotRetentionWorker(
             var retentionService = scope.ServiceProvider.GetRequiredService<SnapshotRetentionService>();
             var deletedSnapshots = await retentionService.CleanupOldSnapshotsAsync(cancellationToken);
             var deletedServers = await retentionService.PruneUnreachableServersAsync(cancellationToken);
+            var deletedOfflineServers = await retentionService.PruneOfflineServersAsync(cancellationToken);
 
             logger.LogInformation(
-                "Retention cleanup completed. DeletedSnapshots: {DeletedSnapshots}. DeletedUnreachableServers: {DeletedUnreachableServers}.",
+                "Retention cleanup completed. DeletedSnapshots: {DeletedSnapshots}. DeletedUnreachableServers: {DeletedUnreachableServers}. DeletedOfflineServers: {DeletedOfflineServers}.",
                 deletedSnapshots,
-                deletedServers);
+                deletedServers,
+                deletedOfflineServers);
         }
         catch (Exception exception)
         {

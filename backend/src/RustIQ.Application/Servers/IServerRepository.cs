@@ -108,6 +108,11 @@ public interface IServerRepository
         int maxServers,
         CancellationToken cancellationToken);
 
+    Task<int> DeleteOfflineServersOlderThanAsync(
+        DateTimeOffset cutoffUtc,
+        int maxServers,
+        CancellationToken cancellationToken);
+
     Task<int> DeleteSnapshotsOlderThanAsync(
         DateTimeOffset cutoffUtc,
         CancellationToken cancellationToken);

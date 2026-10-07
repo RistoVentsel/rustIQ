@@ -157,7 +157,14 @@ Offline should mean:
 
 > This server was previously seen by RustIQ, but cannot be reached right now.
 
-Do not delete servers when they go offline. Mark them offline and keep their history.
+Do not delete servers the moment they go offline. Mark them offline and keep their history.
+
+Retention (SnapshotRetentionWorker, hourly) does remove dead rows, in two rules:
+
+- Never reached: no successful query ever, and not listed by discovery for 3 days (`UnreachableServerRetentionDays`).
+- Gone offline: reached before, but no successful query and no discovery listing for 7 days (`OfflineServerRetentionDays`). History goes with the row; if the server returns, discovery re-adds it as a new server.
+
+A server discovery still lists is never deleted by either rule, since it would only be re-added on the next discovery run.
 
 ## Refresh Strategy
 

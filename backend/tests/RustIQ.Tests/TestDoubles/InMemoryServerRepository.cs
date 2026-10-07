@@ -416,6 +416,32 @@ internal sealed class InMemoryServerRepository : IServerRepository
         return Task.FromResult(doomedServers.Length);
     }
 
+    public Task<int> DeleteOfflineServersOlderThanAsync(
+        DateTimeOffset cutoffUtc,
+        int maxServers,
+        CancellationToken cancellationToken)
+    {
+        // Mirrors ServerRepository, including the database cascade onto the child collections.
+        var doomedServers = Servers
+            .Where(server =>
+                server.LastSeenAtUtc is not null
+                && server.LastSeenAtUtc <= cutoffUtc
+                && server.Status != ServerStatus.Online
+                && (server.LastDiscoveredAtUtc ?? server.CreatedAtUtc) <= cutoffUtc)
+            .OrderBy(server => server.LastSeenAtUtc)
+            .Take(maxServers)
+            .ToArray();
+
+        foreach (var server in doomedServers)
+        {
+            Servers.Remove(server);
+            Snapshots.RemoveAll(snapshot => snapshot.ServerId == server.Id);
+            Rankings.RemoveAll(ranking => ranking.ServerId == server.Id);
+        }
+
+        return Task.FromResult(doomedServers.Length);
+    }
+
     public Task<int> DeleteSnapshotsOlderThanAsync(
         DateTimeOffset cutoffUtc,
         CancellationToken cancellationToken)

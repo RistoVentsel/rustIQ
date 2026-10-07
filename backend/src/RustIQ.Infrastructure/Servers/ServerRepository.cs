@@ -537,7 +537,7 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
     {
         // Two conditions, both required. LastSeenAtUtc is only ever set by a successful query, so a
         // null one means RustIQ has never reached this endpoint; servers that were online and went down
-        // keep their row and history. LastDiscoveredAtUtc then has to be stale as well, meaning
+        // are DeleteOfflineServersOlderThanAsync's job. LastDiscoveredAtUtc then has to be stale as well, meaning
         // discovery has stopped listing it - so an endpoint that is still listed is never pruned, no
         // matter how long RustIQ has failed to query it. That covers servers which refuse queries
         // outright, and it stops the delete-then-rediscover loop that gating on age alone would cause.
@@ -558,6 +558,37 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
 
         // Snapshots, rankings, current players and map metadata all cascade in the database, which
         // ExecuteDelete relies on because it bypasses the change tracker.
+        return await dbContext.Servers
+            .Where(server => serverIds.Contains(server.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    public async Task<int> DeleteOfflineServersOlderThanAsync(
+        DateTimeOffset cutoffUtc,
+        int maxServers,
+        CancellationToken cancellationToken)
+    {
+        // Reached at least once, but no successful query since the cutoff and no discovery listing
+        // since the cutoff either. A live server answers queries, so the LastSeenAtUtc gate alone keeps
+        // it safe; the discovery gate stops a listed-but-silent server being deleted and re-added.
+        var serverIds = await dbContext.Servers
+            .AsNoTracking()
+            .Where(server =>
+                server.LastSeenAtUtc != null
+                && server.LastSeenAtUtc <= cutoffUtc
+                && server.Status != ServerStatus.Online
+                && (server.LastDiscoveredAtUtc ?? server.CreatedAtUtc) <= cutoffUtc)
+            .OrderBy(server => server.LastSeenAtUtc)
+            .Select(server => server.Id)
+            .Take(maxServers)
+            .ToListAsync(cancellationToken);
+
+        if (serverIds.Count == 0)
+        {
+            return 0;
+        }
+
+        // Same database cascade as DeleteUnreachableServersOlderThanAsync.
         return await dbContext.Servers
             .Where(server => serverIds.Contains(server.Id))
             .ExecuteDeleteAsync(cancellationToken);
