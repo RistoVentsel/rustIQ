@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { type Language } from '../i18n/language'
 import { useLanguage } from '../i18n/useLanguage'
@@ -82,6 +82,30 @@ export function GameHostingAd() {
   const linkRef = useRef<HTMLAnchorElement | null>(null)
   const [isBlocked, setIsBlocked] = useState(false)
 
+  /*
+   * Cosmetic filters (Brave Shields, uBlock) hide the link or the image with
+   * display:none, often a moment after the image has loaded, so a one-off check
+   * at load time misses them. The image's width/height attributes reserve its
+   * height before it loads, so a link that collapses to zero height at any
+   * point means something hid the banner.
+   */
+  useEffect(() => {
+    const link = linkRef.current
+
+    if (isBlocked || !link || typeof ResizeObserver === 'undefined') {
+      return
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (link.offsetHeight === 0) {
+        setIsBlocked(true)
+      }
+    })
+
+    observer.observe(link)
+    return () => observer.disconnect()
+  }, [isBlocked])
+
   if (isBlocked) {
     return null
   }
@@ -90,7 +114,7 @@ export function GameHostingAd() {
   const hideIfLinkHidden = () => {
     const link = linkRef.current
 
-    if (link && link.getClientRects().length === 0) {
+    if (link && link.offsetHeight === 0) {
       hide()
     }
   }
