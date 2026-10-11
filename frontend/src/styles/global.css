@@ -115,13 +115,11 @@ body::before {
   inset: -14px;
   z-index: -2;
   background:
-    url('/rust-oilrig-night-bg.png'),
+    url('../assets/rust-oilrig-night-bg.webp'),
     var(--bg);
   background-position: center top;
   background-repeat: no-repeat;
   background-size: cover;
-  filter: blur(2px) saturate(0.86) brightness(0.72);
-  transform: scale(1.02);
 }
 
 body::after {
@@ -136,8 +134,10 @@ body::after {
   pointer-events: none;
 }
 
+/* The blur and colour grading are baked into the background images, so the
+   full-screen layer needs no filter on every paint. */
 :root[data-theme='light'] body::before {
-  filter: blur(2px) saturate(0.72) brightness(0.92);
+  background-image: url('../assets/rust-oilrig-night-bg-light.webp');
 }
 
 :root[data-theme='light'] body::after {
