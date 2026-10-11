@@ -36,11 +36,13 @@ const gameHostingAdCopy: Record<Language, {
 type PictureProps = {
   theme: 'dark' | 'light'
   alt: string
+  loading?: 'eager' | 'lazy'
+  fetchPriority?: 'high' | 'low' | 'auto'
   onLoad: () => void
   onError: () => void
 }
 
-function HostingPicture({ theme, alt, onLoad, onError }: PictureProps) {
+function HostingPicture({ theme, alt, loading, fetchPriority, onLoad, onError }: PictureProps) {
   const src = (size: string, scale = '') => `${imagePath}-${size}-${theme}${scale}.png`
 
   return (
@@ -58,6 +60,8 @@ function HostingPicture({ theme, alt, onLoad, onError }: PictureProps) {
         width={728}
         height={90}
         alt={alt}
+        loading={loading}
+        fetchPriority={fetchPriority}
         decoding="async"
         onLoad={onLoad}
         onError={onError}
@@ -71,6 +75,11 @@ function HostingPicture({ theme, alt, onLoad, onError }: PictureProps) {
  * kit recommends for a leaderboard. Both theme variants are rendered and the
  * stylesheet shows the one matching the site theme, so toggling the theme
  * swaps the banner without a re-render. Phones get the 320x100 cut.
+ *
+ * The dark banner is the default theme's and usually the page's LCP element,
+ * so it is fetched at high priority (and preloaded from the home page's HTML,
+ * see scripts/prerender.mjs). The light one is lazy: while its picture is
+ * display:none the browser does not fetch it, so dark-theme visits skip it.
  *
  * If a blocker still stops the image or hides the link, the whole card goes
  * away rather than leaving the label and disclosure on their own.
@@ -129,8 +138,20 @@ export function GameHostingAd() {
         target="_blank"
         rel="sponsored noopener"
       >
-        <HostingPicture theme="dark" alt={copy.alt} onLoad={hideIfLinkHidden} onError={hide} />
-        <HostingPicture theme="light" alt={copy.alt} onLoad={hideIfLinkHidden} onError={hide} />
+        <HostingPicture
+          theme="dark"
+          alt={copy.alt}
+          fetchPriority="high"
+          onLoad={hideIfLinkHidden}
+          onError={hide}
+        />
+        <HostingPicture
+          theme="light"
+          alt={copy.alt}
+          loading="lazy"
+          onLoad={hideIfLinkHidden}
+          onError={hide}
+        />
       </a>
       <p className="hosting-card__disclosure">{copy.disclosure}</p>
     </aside>

@@ -226,6 +226,16 @@ ${rules}
 
 // --- page assembly ---------------------------------------------------------
 
+// The Game Hosting banner above the server list is the home page's LCP element,
+// but the browser only learns about it once React renders. Preloading the dark
+// (default theme) cut lets it download alongside the JS. The media queries and
+// srcsets must match the <picture> in src/components/GameHostingAd.tsx, or the
+// browser downloads a second copy. Only the home page shows the banner.
+const hostingImagePreload = [
+  '<link rel="preload" as="image" media="(max-width: 760px)" imagesrcset="/img/hosting/rust-narrow-dark.png 1x, /img/hosting/rust-narrow-dark@2x.png 2x" fetchpriority="high" />',
+  '<link rel="preload" as="image" media="(min-width: 761px)" imagesrcset="/img/hosting/rust-wide-dark.png 1x, /img/hosting/rust-wide-dark@2x.png 2x" fetchpriority="high" />',
+].join('\n    ')
+
 function buildPage({ template, meta, content, siteUrl }) {
   const canonical = `${siteUrl}${meta.path === '/' ? '/' : meta.path}`
   const head = [
@@ -237,6 +247,7 @@ function buildPage({ template, meta, content, siteUrl }) {
     `<meta property="og:url" content="${escapeHtml(canonical)}" />`,
     `<meta property="og:title" content="${escapeHtml(meta.title)}" />`,
     `<meta property="og:description" content="${escapeHtml(meta.description)}" />`,
+    meta.path === '/' ? hostingImagePreload : '',
   ].filter(Boolean).join('\n    ')
 
   // Mirrors AppShell.tsx class-for-class: global.css is already loaded when
