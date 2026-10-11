@@ -123,7 +123,7 @@ export function RustKnowledgePage() {
         </div>
 
         <div className="knowledge-hero-panel__art" aria-hidden="true">
-          <img src="/rustiq-logo.png" alt="" />
+          <img src="/rustiq-logo-320.webp" alt="" />
           <div>
             <span>RustIQ</span>
             <strong>{copy.hubTitle}</strong>
