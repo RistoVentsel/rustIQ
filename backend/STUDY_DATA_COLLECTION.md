@@ -15,6 +15,17 @@ baseline resource cost:
 
 Both run the migrations on start; EF Core serialises them with a lock.
 
+To update only the study container, pass `--no-deps`. Without it Compose also rebuilds and restarts
+`rustiq-api`, because `study` depends on it, which moves the baseline to a new commit:
+
+```bash
+docker compose -f docker-compose.vps.yml up -d --build --no-deps study
+```
+
+On 2026-11-03 around 17:20 UTC this happened once: the API moved from 48a27ce to 6b6606c. The polling
+code is identical between the two; the restart left a gap of a few seconds in the snapshots and a
+second set of first-sighting rows in `study_server_wipe_observations`.
+
 ## What is collected
 
 | Table | What | How often |
