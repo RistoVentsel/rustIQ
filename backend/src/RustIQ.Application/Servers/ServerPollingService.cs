@@ -1,6 +1,8 @@
 using RustIQ.Application.Maps;
 using RustIQ.Application.ServerQuery;
+using RustIQ.Application.Study;
 using RustIQ.Domain.Servers;
+using RustIQ.Domain.Study;
 
 namespace RustIQ.Application.Servers;
 
@@ -8,7 +10,8 @@ public sealed class ServerPollingService(
     IRustServerQueryClient queryClient,
     IBattleMetricsPlayerCountClient battleMetricsPlayerCountClient,
     IRustServerMapMetadataClient mapMetadataClient,
-    IServerRepository serverRepository)
+    IServerRepository serverRepository,
+    ServerWipeObservationTracker? wipeObservationTracker = null)
 {
     /// <summary>
     /// Registers every configured server that is not tracked yet and returns the ones that were
@@ -81,6 +84,7 @@ public sealed class ServerPollingService(
             offlineThreshold,
             refreshCurrentPlayers: true,
             refreshMapMetadata: true,
+            ServerPollSource.Unknown,
             cancellationToken);
     }
 
@@ -89,6 +93,7 @@ public sealed class ServerPollingService(
         TimeSpan offlineThreshold,
         bool refreshCurrentPlayers,
         bool refreshMapMetadata,
+        ServerPollSource pollSource,
         CancellationToken cancellationToken)
     {
         var queryResult = await queryClient.QueryServerAsync(configuredServer, cancellationToken);
@@ -108,14 +113,21 @@ public sealed class ServerPollingService(
             serverRepository.Add(server);
         }
 
+        // Read before this poll overwrites them: right before a wipe, these are what RustIQ was showing.
+        var previousLastWipeAtUtc = server.LastWipeAtUtc;
+        var previousNextWipeAtUtc = server.NextWipeAtUtc;
+
         var enrichedQueryResult = await EnrichPlayerCountAsync(configuredServer, server, queryResult, cancellationToken);
         var normalizedQueryResult = NormalizeQueryResult(enrichedQueryResult);
 
         ApplySummaryIdentity(server, configuredServer, normalizedQueryResult, now);
         ApplyLatestServerState(server, normalizedQueryResult, now, offlineThreshold);
 
-        var snapshot = CreateSnapshot(server, normalizedQueryResult);
+        // queryResult, not the enriched one: QuerySucceeded records whether the A2S query itself was
+        // answered, which is what data freshness is measured from.
+        var snapshot = CreateSnapshot(server, normalizedQueryResult, queryResult.IsOnline, pollSource);
         serverRepository.AddSnapshot(snapshot);
+        RecordWipeObservation(server.Id, queryResult, previousLastWipeAtUtc, previousNextWipeAtUtc);
 
         var effectiveConfiguredServer = new ConfiguredRustServer
         {
@@ -434,7 +446,40 @@ public sealed class ServerPollingService(
         server.LastValidationReason = queryResult.Error;
     }
 
-    private static ServerSnapshot CreateSnapshot(Server server, RustServerQueryResult queryResult)
+    private void RecordWipeObservation(
+        Guid serverId,
+        RustServerQueryResult queryResult,
+        DateTimeOffset? previousLastWipeAtUtc,
+        DateTimeOffset? previousNextWipeAtUtc)
+    {
+        if (wipeObservationTracker is null || queryResult.BornAtUtc is not { } bornAtUtc)
+        {
+            return;
+        }
+
+        var kind = wipeObservationTracker.Observe(serverId, bornAtUtc);
+        if (kind is null)
+        {
+            return;
+        }
+
+        serverRepository.AddWipeObservation(new ServerWipeObservation
+        {
+            ServerId = serverId,
+            ObservedAtUtc = queryResult.CheckedAtUtc,
+            LastWipeAtUtc = bornAtUtc,
+            PreviousLastWipeAtUtc = previousLastWipeAtUtc,
+            PreviousNextWipeAtUtc = previousNextWipeAtUtc,
+            IsFirstObservationSinceStart = kind == WipeObservationKind.FirstSinceStart,
+            Keywords = StudyKeywords.WithoutVolatileTokens(queryResult.Keywords)
+        });
+    }
+
+    private static ServerSnapshot CreateSnapshot(
+        Server server,
+        RustServerQueryResult queryResult,
+        bool querySucceeded,
+        ServerPollSource pollSource)
     {
         // Taken from the server's resulting state rather than the raw query result, so history agrees
         // with the status being shown. A failed query inside the offline grace period keeps the last
@@ -449,7 +494,9 @@ public sealed class ServerPollingService(
             Players = server.Players,
             MaxPlayers = server.MaxPlayers,
             IsOnline = server.Status == ServerStatus.Online,
-            PingMilliseconds = queryResult.PingMilliseconds
+            PingMilliseconds = queryResult.PingMilliseconds,
+            QuerySucceeded = querySucceeded,
+            PollSource = pollSource
         };
     }
 

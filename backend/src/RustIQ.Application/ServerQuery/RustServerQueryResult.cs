@@ -24,4 +24,8 @@ public sealed record RustServerQueryResult(
     ServerPlayerCountSource PlayerCountSource,
     ServerSummarySource SummarySource,
     RustServerType ServerType,
-    string? Error);
+    string? Error,
+    string? Keywords = null,
+    // Only what the server itself reported in its "born" keyword. LastWipeAtUtc falls back to values
+    // RustIQ already had, so it cannot tell a server that reported a wipe from one that did not.
+    DateTimeOffset? BornAtUtc = null);

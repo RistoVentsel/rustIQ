@@ -265,6 +265,7 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
                     offlineThreshold,
                     options.Value.RefreshCurrentPlayers,
                     options.Value.RefreshMapMetadata,
+                    ToPollSource(refreshLane),
                     cancellationToken);
                 var updateMessage = serverUpdateMessageFactory.Create(result, DateTimeOffset.UtcNow);
 
@@ -313,6 +314,18 @@ public sealed class BattleMetricsPlayerCountRefreshWorker(
             PlayerCountSource = server.PlayerCountSource,
             PlayerListSource = server.PlayerListSource,
             ServerType = server.ServerType
+        };
+    }
+
+    private static ServerPollSource ToPollSource(ServerRefreshLane refreshLane)
+    {
+        return refreshLane switch
+        {
+            ServerRefreshLane.Fast => ServerPollSource.FastLane,
+            ServerRefreshLane.NormalOnline => ServerPollSource.NormalOnlineLane,
+            ServerRefreshLane.SlowOffline => ServerPollSource.SlowOfflineLane,
+            ServerRefreshLane.VeryStaleOffline => ServerPollSource.VeryStaleOfflineLane,
+            _ => ServerPollSource.Unknown
         };
     }
 

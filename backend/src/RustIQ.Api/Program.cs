@@ -1,5 +1,6 @@
 using RustIQ.Application.ServerQuery;
 using RustIQ.Application.Servers;
+using RustIQ.Application.Study;
 using RustIQ.Api.Endpoints;
 using RustIQ.Api.Realtime;
 using RustIQ.Api.Workers;
@@ -162,6 +163,24 @@ builder.Services
     .Validate(options => !options.Enabled || options.RecentOnlineWindowHours > 0, "Server ranking recent online window hours must be greater than 0 when ranking is enabled.")
     .Validate(options => !options.Enabled || options.MinimumMaxPlayers >= 0, "Server ranking minimum max players must not be negative.")
     .ValidateOnStart();
+builder.Services
+    .AddOptions<StudyOptions>()
+    .Bind(builder.Configuration.GetSection(StudyOptions.SectionName))
+    .Validate(options => !options.Enabled || options.ProbeIntervalSeconds > 0, "Study probe interval seconds must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || options.ProbeConcurrency > 0, "Study probe concurrency must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || options.FlushIntervalSeconds > 0, "Study flush interval seconds must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || options.ServersPerStratum > 0, "Study servers per stratum must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || options.SmallMinPeakPlayers > 0, "Study small stratum minimum must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || (options.SmallMinPeakPlayers < options.MediumMinPeakPlayers && options.MediumMinPeakPlayers < options.PopularMinPeakPlayers), "Study stratum thresholds must increase from small to medium to popular.")
+    .Validate(options => !options.Enabled || options.MaxCountryShare is > 0 and <= 1, "Study max country share must be greater than 0 and at most 1 when enabled.")
+    .Validate(options => !options.Enabled || options.SelectionPeakWindowHours > 0, "Study selection peak window hours must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || !options.BattleMetricsSnapshotsEnabled || options.BattleMetricsSnapshotIntervalHours > 0, "Study BattleMetrics snapshot interval hours must be greater than 0 when enabled.")
+    .Validate(options => !options.MeasurementEnabled || !string.IsNullOrWhiteSpace(options.MeasurementRole), "Study measurement role is required when measurement is enabled.")
+    .Validate(options => !options.MeasurementEnabled || options.MeasurementRole.Length <= 32, "Study measurement role must be at most 32 characters.")
+    .Validate(options => !options.MeasurementEnabled || options.MeasurementIntervalSeconds > 0, "Study measurement interval seconds must be greater than 0 when measurement is enabled.")
+    .Validate(options => !options.MeasurementEnabled || options.SampleRankingIntervalMinutes > 0, "Study sample ranking interval minutes must be greater than 0 when measurement is enabled.")
+    .ValidateOnStart();
+
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<IWatchedServerRegistry, WatchedServerRegistry>();
 builder.Services.AddSingleton(Channel.CreateUnbounded<bool>());
@@ -175,6 +194,9 @@ builder.Services.AddHostedService<BattleMetricsPlayerCountRefreshWorker>();
 builder.Services.AddHostedService<MapMetadataRefreshWorker>();
 builder.Services.AddHostedService<SnapshotRetentionWorker>();
 builder.Services.AddHostedService<ServerRankingWorker>();
+builder.Services.AddHostedService<StudyProbeWorker>();
+builder.Services.AddHostedService<StudyBattleMetricsWipeWorker>();
+builder.Services.AddHostedService<StudyMeasurementWorker>();
 builder.Services.AddHostedService(serviceProvider =>
     serviceProvider.GetRequiredService<ServerRefreshJobQueue>());
 

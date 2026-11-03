@@ -4,6 +4,7 @@ using RustIQ.Api.Realtime;
 using RustIQ.Application.Realtime;
 using RustIQ.Application.ServerQuery;
 using RustIQ.Application.Servers;
+using RustIQ.Domain.Servers;
 
 namespace RustIQ.Api.Workers;
 
@@ -107,6 +108,7 @@ public sealed class WatchedServerRefreshWorker(
             TimeSpan.FromSeconds(queryOptions.Value.WatchedOfflineThresholdSeconds),
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Watched,
             cancellationToken);
         var updateMessage = serverUpdateMessageFactory.Create(result, DateTimeOffset.UtcNow);
 

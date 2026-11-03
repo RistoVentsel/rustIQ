@@ -301,6 +301,13 @@ namespace RustIQ.Infrastructure.Migrations
                     b.Property<int>("Players")
                         .HasColumnType("integer");
 
+                    b.Property<string>("PollSource")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<bool?>("QuerySucceeded")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("ServerId")
                         .HasColumnType("uuid");
 
@@ -309,6 +316,304 @@ namespace RustIQ.Infrastructure.Migrations
                     b.HasIndex("ServerId", "CheckedAtUtc");
 
                     b.ToTable("server_snapshots", (string)null);
+                });
+
+            modelBuilder.Entity("RustIQ.Domain.Study.ServerWipeObservation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("IsFirstObservationSinceStart")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Keywords")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<DateTimeOffset>("LastWipeAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ObservedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("PreviousLastWipeAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("PreviousNextWipeAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServerId", "ObservedAtUtc");
+
+                    b.ToTable("study_server_wipe_observations", (string)null);
+                });
+
+            modelBuilder.Entity("RustIQ.Domain.Study.StudyBattleMetricsWipeSnapshot", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("BattleMetricsServerId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CapturedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("NextWipeAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServerId", "CapturedAtUtc");
+
+                    b.ToTable("study_battlemetrics_wipe_snapshots", (string)null);
+                });
+
+            modelBuilder.Entity("RustIQ.Domain.Study.StudyPopulationSample", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("OnlineServers")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("OnlineServersWithPlayers")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("SampledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("TotalServers")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SampledAtUtc");
+
+                    b.ToTable("study_population_samples", (string)null);
+                });
+
+            modelBuilder.Entity("RustIQ.Domain.Study.StudyProbe", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("LatencyMilliseconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaxPlayers")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Players")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("ProbedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("QueuePlayers")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Succeeded")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServerId", "ProbedAtUtc");
+
+                    b.ToTable("study_probes", (string)null);
+                });
+
+            modelBuilder.Entity("RustIQ.Domain.Study.StudyResourceSample", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("A2sPacketsSent")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("BattleMetricsRequests")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("NetworkReceivedBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("NetworkSentBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProcessCpuMilliseconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("ProcessStartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset>("SampledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("WorkingSetBytes")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Role", "SampledAtUtc");
+
+                    b.ToTable("study_resource_samples", (string)null);
+                });
+
+            modelBuilder.Entity("RustIQ.Domain.Study.StudySampleRanking", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int?>("Rank")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("SampledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServerId", "SampledAtUtc");
+
+                    b.ToTable("study_sample_rankings", (string)null);
+                });
+
+            modelBuilder.Entity("RustIQ.Domain.Study.StudySampleServer", b =>
+                {
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("BattleMetricsServerId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Country")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("Host")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("PeakPlayersAtSelection")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("QueryPort")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("SelectedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Stratum")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("ServerId");
+
+                    b.ToTable("study_sample_servers", (string)null);
+                });
+
+            modelBuilder.Entity("RustIQ.Domain.Study.StudyTableWriteSample", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("Deletes")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Inserts")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("SampledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TableName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<long>("Updates")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TableName", "SampledAtUtc");
+
+                    b.ToTable("study_table_write_samples", (string)null);
+                });
+
+            modelBuilder.Entity("RustIQ.Domain.Study.StudyWipeSignal", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset?>("AdvertisedNextWipeAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Keywords")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<DateTimeOffset?>("LastWipeAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ObservedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServerId", "ObservedAtUtc");
+
+                    b.ToTable("study_wipe_signals", (string)null);
                 });
 
             modelBuilder.Entity("RustIQ.Domain.Servers.ServerMapMetadata", b =>

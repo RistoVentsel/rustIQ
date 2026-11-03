@@ -1,4 +1,5 @@
 using RustIQ.Domain.Servers;
+using RustIQ.Domain.Study;
 
 namespace RustIQ.Application.Servers;
 
@@ -120,6 +121,8 @@ public interface IServerRepository
     void Add(Server server);
 
     void AddSnapshot(ServerSnapshot snapshot);
+
+    void AddWipeObservation(ServerWipeObservation observation);
 
     Task ReplaceCurrentPlayersAsync(
         Guid serverId,

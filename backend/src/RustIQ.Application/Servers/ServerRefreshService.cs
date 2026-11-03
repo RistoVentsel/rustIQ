@@ -130,6 +130,7 @@ public sealed class ServerRefreshService(
             offlineThreshold,
             refreshCurrentPlayers,
             refreshMapMetadata,
+            ServerPollSource.RefreshJob,
             cancellationToken);
     }
 
@@ -412,7 +413,8 @@ public sealed class ServerRefreshService(
             Players = players,
             MaxPlayers = maxPlayers,
             IsOnline = status == ServerStatus.Online,
-            PingMilliseconds = null
+            PingMilliseconds = null,
+            PollSource = ServerPollSource.BattleMetricsDirectory
         };
     }
 

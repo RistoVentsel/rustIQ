@@ -5,6 +5,7 @@ using RustIQ.Application.Realtime;
 using RustIQ.Application.ServerQuery;
 using RustIQ.Application.Servers;
 using RustIQ.Api.Realtime;
+using RustIQ.Domain.Servers;
 
 namespace RustIQ.Api.Workers;
 
@@ -87,6 +88,7 @@ public sealed class ServerPollingWorker(
                         offlineThreshold,
                         refreshCurrentPlayers,
                         refreshMapMetadata,
+                        ServerPollSource.Configured,
                         cancellationToken);
                     var updateMessage = serverUpdateMessageFactory.Create(result, DateTimeOffset.UtcNow);
 

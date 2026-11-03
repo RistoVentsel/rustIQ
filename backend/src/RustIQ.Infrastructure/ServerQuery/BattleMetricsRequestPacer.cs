@@ -1,3 +1,5 @@
+using RustIQ.Application.Study;
+
 namespace RustIQ.Infrastructure.ServerQuery;
 
 public sealed class BattleMetricsRequestPacer(TimeSpan minimumRequestInterval)
@@ -18,6 +20,8 @@ public sealed class BattleMetricsRequestPacer(TimeSpan minimumRequestInterval)
             }
 
             _nextRequestAtUtc = DateTimeOffset.UtcNow.Add(minimumRequestInterval);
+            // Every BattleMetrics request, API or public page, passes this gate exactly once.
+            TrafficCounters.CountBattleMetricsRequest();
         }
         finally
         {

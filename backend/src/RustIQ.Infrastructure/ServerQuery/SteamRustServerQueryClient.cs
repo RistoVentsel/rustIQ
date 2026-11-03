@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using RustIQ.Application.ServerQuery;
 using RustIQ.Domain.Servers;
+using RustIQ.Application.Study;
 
 namespace RustIQ.Infrastructure.ServerQuery;
 
@@ -113,6 +114,7 @@ public sealed class SteamRustServerQueryClient(
 
         for (var exchange = 0; exchange < MaximumChallengeExchanges; exchange++)
         {
+            TrafficCounters.CountA2sPacketSent();
             await client.SendAsync(request, timeoutToken);
             var response = await A2sPacket.ReceiveResponseAsync(client, timeoutToken);
             if (!A2sPacket.IsChallengeResponse(response))
@@ -147,6 +149,7 @@ public sealed class SteamRustServerQueryClient(
 
         for (var exchange = 0; exchange < MaximumChallengeExchanges; exchange++)
         {
+            TrafficCounters.CountA2sPacketSent();
             await client.SendAsync(request, timeoutToken);
             var response = await A2sPacket.ReceiveResponseAsync(client, timeoutToken);
             if (!A2sPacket.IsChallengeResponse(response))
@@ -212,7 +215,9 @@ public sealed class SteamRustServerQueryClient(
             // A poll is the freshest view of what a server calls itself, so it re-reads the type
             // every time: a community server that installs mods changes category mid-wipe.
             RustServerTypeParser.GetServerType(serverInfo.Name, serverInfo.Keywords),
-            Error: null);
+            Error: null,
+            Keywords: NullIfWhiteSpace(serverInfo.Keywords),
+            BornAtUtc: lastWipeAtUtc);
     }
 
     private static RustServerQueryResult OfflineResult(

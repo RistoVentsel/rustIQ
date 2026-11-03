@@ -174,6 +174,7 @@ public sealed class SteamDiscoveryWorker(
                     offlineThreshold,
                     refreshCurrentPlayers: false,
                     refreshMapMetadata: false,
+                    ServerPollSource.Discovery,
                     cancellationToken);
                 polledServers++;
             }

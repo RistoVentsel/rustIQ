@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using RustIQ.Application.Servers;
 using RustIQ.Domain.Servers;
+using RustIQ.Domain.Study;
 using RustIQ.Infrastructure.Data;
 
 namespace RustIQ.Infrastructure.Servers;
@@ -611,6 +612,11 @@ public sealed class ServerRepository(RustIqDbContext dbContext) : IServerReposit
     public void AddSnapshot(ServerSnapshot snapshot)
     {
         dbContext.ServerSnapshots.Add(snapshot);
+    }
+
+    public void AddWipeObservation(ServerWipeObservation observation)
+    {
+        dbContext.ServerWipeObservations.Add(observation);
     }
 
     public async Task ReplaceCurrentPlayersAsync(

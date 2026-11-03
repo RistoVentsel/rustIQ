@@ -1,6 +1,7 @@
 using RustIQ.Application.Maps;
 using RustIQ.Application.ServerQuery;
 using RustIQ.Application.Servers;
+using RustIQ.Application.Study;
 using RustIQ.Domain.Servers;
 using RustIQ.Tests.TestDoubles;
 
@@ -283,6 +284,7 @@ public sealed class ServerPollingServiceTests
             DefaultOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
 
         Assert.Equal(0, mapClient.CallCount);
@@ -543,6 +545,7 @@ public sealed class ServerPollingServiceTests
             DefaultOfflineThreshold,
             refreshCurrentPlayers: true,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
 
         Assert.Empty(repository.CurrentPlayers);
@@ -599,12 +602,14 @@ public sealed class ServerPollingServiceTests
             DefaultOfflineThreshold,
             refreshCurrentPlayers: true,
             refreshMapMetadata: true,
+            ServerPollSource.Configured,
             CancellationToken.None);
         var secondResult = await service.PollConfiguredServerAsync(
             secondConfiguredServer,
             DefaultOfflineThreshold,
             refreshCurrentPlayers: true,
             refreshMapMetadata: true,
+            ServerPollSource.Configured,
             CancellationToken.None);
 
         Assert.Equal(2, repository.Servers.Count);
@@ -643,12 +648,14 @@ public sealed class ServerPollingServiceTests
             DefaultOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
         var result = await service.PollConfiguredServerAsync(
             configuredServer,
             DefaultOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
 
         var server = Assert.Single(repository.Servers);
@@ -681,12 +688,14 @@ public sealed class ServerPollingServiceTests
             DefaultOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
         var result = await service.PollConfiguredServerAsync(
             configuredServer,
             DefaultOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
 
         var server = Assert.Single(repository.Servers);
@@ -725,6 +734,7 @@ public sealed class ServerPollingServiceTests
                 LaneOfflineThreshold,
                 refreshCurrentPlayers: false,
                 refreshMapMetadata: false,
+                ServerPollSource.Configured,
                 CancellationToken.None));
         }
 
@@ -758,12 +768,14 @@ public sealed class ServerPollingServiceTests
             LaneOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
         await service.PollConfiguredServerAsync(
             configuredServer,
             LaneOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
 
         // A server still listed as online must not have a 0-player offline point in its history, or
@@ -798,6 +810,7 @@ public sealed class ServerPollingServiceTests
                 LaneOfflineThreshold,
                 refreshCurrentPlayers: false,
                 refreshMapMetadata: false,
+                ServerPollSource.Configured,
                 CancellationToken.None);
         }
 
@@ -806,6 +819,7 @@ public sealed class ServerPollingServiceTests
             LaneOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
 
         var server = Assert.Single(repository.Servers);
@@ -861,6 +875,7 @@ public sealed class ServerPollingServiceTests
             DefaultOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: true,
+            ServerPollSource.Configured,
             CancellationToken.None);
 
         var server = Assert.Single(repository.Servers);
@@ -896,6 +911,7 @@ public sealed class ServerPollingServiceTests
             DefaultOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
 
         var server = Assert.Single(repository.Servers);
@@ -948,6 +964,7 @@ public sealed class ServerPollingServiceTests
             DefaultOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
 
         var server = Assert.Single(repository.Servers);
@@ -1009,6 +1026,7 @@ public sealed class ServerPollingServiceTests
             DefaultOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
 
         var server = Assert.Single(repository.Servers);
@@ -1071,6 +1089,7 @@ public sealed class ServerPollingServiceTests
             DefaultOfflineThreshold,
             refreshCurrentPlayers: false,
             refreshMapMetadata: false,
+            ServerPollSource.Configured,
             CancellationToken.None);
 
         var server = Assert.Single(repository.Servers);
@@ -1080,6 +1099,143 @@ public sealed class ServerPollingServiceTests
         Assert.Equal(checkedAtUtc, server.LastSeenAtUtc);
         Assert.Equal(12, result.Players);
         Assert.Single(repository.Snapshots);
+    }
+
+    [Fact]
+    public async Task PollConfiguredServerAsync_RecordsWhetherTheQueryWasAnsweredEvenWhileTheServerStaysOnline()
+    {
+        // Freshness is measured from answered queries, and IsOnline hides a failed one inside the
+        // offline grace period, so the snapshot has to carry the query outcome separately.
+        var configuredServer = new ConfiguredRustServer { Host = "example.test", QueryPort = 28015 };
+        var firstCheck = DateTimeOffset.Parse("2026-07-06T12:00:00Z");
+        var repository = new InMemoryServerRepository();
+        var queryClient = new FakeRustServerQueryClient(
+            QueryResult("example.test", 28015, "Busy Server", "Procedural Map", 220, 250, true, 10, firstCheck, null),
+            QueryResult("example.test", 28015, null, null, 0, 0, false, null, firstCheck.AddMinutes(3), "timeout"));
+        var service = new ServerPollingService(
+            queryClient,
+            new FakeBattleMetricsPlayerCountClient(),
+            new FakeRustServerMapMetadataClient(),
+            repository);
+
+        foreach (var pollSource in new[] { ServerPollSource.FastLane, ServerPollSource.NormalOnlineLane })
+        {
+            await service.PollConfiguredServerAsync(
+                configuredServer,
+                LaneOfflineThreshold,
+                refreshCurrentPlayers: false,
+                refreshMapMetadata: false,
+                pollSource,
+                CancellationToken.None);
+        }
+
+        Assert.Collection(
+            repository.Snapshots.OrderBy(snapshot => snapshot.CheckedAtUtc),
+            answered =>
+            {
+                Assert.True(answered.IsOnline);
+                Assert.True(answered.QuerySucceeded);
+                Assert.Equal(ServerPollSource.FastLane, answered.PollSource);
+            },
+            unanswered =>
+            {
+                Assert.True(unanswered.IsOnline);
+                Assert.False(unanswered.QuerySucceeded);
+                Assert.Equal(ServerPollSource.NormalOnlineLane, unanswered.PollSource);
+            });
+    }
+
+    [Fact]
+    public async Task PollConfiguredServerAsync_RecordsAWipeWithWhatRustIqShowedBeforeIt()
+    {
+        var configuredServer = new ConfiguredRustServer { Host = "example.test", QueryPort = 28015 };
+        var firstCheck = DateTimeOffset.Parse("2026-11-05T18:30:00Z");
+        var bornBefore = DateTimeOffset.Parse("2026-10-01T19:00:00Z");
+        var shownNextWipe = DateTimeOffset.Parse("2026-11-05T19:00:00Z");
+        var bornAfter = DateTimeOffset.Parse("2026-11-05T19:04:00Z");
+        var repository = new InMemoryServerRepository();
+        var queryClient = new FakeRustServerQueryClient(
+            QueryResult("example.test", 28015, "Server", "Map", 80, 100, true, 10, firstCheck, null) with
+            {
+                BornAtUtc = bornBefore,
+                LastWipeAtUtc = bornBefore,
+                NextWipeAtUtc = shownNextWipe
+            },
+            QueryResult("example.test", 28015, "Server", "Map", 90, 100, true, 10, firstCheck.AddMinutes(3), null) with
+            {
+                BornAtUtc = bornBefore,
+                LastWipeAtUtc = bornBefore,
+                NextWipeAtUtc = shownNextWipe
+            },
+            QueryResult("example.test", 28015, "Server", "Map", 40, 100, true, 10, bornAfter.AddMinutes(1), null) with
+            {
+                BornAtUtc = bornAfter,
+                LastWipeAtUtc = bornAfter,
+                Keywords = "mp100,cp40,born1793905440,^m"
+            });
+        var service = new ServerPollingService(
+            queryClient,
+            new FakeBattleMetricsPlayerCountClient(),
+            new FakeRustServerMapMetadataClient(),
+            repository,
+            new ServerWipeObservationTracker());
+
+        for (var poll = 0; poll < 3; poll++)
+        {
+            await service.PollConfiguredServerAsync(
+                configuredServer,
+                LaneOfflineThreshold,
+                refreshCurrentPlayers: false,
+                refreshMapMetadata: false,
+                ServerPollSource.NormalOnlineLane,
+                CancellationToken.None);
+        }
+
+        Assert.Collection(
+            repository.WipeObservations,
+            first =>
+            {
+                Assert.True(first.IsFirstObservationSinceStart);
+                Assert.Equal(bornBefore, first.LastWipeAtUtc);
+            },
+            wipe =>
+            {
+                Assert.False(wipe.IsFirstObservationSinceStart);
+                Assert.Equal(bornAfter, wipe.LastWipeAtUtc);
+                Assert.Equal(bornBefore, wipe.PreviousLastWipeAtUtc);
+                Assert.Equal(shownNextWipe, wipe.PreviousNextWipeAtUtc);
+                Assert.Equal("born1793905440,^m", wipe.Keywords);
+            });
+    }
+
+    [Fact]
+    public async Task PollConfiguredServerAsync_RecordsNoWipeWhenTheServerReportedNoBornTime()
+    {
+        // LastWipeAtUtc alone may be carried over from earlier knowledge; only "born" is evidence.
+        var configuredServer = new ConfiguredRustServer { Host = "example.test", QueryPort = 28015 };
+        var check = DateTimeOffset.Parse("2026-11-05T18:30:00Z");
+        var repository = new InMemoryServerRepository();
+        var queryClient = new FakeRustServerQueryClient(
+            QueryResult("example.test", 28015, "Server", "Map", 80, 100, true, 10, check, null) with
+            {
+                LastWipeAtUtc = check.AddDays(-3)
+            });
+        var service = new ServerPollingService(
+            queryClient,
+            new FakeBattleMetricsPlayerCountClient(),
+            new FakeRustServerMapMetadataClient(),
+            repository,
+            new ServerWipeObservationTracker());
+
+        await service.PollConfiguredServerAsync(
+            configuredServer,
+            LaneOfflineThreshold,
+            refreshCurrentPlayers: false,
+            refreshMapMetadata: false,
+            ServerPollSource.NormalOnlineLane,
+            CancellationToken.None);
+
+        Assert.Empty(repository.WipeObservations);
     }
 
     private static RustServerQueryResult QueryResult(

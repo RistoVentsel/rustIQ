@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using RustIQ.Application.Maps;
 using RustIQ.Application.ServerQuery;
 using RustIQ.Infrastructure.ServerQuery;
+using RustIQ.Application.Study;
 
 namespace RustIQ.Infrastructure.Maps;
 
@@ -95,6 +96,7 @@ public sealed class A2sRustServerMapMetadataClient(
         using var client = new UdpClient(AddressFamily.InterNetwork);
         client.Connect(configuredServer.Host, configuredServer.QueryPort);
 
+        TrafficCounters.CountA2sPacketSent();
         await client.SendAsync(RulesChallengeRequest, timeoutToken);
         var challengeResponse = (await client.ReceiveAsync(timeoutToken)).Buffer;
         var challenge = A2sPacket.CopyChallenge(challengeResponse);
@@ -103,6 +105,7 @@ public sealed class A2sRustServerMapMetadataClient(
         {
             var rulesRequest = A2sPacket.BuildRequest(RulesRequestType, [], challenge);
 
+            TrafficCounters.CountA2sPacketSent();
             await client.SendAsync(rulesRequest, timeoutToken);
             var rulesPayload = await A2sPacket.ReceiveResponseAsync(client, timeoutToken);
             if (!A2sPacket.IsChallengeResponse(rulesPayload))

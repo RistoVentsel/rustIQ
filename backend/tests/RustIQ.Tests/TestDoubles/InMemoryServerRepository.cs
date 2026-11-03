@@ -1,5 +1,6 @@
 using RustIQ.Application.Servers;
 using RustIQ.Domain.Servers;
+using RustIQ.Domain.Study;
 
 namespace RustIQ.Tests.TestDoubles;
 
@@ -8,6 +9,8 @@ internal sealed class InMemoryServerRepository : IServerRepository
     public List<Server> Servers { get; } = [];
 
     public List<ServerSnapshot> Snapshots { get; } = [];
+
+    public List<ServerWipeObservation> WipeObservations { get; } = [];
 
     public List<ServerRanking> Rankings { get; } = [];
 
@@ -458,6 +461,11 @@ internal sealed class InMemoryServerRepository : IServerRepository
     public void AddSnapshot(ServerSnapshot snapshot)
     {
         Snapshots.Add(snapshot);
+    }
+
+    public void AddWipeObservation(ServerWipeObservation observation)
+    {
+        WipeObservations.Add(observation);
     }
 
     public Task ReplaceCurrentPlayersAsync(

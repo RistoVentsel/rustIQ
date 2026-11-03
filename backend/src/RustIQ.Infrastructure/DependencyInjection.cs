@@ -8,11 +8,13 @@ using RustIQ.Application.Maps;
 using RustIQ.Application.Realtime;
 using RustIQ.Application.ServerQuery;
 using RustIQ.Application.Servers;
+using RustIQ.Application.Study;
 using RustIQ.Infrastructure.Data;
 using RustIQ.Infrastructure.Maps;
 using RustIQ.Infrastructure.News;
 using RustIQ.Infrastructure.ServerQuery;
 using RustIQ.Infrastructure.Servers;
+using RustIQ.Infrastructure.Study;
 
 namespace RustIQ.Infrastructure;
 
@@ -54,6 +56,8 @@ public static class DependencyInjection
                 serviceProvider.GetRequiredService<IOptions<ServerRankingOptions>>().Value));
         services.AddSingleton<ServerUpdateMessageFactory>();
         services.AddScoped<IServerRepository, ServerRepository>();
+        services.AddScoped<IStudyRepository, StudyRepository>();
+        services.AddSingleton<ServerWipeObservationTracker>();
         services.AddSingleton<IRustServerCatalog, FileBackedRustServerCatalog>();
         services.AddSingleton<IBattleMetricsServerDirectoryClient, BattleMetricsServerDirectoryClient>();
         services.AddSingleton<IBattleMetricsPlayerCountClient, BattleMetricsPlayerCountClient>();

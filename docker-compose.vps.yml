@@ -80,13 +80,66 @@ services:
       MapMetadataRefresh__DelayBetweenServersMilliseconds: 0
       MapMetadataRefresh__DelayBetweenBatchesSeconds: 1
       SnapshotRetention__Enabled: "true"
-      SnapshotRetention__RetentionDays: 14
+      # Raised from 14 for the thesis measurement (Nov 2026 - Jan 2027): the baseline is computed from
+      # this history, and both force wipes in the study window have to survive until analysed.
+      SnapshotRetention__RetentionDays: 60
       SnapshotRetention__CleanupIntervalHours: 1
       SnapshotRetention__UnreachableServerRetentionDays: 3
       SnapshotRetention__OfflineServerRetentionDays: 7
       SnapshotRetention__MaxUnreachableServerDeletesPerRun: 5000
+      # The API only records its own cost and the database wide figures; the probes run in the
+      # study service below, so their load does not end up in the baseline.
+      Study__Enabled: "false"
+      Study__MeasurementEnabled: "true"
+      Study__MeasurementRole: api
+      Study__RecordDatabaseMeasurements: "true"
     ports:
       - "127.0.0.1:${RUSTIQ_HTTP_PORT:-5009}:8080"
+
+  # Thesis measurement collector: the same image with every production worker switched off, so only
+  # the study probes and BattleMetrics captures run here. No port is published.
+  study:
+    build:
+      context: .
+      dockerfile: backend/src/RustIQ.Api/Dockerfile
+    container_name: rustiq-study
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=rustiq;Username=rustiq;Password=${RUSTIQ_POSTGRES_PASSWORD:?Set RUSTIQ_POSTGRES_PASSWORD in .env}
+      RustServerQuery__TimeoutMilliseconds: 3000
+      BattleMetricsApi__Enabled: "false"
+      # This process has its own pacer, so it keeps well below the API's request rate to BattleMetrics.
+      BattleMetricsApi__MinimumRequestIntervalMilliseconds: 3000
+      BattleMetricsWipeFallback__Enabled: "true"
+      BattleMetricsWipeFallback__RequestTimeoutSeconds: 20
+      SteamDiscovery__Enabled: "false"
+      FacepunchDiscovery__Enabled: "false"
+      BattleMetricsDiscovery__Enabled: "false"
+      BattleMetricsSummaryRefresh__Enabled: "false"
+      MapMetadataRefresh__Enabled: "false"
+      SnapshotRetention__Enabled: "false"
+      ServerRanking__Enabled: "false"
+      Study__Enabled: "true"
+      Study__ProbeIntervalSeconds: 15
+      Study__ProbeConcurrency: 32
+      Study__ServersPerStratum: 150
+      Study__PopularMinPeakPlayers: 100
+      Study__MediumMinPeakPlayers: 10
+      Study__SmallMinPeakPlayers: 1
+      Study__MaxCountryShare: 0.25
+      Study__SelectionSeed: 20261104
+      Study__BattleMetricsSnapshotsEnabled: "true"
+      Study__BattleMetricsSnapshotIntervalHours: 12
+      Study__MeasurementEnabled: "true"
+      Study__MeasurementRole: study
+      Study__RecordDatabaseMeasurements: "false"
 
   frontend:
     build:
