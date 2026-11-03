@@ -157,6 +157,11 @@ public sealed class StudyRepository(RustIqDbContext dbContext) : IStudyRepositor
         dbContext.StudyBattleMetricsWipeSnapshots.Add(snapshot);
     }
 
+    public void AddServerDescriptions(IEnumerable<StudyServerDescription> descriptions)
+    {
+        dbContext.StudyServerDescriptions.AddRange(descriptions);
+    }
+
     public void AddMeasurements(
         IEnumerable<StudyResourceSample> resourceSamples,
         IEnumerable<StudyPopulationSample> populationSamples,

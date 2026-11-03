@@ -10,7 +10,7 @@ namespace RustIQ.Infrastructure.Maps;
 
 public sealed class A2sRustServerMapMetadataClient(
     IOptions<RustServerQueryOptions> options)
-    : IRustServerMapMetadataClient
+    : IRustServerMapMetadataClient, IRustServerDescriptionClient
 {
     private const string SourceName = "A2S";
     private const byte RulesRequestType = 0x56;
@@ -82,6 +82,26 @@ public sealed class A2sRustServerMapMetadataClient(
                 configuredServer,
                 DateTimeOffset.UtcNow,
                 exception.Message);
+        }
+    }
+
+    public async Task<RustServerDescriptionResult> GetDescriptionAsync(
+        ConfiguredRustServer configuredServer,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var rules = await QueryRulesAsync(configuredServer, cancellationToken);
+            return new RustServerDescriptionResult(true, RustWipeScheduleParser.GetDescription(rules));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // Timeouts and refused rules queries are both just "no answer" here; the study counts them.
+            return new RustServerDescriptionResult(false, null);
         }
     }
 

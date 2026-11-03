@@ -40,6 +40,8 @@ public interface IStudyRepository
 
     void AddBattleMetricsWipeSnapshot(StudyBattleMetricsWipeSnapshot snapshot);
 
+    void AddServerDescriptions(IEnumerable<StudyServerDescription> descriptions);
+
     void AddMeasurements(
         IEnumerable<StudyResourceSample> resourceSamples,
         IEnumerable<StudyPopulationSample> populationSamples,

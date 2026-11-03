@@ -553,6 +553,34 @@ namespace RustIQ.Infrastructure.Migrations
                     b.ToTable("study_sample_servers", (string)null);
                 });
 
+            modelBuilder.Entity("RustIQ.Domain.Study.StudyServerDescription", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Answered")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("CapturedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(8192)
+                        .HasColumnType("character varying(8192)");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServerId", "CapturedAtUtc");
+
+                    b.ToTable("study_server_descriptions", (string)null);
+                });
+
             modelBuilder.Entity("RustIQ.Domain.Study.StudyTableWriteSample", b =>
                 {
                     b.Property<long>("Id")

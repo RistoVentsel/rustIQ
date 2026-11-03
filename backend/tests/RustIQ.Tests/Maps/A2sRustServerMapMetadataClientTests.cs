@@ -49,6 +49,39 @@ public sealed class A2sRustServerMapMetadataClientTests
         Assert.Null(metadata.Size);
     }
 
+    [Fact]
+    public async Task GetDescriptionAsync_JoinsTheDescriptionFragmentsInOrder()
+    {
+        using var server = new FakeA2sServer
+        {
+            RequireChallenge = true,
+            Rules = new Dictionary<string, string>
+            {
+                ["description_00"] = "Weekly wipes every ",
+                ["description_01"] = "Friday 15:00 CET",
+                ["world.seed"] = "1234567"
+            }
+        };
+        var client = CreateClient();
+
+        var result = await client.GetDescriptionAsync(ConfiguredServer(server.Port), CancellationToken.None);
+
+        Assert.True(result.Answered);
+        Assert.Equal("Weekly wipes every Friday 15:00 CET", result.Description);
+    }
+
+    [Fact]
+    public async Task GetDescriptionAsync_ReportsNoAnswerForASilentServer()
+    {
+        using var server = new FakeA2sServer { Silent = true };
+        var client = CreateClient(timeoutMilliseconds: 300);
+
+        var result = await client.GetDescriptionAsync(ConfiguredServer(server.Port), CancellationToken.None);
+
+        Assert.False(result.Answered);
+        Assert.Null(result.Description);
+    }
+
     private static A2sRustServerMapMetadataClient CreateClient(int timeoutMilliseconds = 2000)
     {
         return new A2sRustServerMapMetadataClient(Options.Create(new RustServerQueryOptions

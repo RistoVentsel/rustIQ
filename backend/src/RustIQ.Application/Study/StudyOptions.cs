@@ -41,6 +41,10 @@ public sealed class StudyOptions
 
     public int BattleMetricsSnapshotIntervalHours { get; init; } = 12;
 
+    public bool DescriptionSnapshotsEnabled { get; init; } = true;
+
+    public int DescriptionSnapshotIntervalHours { get; init; } = 12;
+
     // Resource sampling is separate from Enabled: the API process records its own cost too, while the
     // probes run only in the study process.
     public bool MeasurementEnabled { get; init; }

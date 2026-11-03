@@ -135,8 +135,12 @@ services:
       Study__SmallMinPeakPlayers: 1
       Study__MaxCountryShare: 0.25
       Study__SelectionSeed: 20261104
-      Study__BattleMetricsSnapshotsEnabled: "true"
+      # BattleMetrics answered every request with 403 (Cloudflare) from 2026-11-03 on, from home and
+      # from the VPS alike, so the automatic captures are off; reference values are taken by hand.
+      Study__BattleMetricsSnapshotsEnabled: "false"
       Study__BattleMetricsSnapshotIntervalHours: 12
+      Study__DescriptionSnapshotsEnabled: "true"
+      Study__DescriptionSnapshotIntervalHours: 12
       Study__MeasurementEnabled: "true"
       Study__MeasurementRole: study
       Study__RecordDatabaseMeasurements: "false"

@@ -119,7 +119,7 @@ public static partial class RustWipeScheduleParser
         return null;
     }
 
-    private static string? GetDescription(IReadOnlyDictionary<string, string> rules)
+    public static string? GetDescription(IReadOnlyDictionary<string, string> rules)
     {
         var description = new StringBuilder();
         for (var index = 0; index < DescriptionFragmentCount; index++)

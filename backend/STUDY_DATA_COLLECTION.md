@@ -22,7 +22,8 @@ Both run the migrations on start; EF Core serialises them with a lock.
 | `study_sample_servers` | The frozen stratified sample: popular / medium / small by the 24 h peak player count, at most 25 % from one country per stratum, fixed seed | Once, on the first start |
 | `study_probes` | One A2S_INFO probe per sample server, failures included | Every 15 s per server |
 | `study_wipe_signals` | Sample servers: `born` (last wipe), the next wipe RustIQ derives from the server's own tags, and the keywords minus player counts | Only when one of them changes |
-| `study_battlemetrics_wipe_snapshots` | BattleMetrics' next wipe for each sample server | Every 12 h |
+| `study_battlemetrics_wipe_snapshots` | BattleMetrics' next wipe for each sample server. Off since 2026-11-03: every request got 403 (see below) | Every 12 h when on |
+| `study_server_descriptions` | Each sample server's A2S rules description, where many servers state their wipe schedule | Every 12 h |
 | `study_server_wipe_observations` | Every server: a change in `born`, with what RustIQ had as the last and next wipe right before it | When `born` changes, plus once per server after each restart |
 | `study_resource_samples` | Per process (`Role`): cumulative CPU ms, memory, network bytes, A2S packets sent, BattleMetrics requests | Every 60 s |
 | `study_population_samples` | Servers tracked, online, online with players | Every 60 s |
@@ -58,9 +59,13 @@ Snapshot retention is raised to 60 days. The study tables have no retention and 
 3. Record the commit hash and the lane settings in `docker-compose.vps.yml`. They are the baseline
    strategy and must not change while the study runs.
 4. Check that the VPS clock is synchronised (`timedatectl` should say `System clock synchronized: yes`).
-5. Check that BattleMetrics answers from the VPS. From a home connection on 2026-11-03 its public
-   pages returned 403 (a Cloudflare challenge), and RustIQ does not work around that. If the VPS is
-   blocked too, `study_battlemetrics_wipe_snapshots` fills with NULLs and UK2 has no reference:
+5. BattleMetrics: on 2026-11-03 its public pages (`/servers/rust`, `/servers/rust/<id>/rust-settings`)
+   returned 403 (a Cloudflare challenge) from a home connection and from the VPS alike, and the first
+   capture round got `WithNextWipe: 0` for all 450 servers. RustIQ does not work around that, so the
+   automatic captures are switched off (`Study__BattleMetricsSnapshotsEnabled: "false"`). Production's
+   own BattleMetrics fallback fails the same way and is left as it is, because it is part of the
+   baseline. Reference values for a 45-server subsample are taken by hand instead (`bm-manual.csv`).
+   To check whether the block has lifted:
 
    ```bash
    docker exec rustiq-study curl -s -o /dev/null -w '%{http_code}\n' --compressed \
@@ -141,6 +146,11 @@ docker exec rustiq-postgres psql -U rustiq -d rustiq -c "\copy (SELECT \"ServerI
   predictions can be rebuilt afterwards without leaking the outcome.
 - `born` marks a map wipe. Blueprint wipes are not visible over A2S, and the BattleMetrics parser
   also reads map wipes only.
+- Not every `born` change is a wipe in the players' sense. In the first hour, several servers
+  reset to a new save every hour on the hour or every 1.5 h (arena / minigame style), and a few
+  alternated between two `born` values, i.e. went back to an older save. Before analysing UK2,
+  drop changes where `born` goes backwards and treat servers with very short cycles as their own
+  group, and state the rule in the methodology.
 - Force wipes (first Thursday of the month, around 19:00 UTC) are predictable from the calendar.
   Report them apart from the servers' own schedule wipes, or the predictor looks better than it is.
 - The lanes share fixed batch sizes across all servers. To compare strategies at the same query

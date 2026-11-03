@@ -36,6 +36,8 @@ public sealed class RustIqDbContext(DbContextOptions<RustIqDbContext> options)
 
     public DbSet<StudySampleRanking> StudySampleRankings => Set<StudySampleRanking>();
 
+    public DbSet<StudyServerDescription> StudyServerDescriptions => Set<StudyServerDescription>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Server>(entity =>
@@ -331,6 +333,18 @@ public sealed class RustIqDbContext(DbContextOptions<RustIqDbContext> options)
             entity.HasKey(ranking => ranking.Id);
 
             entity.HasIndex(ranking => new { ranking.ServerId, ranking.SampledAtUtc });
+        });
+
+        modelBuilder.Entity<StudyServerDescription>(entity =>
+        {
+            entity.ToTable("study_server_descriptions");
+
+            entity.HasKey(description => description.Id);
+
+            entity.Property(description => description.Description)
+                .HasMaxLength(8192);
+
+            entity.HasIndex(description => new { description.ServerId, description.CapturedAtUtc });
         });
     }
 }

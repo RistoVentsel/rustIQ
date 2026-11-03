@@ -65,6 +65,8 @@ public static class DependencyInjection
         services.AddSingleton<IBattleMetricsWipeMetadataClient, BattleMetricsPublicWipeMetadataClient>();
         services.AddSingleton<IRustServerQueryClient, SteamRustServerQueryClient>();
         services.AddSingleton<A2sRustServerMapMetadataClient>();
+        services.AddSingleton<IRustServerDescriptionClient>(serviceProvider =>
+            serviceProvider.GetRequiredService<A2sRustServerMapMetadataClient>());
         services.AddSingleton<IRustServerMapMetadataClient, FallbackRustServerMapMetadataClient>();
         services.AddSingleton(serviceProvider =>
             new BattleMetricsRequestPacer(TimeSpan.FromMilliseconds(serviceProvider
