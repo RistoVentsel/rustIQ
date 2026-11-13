@@ -409,6 +409,36 @@ namespace RustIQ.Infrastructure.Migrations
                     b.ToTable("study_population_samples", (string)null);
                 });
 
+            modelBuilder.Entity("RustIQ.Domain.Study.StudyPredictionSnapshot", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CapturedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DisplayedNextWipeAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastWipeAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("NextWipeAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServerId", "CapturedAtUtc");
+
+                    b.ToTable("study_prediction_snapshots", (string)null);
+                });
+
             modelBuilder.Entity("RustIQ.Domain.Study.StudyProbe", b =>
                 {
                     b.Property<long>("Id")

@@ -38,6 +38,8 @@ public sealed class RustIqDbContext(DbContextOptions<RustIqDbContext> options)
 
     public DbSet<StudyServerDescription> StudyServerDescriptions => Set<StudyServerDescription>();
 
+    public DbSet<StudyPredictionSnapshot> StudyPredictionSnapshots => Set<StudyPredictionSnapshot>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Server>(entity =>
@@ -345,6 +347,15 @@ public sealed class RustIqDbContext(DbContextOptions<RustIqDbContext> options)
                 .HasMaxLength(8192);
 
             entity.HasIndex(description => new { description.ServerId, description.CapturedAtUtc });
+        });
+
+        modelBuilder.Entity<StudyPredictionSnapshot>(entity =>
+        {
+            entity.ToTable("study_prediction_snapshots");
+
+            entity.HasKey(snapshot => snapshot.Id);
+
+            entity.HasIndex(snapshot => new { snapshot.ServerId, snapshot.CapturedAtUtc });
         });
     }
 }

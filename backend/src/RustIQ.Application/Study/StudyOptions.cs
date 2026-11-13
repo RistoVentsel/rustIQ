@@ -45,6 +45,12 @@ public sealed class StudyOptions
 
     public int DescriptionSnapshotIntervalHours { get; init; } = 12;
 
+    // RustIQ's own next wipe for each sample server, so BattleMetrics values read by hand can be set
+    // against what RustIQ showed at the same time instead of only right before the wipe.
+    public bool PredictionSnapshotsEnabled { get; init; } = true;
+
+    public int PredictionSnapshotIntervalMinutes { get; init; } = 60;
+
     // Resource sampling is separate from Enabled: the API process records its own cost too, while the
     // probes run only in the study process.
     public bool MeasurementEnabled { get; init; }

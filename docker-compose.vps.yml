@@ -141,6 +141,9 @@ services:
       Study__BattleMetricsSnapshotIntervalHours: 12
       Study__DescriptionSnapshotsEnabled: "true"
       Study__DescriptionSnapshotIntervalHours: 12
+      # RustIQ's own next wipe per sample server every hour, to set against the BattleMetrics rounds.
+      Study__PredictionSnapshotsEnabled: "true"
+      Study__PredictionSnapshotIntervalMinutes: 60
       Study__MeasurementEnabled: "true"
       Study__MeasurementRole: study
       Study__RecordDatabaseMeasurements: "false"

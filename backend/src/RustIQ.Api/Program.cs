@@ -176,6 +176,7 @@ builder.Services
     .Validate(options => !options.Enabled || options.SelectionPeakWindowHours > 0, "Study selection peak window hours must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || !options.BattleMetricsSnapshotsEnabled || options.BattleMetricsSnapshotIntervalHours > 0, "Study BattleMetrics snapshot interval hours must be greater than 0 when enabled.")
     .Validate(options => !options.Enabled || !options.DescriptionSnapshotsEnabled || options.DescriptionSnapshotIntervalHours > 0, "Study description snapshot interval hours must be greater than 0 when enabled.")
+    .Validate(options => !options.Enabled || !options.PredictionSnapshotsEnabled || options.PredictionSnapshotIntervalMinutes > 0, "Study prediction snapshot interval minutes must be greater than 0 when enabled.")
     .Validate(options => !options.MeasurementEnabled || !string.IsNullOrWhiteSpace(options.MeasurementRole), "Study measurement role is required when measurement is enabled.")
     .Validate(options => !options.MeasurementEnabled || options.MeasurementRole.Length <= 32, "Study measurement role must be at most 32 characters.")
     .Validate(options => !options.MeasurementEnabled || options.MeasurementIntervalSeconds > 0, "Study measurement interval seconds must be greater than 0 when measurement is enabled.")
@@ -199,6 +200,7 @@ builder.Services.AddHostedService<StudyProbeWorker>();
 builder.Services.AddHostedService<StudyBattleMetricsWipeWorker>();
 builder.Services.AddHostedService<StudyMeasurementWorker>();
 builder.Services.AddHostedService<StudyServerDescriptionWorker>();
+builder.Services.AddHostedService<StudyPredictionSnapshotWorker>();
 builder.Services.AddHostedService(serviceProvider =>
     serviceProvider.GetRequiredService<ServerRefreshJobQueue>());
 

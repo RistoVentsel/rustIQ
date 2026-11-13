@@ -35,6 +35,7 @@ second set of first-sighting rows in `study_server_wipe_observations`.
 | `study_wipe_signals` | Sample servers: `born` (last wipe), the next wipe RustIQ derives from the server's own tags, and the keywords minus player counts | Only when one of them changes |
 | `study_battlemetrics_wipe_snapshots` | BattleMetrics' next wipe for each sample server. Off since 2026-11-03: every request got 403 (see below) | Every 12 h when on |
 | `study_server_descriptions` | Each sample server's A2S rules description, where many servers state their wipe schedule | Every 12 h |
+| `study_prediction_snapshots` | Sample servers: RustIQ's stored next wipe, the next wipe the pages show (none once it has passed) and the last wipe, so a BattleMetrics value read by hand can be compared with RustIQ's prediction from the same hour. Added 2026-11-13 | Every 60 min |
 | `study_server_wipe_observations` | Every server: a change in `born`, with what RustIQ had as the last and next wipe right before it | When `born` changes, plus once per server after each restart |
 | `study_resource_samples` | Per process (`Role`): cumulative CPU ms, memory, network bytes, A2S packets sent, BattleMetrics requests | Every 60 s |
 | `study_population_samples` | Servers tracked, online, online with players | Every 60 s |

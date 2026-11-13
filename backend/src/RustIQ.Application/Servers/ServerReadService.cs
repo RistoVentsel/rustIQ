@@ -358,7 +358,8 @@ public sealed class ServerReadService(
         return Math.Max(0, (int)(now - value).TotalSeconds);
     }
 
-    private static DateTimeOffset? GetUpcomingNextWipeAtUtc(DateTimeOffset? nextWipeAtUtc, DateTimeOffset now)
+    // Shared with the study's prediction snapshots, so they record exactly what the pages show.
+    internal static DateTimeOffset? GetUpcomingNextWipeAtUtc(DateTimeOffset? nextWipeAtUtc, DateTimeOffset now)
     {
         return nextWipeAtUtc >= now ? nextWipeAtUtc : null;
     }

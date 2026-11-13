@@ -32,6 +32,8 @@ public interface IStudyRepository
         DateTimeOffset sampledAtUtc,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<StudyServerWipeState>> GetSampleWipeStatesAsync(CancellationToken cancellationToken);
+
     void AddSample(IEnumerable<StudySampleServer> sample);
 
     void AddProbes(IEnumerable<StudyProbe> probes);
@@ -41,6 +43,8 @@ public interface IStudyRepository
     void AddBattleMetricsWipeSnapshot(StudyBattleMetricsWipeSnapshot snapshot);
 
     void AddServerDescriptions(IEnumerable<StudyServerDescription> descriptions);
+
+    void AddPredictionSnapshots(IEnumerable<StudyPredictionSnapshot> snapshots);
 
     void AddMeasurements(
         IEnumerable<StudyResourceSample> resourceSamples,

@@ -162,6 +162,24 @@ public sealed class StudyRepository(RustIqDbContext dbContext) : IStudyRepositor
         dbContext.StudyServerDescriptions.AddRange(descriptions);
     }
 
+    public async Task<IReadOnlyList<StudyServerWipeState>> GetSampleWipeStatesAsync(CancellationToken cancellationToken)
+    {
+        // A sample server that production has since pruned is simply absent from the result.
+        return await dbContext.StudySampleServers
+            .AsNoTracking()
+            .Join(
+                dbContext.Servers.AsNoTracking(),
+                sample => sample.ServerId,
+                server => server.Id,
+                (sample, server) => new StudyServerWipeState(server.Id, server.NextWipeAtUtc, server.LastWipeAtUtc))
+            .ToListAsync(cancellationToken);
+    }
+
+    public void AddPredictionSnapshots(IEnumerable<StudyPredictionSnapshot> snapshots)
+    {
+        dbContext.StudyPredictionSnapshots.AddRange(snapshots);
+    }
+
     public void AddMeasurements(
         IEnumerable<StudyResourceSample> resourceSamples,
         IEnumerable<StudyPopulationSample> populationSamples,
