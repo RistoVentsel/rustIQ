@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\RustIQ.Application\RustIQ.Application.csproj" />
     <ProjectReference Include="..\..\src\RustIQ.Infrastructure\RustIQ.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\RustIQ.Api\RustIQ.Api.csproj" />
+    <ProjectReference Include="..\..\src\RustIQ.Simulator\RustIQ.Simulator.csproj" />
   </ItemGroup>
 
 </Project>
