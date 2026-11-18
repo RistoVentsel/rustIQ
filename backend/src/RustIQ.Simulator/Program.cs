@@ -35,6 +35,9 @@ try
         case "sweep":
             SimulationCommands.Sweep(commandLine, Log);
             break;
+        case "diagnose":
+            SimulationCommands.Diagnose(commandLine, Log);
+            break;
         case "tune":
             SimulationCommands.Tune(commandLine, Log);
             break;

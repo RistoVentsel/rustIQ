@@ -183,13 +183,127 @@ public static class SimulationCommands
             $"best by {objective}, mean of both grids: --min-interval {chosen.MinIntervalSeconds} --prior-seconds {chosen.PriorSeconds} --wipe-boost {chosen.WipeBoost} --ewma-alpha {chosen.PlayersEwmaAlpha}"));
     }
 
-    public static SimulationResult Simulate(SimulatorData data, IPollingStrategy strategy, Period period, CommandLine commandLine, Action<string> log)
+    /// <summary>
+    /// Diagnostics, no design change: fourlane at production settings and priority at <c>--budget</c> side by
+    /// side, per day and stratum, over a window, and how many sample servers priority held offline or in back-off.
+    /// </summary>
+    public static void Diagnose(CommandLine commandLine, Action<string> log)
+    {
+        CheckOptions(commandLine, ["budget", "window-from", "window-to", .. PriorityOptionNames]);
+        var period = Period.From(commandLine);
+        var data = SimulatorCommands.LoadData(commandLine, log);
+        period = period.ClampedTo(data);
+        var outDir = commandLine.Required("out");
+        Directory.CreateDirectory(outDir);
+        var windowFrom = commandLine.Time("window-from", DateTimeOffset.FromUnixTimeMilliseconds(period.EvalFromMs)).ToUnixTimeMilliseconds();
+        var windowTo = commandLine.Time("window-to", DateTimeOffset.FromUnixTimeMilliseconds(period.ToMs)).ToUnixTimeMilliseconds();
+        var budget = Parse(commandLine.Required("budget"));
+
+        var sampleIndexes = data.SampleServers.Select(s => (s.ServerIndex, s.ServerIdx, s.Stratum)).ToArray();
+        var daily = new StringBuilder("strategy,day,group,points_with_value,aoi_mean_s,aoi_median_s,player_weighted_aoi_s,player_mae\n");
+        var window = new StringBuilder("strategy," + SummaryCsv.Header + "\n");
+        var states = new StringBuilder(
+            "strategy,stratum,avg_believed_offline,max_believed_offline,avg_in_backoff,max_in_backoff," +
+            "avg_believed_offline_but_answering,servers_ever_believed_offline\n");
+
+        foreach (var name in new[] { "fourlane", "priority" })
+        {
+            var strategy = CreateStrategy(commandLine, name, name == "fourlane" ? null : budget, 1);
+            var priority = strategy as PriorityPollingStrategy;
+            var stats = Enum.GetValues<Domain.Study.StudyStratum>().ToDictionary(s => s, _ => new StateStats());
+
+            void OnTick(long nowMs, IReadOnlyList<PolledServer> servers)
+            {
+                if (nowMs < windowFrom || nowMs >= windowTo)
+                {
+                    return;
+                }
+
+                foreach (var group in stats.Values) group.BeginTick();
+                foreach (var (serverIndex, serverIdx, stratum) in sampleIndexes)
+                {
+                    var server = servers[serverIndex];
+                    var offline = server.Status != Domain.Servers.ServerStatus.Online;
+                    var backoff = (priority?.UnansweredInRow(serverIndex) ?? 0) > 0;
+                    var answering = Evaluation.FreshnessEvaluator.TruthAt(data.Probes[serverIdx - 1], nowMs) is not null;
+                    stats[stratum].Add(serverIdx, offline, backoff, offline && answering);
+                }
+
+                foreach (var group in stats.Values) group.EndTick();
+            }
+
+            var result = Simulate(data, strategy, period, commandLine, log, OnTick);
+
+            for (var day = period.EvalFromMs; day < period.ToMs; day += 86_400_000L)
+            {
+                var label = DateTimeOffset.FromUnixTimeMilliseconds(day).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                foreach (var row in RunReport.EvaluateSimulated(data, result, day, Math.Min(day + 86_400_000L, period.ToMs)))
+                {
+                    daily.AppendLine(RunReport.Invariant(
+                        $"{name},{label},{row.Group},{row.PointsWithValue},{row.AoiMeanSeconds:0.#},{row.AoiMedianSeconds:0.#},{row.PlayerWeightedAoiSeconds:0.#},{row.PlayerMae:0.###}"));
+                }
+            }
+
+            foreach (var line in SummaryCsv.Format(RunReport.EvaluateSimulated(data, result, windowFrom, windowTo))
+                         .Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1))
+            {
+                window.AppendLine(name + "," + line);
+            }
+
+            foreach (var (stratum, s) in stats)
+            {
+                states.AppendLine(RunReport.Invariant(
+                    $"{name},{stratum},{s.AverageOffline:0.##},{s.MaxOffline},{s.AverageBackoff:0.##},{s.MaxBackoff},{s.AverageOfflineButAnswering:0.##},{s.EverOffline}"));
+            }
+
+            RunReport.WriteRunFiles(Path.Combine(outDir, name), data, result, period.EvalFromMs, period.ToMs, period.SplitMs, Arguments(commandLine));
+        }
+
+        File.WriteAllText(Path.Combine(outDir, "daily.csv"), daily.ToString());
+        File.WriteAllText(Path.Combine(outDir, "window.csv"), window.ToString());
+        File.WriteAllText(Path.Combine(outDir, "window_states.csv"), states.ToString());
+        log($"wrote {outDir}");
+    }
+
+    private sealed class StateStats
+    {
+        private readonly HashSet<int> _everOffline = [];
+        private long _ticks, _offline, _backoff, _offlineAnswering;
+        private int _tickOffline, _tickBackoff;
+
+        public int MaxOffline { get; private set; }
+        public int MaxBackoff { get; private set; }
+        public int EverOffline => _everOffline.Count;
+        public double AverageOffline => _ticks == 0 ? 0 : (double)_offline / _ticks;
+        public double AverageBackoff => _ticks == 0 ? 0 : (double)_backoff / _ticks;
+        public double AverageOfflineButAnswering => _ticks == 0 ? 0 : (double)_offlineAnswering / _ticks;
+
+        public void BeginTick() { _tickOffline = 0; _tickBackoff = 0; }
+
+        public void Add(int serverIdx, bool offline, bool backoff, bool offlineButAnswering)
+        {
+            if (offline) { _offline++; _tickOffline++; _everOffline.Add(serverIdx); }
+            if (backoff) { _backoff++; _tickBackoff++; }
+            if (offlineButAnswering) _offlineAnswering++;
+        }
+
+        public void EndTick()
+        {
+            _ticks++;
+            MaxOffline = Math.Max(MaxOffline, _tickOffline);
+            MaxBackoff = Math.Max(MaxBackoff, _tickBackoff);
+        }
+    }
+
+    public static SimulationResult Simulate(SimulatorData data, IPollingStrategy strategy, Period period, CommandLine commandLine, Action<string> log,
+        Action<long, IReadOnlyList<PolledServer>>? onTick = null)
     {
         var options = new SimulationOptions
         {
             FromMs = period.FromMs,
             ToMs = period.ToMs,
             Seed = commandLine.Int("seed", 1),
+            OnTick = onTick,
             Ranking = (commandLine.Optional("ranking") ?? "frozen") switch
             {
                 "frozen" => RankingMode.Frozen,
@@ -298,6 +412,20 @@ public static class SimulationCommands
                   "which were down for 41.7 h and 76.4 h. After more than 24 h unseen they fall under the 6 h back-off cap, so their return can " +
                   "go unnoticed for up to 6 h depending on the back-off's phase, and the player weighting magnifies that. In 2026-11-11 to 11-15 " +
                   "the result is monotonic (206, 156, 131 s). This follows from the agreed rule and was left as it is.");
+        notes.Add("Why Priority's player-weighted AoI is worse in the tuning window 2026-11-04..11 (699 against 688 s, final run on both " +
+                  "exports): not the forced wipe window itself. From 2026-11-05 18:00 to 11-06 06:00 Priority is better (212 against 355 s; " +
+                  "Popular 410 against 670 s mean AoI) and holds as many sample servers offline as fourlane (about 22 per stratum). The cost " +
+                  "lands on 11-07 to 11-10, when servers that went down at the forced wipe came back after 41 to 98 hours (sample servers " +
+                  "172, 188 Popular; 37, 93 Medium; 313 Small, 77 h from 11-06). Unseen for over 24 h they are under the 6 h back-off cap, " +
+                  "so Priority can notice the return up to 6 h late, and the player weighting magnifies it (daily player-weighted AoI " +
+                  "fourlane/Priority: 11-07 382/836, 11-08 988/1137, 11-10 645/705 s). Fourlane keeps polling ranked servers in its Fast " +
+                  "lane while they are down, because the ranking is frozen, and sees them return within minutes. On every other day " +
+                  "Priority is better. Mechanism: the 6 h back-off cap for servers unseen over 24 h (as agreed), not the change-rate estimate.");
+        notes.Add("Popular median AoI (Priority 188 s against fourlane's 134 s) does not come from the 165 s minimum interval: with " +
+                  "--min-interval 60 at the production volume it is 203 s (mean 658 s, Medium mean 1311 s against 1248 s, player-weighted AoI " +
+                  "466 against 474 s). Fourlane polls a Popular sample server 13.0 times an hour, Priority 9.3 (10.1 with 60 s), because " +
+                  "57.5 % of Priority's queries go to the maximum-age queue. The median gap is the price of that guarantee; Priority's " +
+                  "Popular mean AoI is still lower (621 against 1092 s).");
         notes.Add("Phantom servers fill the gap between study_population_samples.TotalServers and the known servers; they never answer.");
         notes.Add("Worker timing is modelled, not replayed: 32 queries in flight, 0.5 s per answered and 6 s per unanswered query " +
                   "(two 3 s attempts), lanes one after another, PeriodicTimer's one kept tick, and a few ms of jitter in reading the clock. " +

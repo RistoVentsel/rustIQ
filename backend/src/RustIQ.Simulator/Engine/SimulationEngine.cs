@@ -12,6 +12,9 @@ public sealed class SimulationOptions
     public long TickMs { get; init; } = 15_000;
     public int Seed { get; init; } = 1;
     public RankingMode Ranking { get; init; } = RankingMode.Frozen;
+
+    /// <summary>Diagnostics only: called after every tick with the time and the server states.</summary>
+    public Action<long, IReadOnlyList<PolledServer>>? OnTick { get; init; }
     public long OfflineThresholdMs { get; init; } = PollStateRules.DefaultOfflineThresholdMs;
 
     /// <summary>How long recent snapshots are kept for the recent-peak rules; covers their 60 min windows.</summary>
@@ -138,6 +141,7 @@ public sealed class SimulationEngine : IPollExecutor
             }
 
             _strategy.Tick(_nowMs, _servers, this);
+            _options.OnTick?.Invoke(_nowMs, _servers);
             _result.RecordPopulation(_nowMs, _knownExisting, _activePhantoms.Count);
 
             // The next timer tick; if the work ran past it, the one kept missed tick fires when the work ends.

@@ -292,6 +292,9 @@ public sealed class PriorityPollingStrategy : IPollingStrategy
         estimate.LastPlayers = outcome.Players;
     }
 
+    /// <summary>Diagnostics: unanswered polls in a row of the server at <paramref name="index"/>.</summary>
+    public int UnansweredInRow(int index) => index < _estimates.Length ? _estimates[index].UnansweredInRow : 0;
+
     public void OnServerReset(PolledServer server)
     {
         EnsureCapacity(server.Index + 1);
