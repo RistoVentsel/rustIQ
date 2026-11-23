@@ -18,7 +18,7 @@ public sealed class PollingStrategyTests
 
         Assert.Equal(120, recorded);
         Assert.Equal(ServerStatus.Online, server.Status);
-        Assert.Equal(120, server.MaxPlayers); // players above max raise max, as NormalizeQueryResult does
+        Assert.Equal(120, server.MaxPlayers);
         Assert.Equal(3, server.QueuePlayers);
         Assert.Equal(Now, server.LastSeenAtMs);
         Assert.Equal(Now, server.LastCheckedAtMs);
@@ -126,15 +126,12 @@ public sealed class PollingStrategyTests
         strategy.Tick(Now + 44_999, servers, executor);
         strategy.Tick(Now + 45_000, servers, executor);
 
-        // Batch 1 scaled by 2; runs at Now and Now + 45 s only.
         Assert.Equal([("Fast", 2), ("Fast", 2)], executor.Calls.Select(call => (call.Lane, call.Servers.Count)));
     }
 
     [Fact]
     public void FourLane_SkipsServersAnEarlierLanePolledInTheSameTick()
     {
-        // Offline, never seen, but still 150 players on the row: both Fast and VeryStaleOffline select it.
-        // The executor leaves the state alone, so only the claimed set keeps VeryStaleOffline off it.
         var strategy = new FourLanePollingStrategy();
         var server = Offline(0, lastSeen: null);
         server.Players = 150;
@@ -148,7 +145,7 @@ public sealed class PollingStrategyTests
     [Fact]
     public void Uniform_PollsTheOldestServersWithinTheBudget()
     {
-        var strategy = new UniformPollingStrategy(queriesPerMinute: 8); // 2 per 15 s tick
+        var strategy = new UniformPollingStrategy(queriesPerMinute: 8);
         var servers = new[]
         {
             Online(0, players: 1, lastChecked: Now - 1_000),
@@ -169,9 +166,9 @@ public sealed class PollingStrategyTests
     {
         var budget = new PollBudget(queriesPerMinute: 10, tickSeconds: 15);
 
-        Assert.Equal(2, budget.Next(0));          // first tick: 15 s worth = 2.5
-        Assert.Equal(3, budget.Next(15_000));     // 2.5 + 0.5 carried
-        Assert.Equal(10, budget.Next(75_000));    // a late tick gets the whole minute
+        Assert.Equal(2, budget.Next(0));
+        Assert.Equal(3, budget.Next(15_000));
+        Assert.Equal(10, budget.Next(75_000));
     }
 
     [Fact]
@@ -186,7 +183,6 @@ public sealed class PollingStrategyTests
         strategy.OnPolled(server, new PollOutcome(Now, false, 0, 0, 0));
         strategy.OnPolled(server, new PollOutcome(Now, false, 0, 0, 0));
         server.LastCheckedAtMs = Now;
-        // Two failures: 45 * 4 = 180 s, capped at 100 s.
         Assert.Equal(0, strategy.Score(server, Now + 99_000));
         Assert.True(strategy.Score(server, Now + 100_000) > 0);
     }
@@ -209,7 +205,6 @@ public sealed class PollingStrategyTests
         busy.LastCheckedAtMs = Now;
         empty.LastCheckedAtMs = Now;
 
-        // 6 h / 300 is below the minimum interval, so the busy server waits only 165 s; the empty one 6 h.
         Assert.True(strategy.Score(busy, Now + 165_000) > 0);
         Assert.Equal(0, strategy.Score(empty, Now + 6 * 3_600_000 - 1_000));
         Assert.True(strategy.Score(empty, Now + 6 * 3_600_000) > 0);
@@ -234,7 +229,6 @@ public sealed class PollingStrategyTests
         strategy.OnPolled(quiet, new PollOutcome(Now - 60_000, true, 1, 50, 0));
 
         Assert.True(strategy.Score(busy, Now) > strategy.Score(quiet, Now));
-        // A quiet server left alone for a day outranks a busy one polled a minute ago.
         quiet.LastCheckedAtMs = Now - 86_400_000;
         Assert.True(strategy.Score(quiet, Now) > strategy.Score(busy, Now));
     }
@@ -294,10 +288,10 @@ public sealed class PollingStrategyTests
 
         Assert.True(strategy.Score(overdue, Now) > strategy.Score(busy, Now));
         Assert.True(strategy.Score(moreOverdue, Now) > strategy.Score(overdue, Now));
-        Assert.True(strategy.Score(offlineOld, Now) < PriorityPollingStrategy.OverdueScore); // never seen: no guarantee
+        Assert.True(strategy.Score(offlineOld, Now) < PriorityPollingStrategy.OverdueScore);
 
         var executor = new RecordingExecutor();
-        new PriorityPollingStrategy(8, new PriorityOptions { MaxAgeBudgetShare = 0, MaxAgeSeconds = 80 * 60 }) // 2 per tick
+        new PriorityPollingStrategy(8, new PriorityOptions { MaxAgeBudgetShare = 0, MaxAgeSeconds = 80 * 60 })
             .Tick(Now, [busy, overdue, moreOverdue, offlineOld], executor);
         Assert.Equal([2, 1], Indexes(executor.Calls.Single().Servers));
     }
@@ -305,7 +299,6 @@ public sealed class PollingStrategyTests
     [Fact]
     public void Priority_MaxAgeFollowsTheBudgetAndCoversRecentlySeenOfflineServers()
     {
-        // 600 queries per minute = 10 per second; share 0.5 -> 5 per second; 3 servers online -> 0.6 s.
         var strategy = new PriorityPollingStrategy(600, new PriorityOptions { MaxAgeBudgetShare = 0.5, MinIntervalSeconds = 0.1 });
         var servers = new[]
         {
@@ -316,7 +309,6 @@ public sealed class PollingStrategyTests
         strategy.UpdateMaxAge(servers, Now);
         Assert.Equal(0.6, strategy.AverageMaxAgeSeconds, 9);
 
-        // Seen 23 h ago, now offline after many failures: still guaranteed, so it is overdue past the maximum age.
         var recentlyOffline = Offline(3, lastSeen: Now - 23 * 3_600_000L);
         recentlyOffline.LastCheckedAtMs = Now - 1_000;
         for (var i = 0; i < 20; i++)
@@ -326,7 +318,6 @@ public sealed class PollingStrategyTests
 
         Assert.True(strategy.Score(recentlyOffline, Now) >= PriorityPollingStrategy.OverdueScore);
 
-        // Seen 25 h ago: the 6 h back-off cap applies and it is not due.
         var longOffline = Offline(4, lastSeen: Now - 25 * 3_600_000L);
         longOffline.LastCheckedAtMs = Now - 1_000;
         for (var i = 0; i < 20; i++)

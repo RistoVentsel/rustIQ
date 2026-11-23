@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using RustIQ.Domain.Servers;
 using RustIQ.Domain.Study;
 
@@ -5,7 +6,6 @@ namespace RustIQ.Simulator.Data;
 
 public sealed class SimulatorDataLoadOptions
 {
-    /// <summary>Check every file's sha256 against its manifest. Row counts are always checked.</summary>
     public bool VerifyChecksums { get; init; } = true;
 
     public bool LoadProbes { get; init; } = true;
@@ -15,12 +15,6 @@ public sealed class SimulatorDataLoadOptions
     public Action<string>? Log { get; init; }
 }
 
-/// <summary>
-/// Loads one or more export folders and unions them. Retention deletes a pruned server with its
-/// snapshots, so a later export lacks rows an earlier one has:
-/// snapshots are merged by id, servers by id (the later export wins), probes by (server_idx, t_ms),
-/// and the study tables by their id.
-/// </summary>
 public static class SimulatorDataLoader
 {
     public const string SampleServersTable = "study_sample_servers";
@@ -50,161 +44,305 @@ public static class SimulatorDataLoader
 
     public static SimulatorData Load(IReadOnlyList<string> folders, SimulatorDataLoadOptions? options = null)
     {
-        options ??= new SimulatorDataLoadOptions();
+        if (options == null)
+        {
+            options = new SimulatorDataLoadOptions();
+        }
+
         if (folders.Count == 0)
         {
             throw new ArgumentException("At least one export folder is needed.", nameof(folders));
         }
 
-        // Oldest export first, so "later export wins" is simply "last write wins".
-        var manifests = folders
-            .Select(ExportManifest.Load)
-            .OrderBy(manifest => manifest.ExportedAtUtc)
-            .ToArray();
-        var log = options.Log ?? (_ => { });
+        ExportManifest[] manifests = new ExportManifest[folders.Count];
+        for (int i = 0; i < folders.Count; i++)
+        {
+            manifests[i] = ExportManifest.Load(folders[i]);
+        }
+
+        SortByExportTime(manifests);
+
+        Action<string> log;
+        if (options.Log != null)
+        {
+            log = options.Log;
+        }
+        else
+        {
+            log = message => { };
+        }
 
         if (options.VerifyChecksums)
         {
-            var tables = AllTables(options);
+            string[] tables = AllTables(options);
+            List<ExportManifest> checkManifests = new List<ExportManifest>();
+            List<string> checkTables = new List<string>();
+            foreach (ExportManifest manifest in manifests)
+            {
+                foreach (string table in tables)
+                {
+                    checkManifests.Add(manifest);
+                    checkTables.Add(table);
+                }
+            }
+
             try
             {
-                Parallel.ForEach(
-                    manifests.SelectMany(manifest => tables.Select(table => (manifest, table))),
-                    item => item.manifest.VerifyChecksum(item.table));
+                Parallel.For(0, checkManifests.Count, i => checkManifests[i].VerifyChecksum(checkTables[i]));
             }
             catch (AggregateException exception)
             {
-                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(exception.InnerExceptions[0]);
+                ExceptionDispatchInfo.Throw(exception.InnerExceptions[0]);
             }
 
             log($"sha256 ok for {manifests.Length} export(s)");
         }
 
-        var serverIndex = new ServerIndex();
-        var sampleServers = LoadSampleServers(manifests, serverIndex);
+        ServerIndex serverIndex = new ServerIndex();
+        IReadOnlyList<SampleServer> sampleServers = LoadSampleServers(manifests, serverIndex);
         log($"{SampleServersTable}: {sampleServers.Count} servers");
 
-        // Small tables first: they also register server ids, so the big files only look them up.
-        var servers = LoadServers(manifests, serverIndex);
+        Dictionary<Guid, ServerRecord> servers = LoadServers(manifests, serverIndex);
         log($"{ServersTable}: {servers.Count} servers");
 
-        var rankings = LoadSmall(manifests, RankingsTable, RankingsHeader,
-            row => new ServerRankingRow(row.Guid(0), row.Int(1), row.Int(2), row.Timestamp(3)),
-            keyOf: row => row.ServerId, latestOnly: true);
-        var sampleRankings = LoadSmall(manifests, SampleRankingsTable, SampleRankingsHeader,
-            row => new SampleRankingRow(row.Long(0), row.Timestamp(1), row.Guid(2), row.NullableInt(3)),
-            keyOf: row => row.Id);
-        var population = LoadSmall(manifests, PopulationTable, PopulationHeader,
-            row => new PopulationSample(row.Long(0), row.Timestamp(1), row.Int(2), row.Int(3), row.Int(4)),
-            keyOf: row => row.Id);
-        var tableWrites = LoadSmall(manifests, TableWritesTable, TableWritesHeader,
-            row => new TableWriteSample(row.Long(0), row.Timestamp(1), row.String(2), row.Long(3), row.Long(4), row.Long(5)),
-            keyOf: row => row.Id);
-        var wipeObservations = LoadSmall(manifests, WipeObservationsTable, WipeObservationsHeader,
-            row => new WipeObservationRow(
-                row.Long(0),
-                row.Guid(1),
-                row.Timestamp(2),
-                row.NullableTimestamp(3),
-                row.NullableTimestamp(4),
-                row.NullableTimestamp(5),
-                row.NullableBool(6) ?? false,
-                row.NullableString(7)),
-            keyOf: row => row.Id);
-        var predictions = LoadSmall(manifests, PredictionSnapshotsTable, PredictionSnapshotsHeader,
-            row => new PredictionSnapshotRow(
-                row.Long(0),
-                row.Guid(1),
-                row.Timestamp(2),
-                row.NullableTimestamp(3),
-                row.NullableTimestamp(4),
-                row.NullableTimestamp(5)),
-            keyOf: row => row.Id);
+        List<ServerRankingRow> rankings = LoadSmall<ServerRankingRow, Guid>(
+            manifests, RankingsTable, RankingsHeader, ParseRanking, RankingKey, true);
+        List<SampleRankingRow> sampleRankings = LoadSmall<SampleRankingRow, long>(
+            manifests, SampleRankingsTable, SampleRankingsHeader, ParseSampleRanking, SampleRankingKey);
+        List<PopulationSample> population = LoadSmall<PopulationSample, long>(
+            manifests, PopulationTable, PopulationHeader, ParsePopulation, PopulationKey);
+        List<TableWriteSample> tableWrites = LoadSmall<TableWriteSample, long>(
+            manifests, TableWritesTable, TableWritesHeader, ParseTableWrite, TableWriteKey);
+        List<WipeObservationRow> wipeObservations = LoadSmall<WipeObservationRow, long>(
+            manifests, WipeObservationsTable, WipeObservationsHeader, ParseWipeObservation, WipeObservationKey);
+        List<PredictionSnapshotRow> predictions = LoadSmall<PredictionSnapshotRow, long>(
+            manifests, PredictionSnapshotsTable, PredictionSnapshotsHeader, ParsePrediction, PredictionKey);
         log($"small tables: {rankings.Count} rankings, {sampleRankings.Count} sample ranks, " +
             $"{population.Count} population rows, {tableWrites.Count} write rows, " +
             $"{wipeObservations.Count} wipe observations, {predictions.Count} prediction snapshots");
 
-        foreach (var row in rankings) serverIndex.GetOrAdd(row.ServerId);
-        foreach (var row in sampleRankings) serverIndex.GetOrAdd(row.ServerId);
+        foreach (ServerRankingRow row in rankings)
+        {
+            serverIndex.GetOrAdd(row.ServerId);
+        }
 
-        // The two big files are independent; read them side by side.
-        IReadOnlyList<ProbeSeries> probes = [];
+        foreach (SampleRankingRow row in sampleRankings)
+        {
+            serverIndex.GetOrAdd(row.ServerId);
+        }
+
+        IReadOnlyList<ProbeSeries> probes = new ProbeSeries[0];
         SnapshotSeriesBuilder? snapshotBuilder = null;
-        var probeTask = Task.Run(() =>
+        Task probeTask = Task.Run(() =>
         {
             if (options.LoadProbes)
             {
                 probes = LoadProbes(manifests, sampleServers.Count);
-                log($"{ProbesTable}: {probes.Sum(series => (long)series.Count)} probes after merge");
+                log($"{ProbesTable}: {CountProbes(probes)} probes after merge");
             }
         });
-        var snapshotTask = Task.Run(() =>
+        Task snapshotTask = Task.Run(() =>
         {
             if (options.LoadSnapshots)
             {
                 snapshotBuilder = LoadSnapshots(manifests, serverIndex);
             }
         });
-        // GetResult rethrows the first failure itself rather than an AggregateException.
         Task.WhenAll(probeTask, snapshotTask).GetAwaiter().GetResult();
 
-        var serverCount = serverIndex.Count;
-        var snapshots = new SnapshotSeries[serverCount];
-        for (var i = 0; i < serverCount; i++)
+        int serverCount = serverIndex.Count;
+        SnapshotSeries[] snapshots = new SnapshotSeries[serverCount];
+        for (int i = 0; i < serverCount; i++)
         {
-            snapshots[i] = snapshotBuilder?.Build(i) ?? SnapshotSeries.Empty;
+            if (snapshotBuilder != null)
+            {
+                snapshots[i] = snapshotBuilder.Build(i);
+            }
+            else
+            {
+                snapshots[i] = SnapshotSeries.Empty;
+            }
         }
 
-        if (snapshotBuilder is not null)
+        if (snapshotBuilder != null)
         {
-            log($"{SnapshotsTable}: {snapshots.Sum(series => (long)series.Count)} snapshots after merge " +
+            log($"{SnapshotsTable}: {CountSnapshots(snapshots)} snapshots after merge " +
                 $"({snapshotBuilder.Duplicates} duplicates dropped)");
         }
 
-        var serverRecords = new ServerRecord?[serverCount];
-        foreach (var record in servers.Values)
+        ServerRecord?[] serverRecords = new ServerRecord?[serverCount];
+        foreach (ServerRecord record in servers.Values)
         {
             serverRecords[serverIndex.GetOrAdd(record.Id)] = record;
+        }
+
+        IReadOnlyList<ProbeSeries> finalProbes;
+        if (options.LoadProbes)
+        {
+            finalProbes = probes;
+        }
+        else
+        {
+            ProbeSeries[] emptyProbes = new ProbeSeries[sampleServers.Count];
+            for (int i = 0; i < emptyProbes.Length; i++)
+            {
+                emptyProbes[i] = ProbeSeries.Empty;
+            }
+
+            finalProbes = emptyProbes;
         }
 
         return new SimulatorData
         {
             Manifests = manifests,
             SampleServers = sampleServers,
-            Probes = options.LoadProbes ? probes : Enumerable.Repeat(ProbeSeries.Empty, sampleServers.Count).ToArray(),
+            Probes = finalProbes,
             ServerIndex = serverIndex,
             Servers = serverRecords,
             Snapshots = snapshots,
             Rankings = rankings,
             SampleRankings = sampleRankings,
-            PopulationSamples = population.OrderBy(row => row.SampledAtUtc).ToArray(),
-            TableWriteSamples = tableWrites.OrderBy(row => row.SampledAtUtc).ThenBy(row => row.TableName).ToArray(),
+            PopulationSamples = SortPopulation(population),
+            TableWriteSamples = SortTableWrites(tableWrites),
             WipeObservations = wipeObservations,
             PredictionSnapshots = predictions
         };
     }
 
+    private static void SortByExportTime(ExportManifest[] manifests)
+    {
+        for (int i = 1; i < manifests.Length; i++)
+        {
+            ExportManifest current = manifests[i];
+            int j = i - 1;
+            while (j >= 0 && manifests[j].ExportedAtUtc > current.ExportedAtUtc)
+            {
+                manifests[j + 1] = manifests[j];
+                j--;
+            }
+
+            manifests[j + 1] = current;
+        }
+    }
+
+    private static PopulationSample[] SortPopulation(List<PopulationSample> rows)
+    {
+        int[] positions = new int[rows.Count];
+        for (int i = 0; i < positions.Length; i++)
+        {
+            positions[i] = i;
+        }
+
+        Array.Sort(positions, (a, b) =>
+        {
+            int result = rows[a].SampledAtUtc.CompareTo(rows[b].SampledAtUtc);
+            if (result != 0)
+            {
+                return result;
+            }
+
+            return a.CompareTo(b);
+        });
+
+        PopulationSample[] sorted = new PopulationSample[positions.Length];
+        for (int i = 0; i < positions.Length; i++)
+        {
+            sorted[i] = rows[positions[i]];
+        }
+
+        return sorted;
+    }
+
+    private static TableWriteSample[] SortTableWrites(List<TableWriteSample> rows)
+    {
+        int[] positions = new int[rows.Count];
+        for (int i = 0; i < positions.Length; i++)
+        {
+            positions[i] = i;
+        }
+
+        Comparer<string> nameComparer = Comparer<string>.Default;
+        Array.Sort(positions, (a, b) =>
+        {
+            int result = rows[a].SampledAtUtc.CompareTo(rows[b].SampledAtUtc);
+            if (result != 0)
+            {
+                return result;
+            }
+
+            result = nameComparer.Compare(rows[a].TableName, rows[b].TableName);
+            if (result != 0)
+            {
+                return result;
+            }
+
+            return a.CompareTo(b);
+        });
+
+        TableWriteSample[] sorted = new TableWriteSample[positions.Length];
+        for (int i = 0; i < positions.Length; i++)
+        {
+            sorted[i] = rows[positions[i]];
+        }
+
+        return sorted;
+    }
+
+    private static long CountProbes(IReadOnlyList<ProbeSeries> probes)
+    {
+        long total = 0;
+        foreach (ProbeSeries series in probes)
+        {
+            total += series.Count;
+        }
+
+        return total;
+    }
+
+    private static long CountSnapshots(SnapshotSeries[] snapshots)
+    {
+        long total = 0;
+        foreach (SnapshotSeries series in snapshots)
+        {
+            total += series.Count;
+        }
+
+        return total;
+    }
+
     private static string[] AllTables(SimulatorDataLoadOptions options)
     {
-        var tables = new List<string>
+        List<string> tables = new List<string>();
+        tables.Add(SampleServersTable);
+        tables.Add(ServersTable);
+        tables.Add(RankingsTable);
+        tables.Add(SampleRankingsTable);
+        tables.Add(PopulationTable);
+        tables.Add(TableWritesTable);
+        tables.Add(WipeObservationsTable);
+        tables.Add(PredictionSnapshotsTable);
+        if (options.LoadProbes)
         {
-            SampleServersTable, ServersTable, RankingsTable, SampleRankingsTable, PopulationTable,
-            TableWritesTable, WipeObservationsTable, PredictionSnapshotsTable
-        };
-        if (options.LoadProbes) tables.Add(ProbesTable);
-        if (options.LoadSnapshots) tables.Add(SnapshotsTable);
+            tables.Add(ProbesTable);
+        }
+
+        if (options.LoadSnapshots)
+        {
+            tables.Add(SnapshotsTable);
+        }
+
         return tables.ToArray();
     }
 
     private static IReadOnlyList<SampleServer> LoadSampleServers(IReadOnlyList<ExportManifest> manifests, ServerIndex serverIndex)
     {
         SampleServer[]? first = null;
-        foreach (var manifest in manifests)
+        foreach (ExportManifest manifest in manifests)
         {
-            var rows = new List<SampleServer>();
-            var count = CsvFile.Read(manifest.PathOf(SampleServersTable), SampleServersHeader, row =>
+            List<SampleServer> rows = new List<SampleServer>();
+            long count = CsvFile.Read(manifest.PathOf(SampleServersTable), SampleServersHeader, row =>
             {
-                var serverId = row.Guid(1);
+                Guid serverId = row.Guid(1);
                 rows.Add(new SampleServer(
                     row.Int(0),
                     serverId,
@@ -216,8 +354,9 @@ public static class SimulatorDataLoader
             });
             manifest.VerifyRowCount(SampleServersTable, count);
 
-            var ordered = rows.OrderBy(server => server.ServerIdx).ToArray();
-            for (var i = 0; i < ordered.Length; i++)
+            SampleServer[] ordered = rows.ToArray();
+            Array.Sort(ordered, CompareByServerIdx);
+            for (int i = 0; i < ordered.Length; i++)
             {
                 if (ordered[i].ServerIdx != i + 1)
                 {
@@ -225,14 +364,12 @@ public static class SimulatorDataLoader
                 }
             }
 
-            if (first is null)
+            if (first == null)
             {
                 first = ordered;
             }
-            else if (!first.Select(server => (server.ServerIdx, server.ServerId))
-                         .SequenceEqual(ordered.Select(server => (server.ServerIdx, server.ServerId))))
+            else if (!SameSample(first, ordered))
             {
-                // server_idx must mean the same server in every export, or the probes cannot be merged.
                 throw new InvalidDataException($"{manifest.Folder}: the sample differs from the earlier export.");
             }
         }
@@ -240,25 +377,47 @@ public static class SimulatorDataLoader
         return first!;
     }
 
+    private static int CompareByServerIdx(SampleServer a, SampleServer b)
+    {
+        return a.ServerIdx.CompareTo(b.ServerIdx);
+    }
+
+    private static bool SameSample(SampleServer[] first, SampleServer[] other)
+    {
+        if (first.Length != other.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < first.Length; i++)
+        {
+            if (first[i].ServerIdx != other[i].ServerIdx || first[i].ServerId != other[i].ServerId)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static Dictionary<Guid, ServerRecord> LoadServers(IReadOnlyList<ExportManifest> manifests, ServerIndex serverIndex)
     {
-        var servers = new Dictionary<Guid, ServerRecord>();
-        for (var m = 0; m < manifests.Count; m++)
+        Dictionary<Guid, ServerRecord> servers = new Dictionary<Guid, ServerRecord>();
+        for (int m = 0; m < manifests.Count; m++)
         {
-            var manifest = manifests[m];
-            var isLatest = m == manifests.Count - 1;
-            var count = CsvFile.Read(manifest.PathOf(ServersTable), ServersHeader, row =>
+            ExportManifest manifest = manifests[m];
+            bool isLatest = m == manifests.Count - 1;
+            long count = CsvFile.Read(manifest.PathOf(ServersTable), ServersHeader, row =>
             {
-                var id = row.Guid(0);
+                Guid id = row.Guid(0);
                 serverIndex.GetOrAdd(id);
                 servers[id] = new ServerRecord(
                     id,
                     Enum.Parse<RustServerType>(row.String(1)),
                     Enum.Parse<ServerStatus>(row.String(2)),
-                    // About 50 servers never answered and have no counts at all.
-                    row.NullableInt(3) ?? 0,
-                    row.NullableInt(4) ?? 0,
-                    row.NullableInt(5) ?? 0,
+                    IntOrZero(row, 3),
+                    IntOrZero(row, 4),
+                    IntOrZero(row, 5),
                     row.Timestamp(6),
                     row.NullableTimestamp(7),
                     row.NullableTimestamp(8),
@@ -270,7 +429,6 @@ public static class SimulatorDataLoader
             manifest.VerifyRowCount(ServersTable, count);
         }
 
-        // A server only in an earlier export keeps InLatestExport = false: it was pruned before the latest one.
         return servers;
     }
 
@@ -283,25 +441,22 @@ public static class SimulatorDataLoader
         bool latestOnly = false)
         where TKey : notnull
     {
-        // The study tables are never pruned, so a union by id keeps every row; a later copy of a row
-        // replaces the earlier one. server_rankings holds only the latest ranking, so only the latest
-        // export's copy is meaningful.
-        var rows = new Dictionary<TKey, T>();
-        var order = new List<TKey>();
-        IReadOnlyList<ExportManifest> selected = latestOnly ? [manifests[^1]] : manifests;
-        foreach (var manifest in manifests)
+        Dictionary<TKey, T> rows = new Dictionary<TKey, T>();
+        List<TKey> order = new List<TKey>();
+        for (int m = 0; m < manifests.Count; m++)
         {
-            var parsed = new List<T>();
-            var count = CsvFile.Read(manifest.PathOf(table), header, row => parsed.Add(parse(row)));
+            ExportManifest manifest = manifests[m];
+            List<T> parsed = new List<T>();
+            long count = CsvFile.Read(manifest.PathOf(table), header, row => parsed.Add(parse(row)));
             manifest.VerifyRowCount(table, count);
-            if (!selected.Contains(manifest))
+            if (latestOnly && m != manifests.Count - 1)
             {
                 continue;
             }
 
-            foreach (var item in parsed)
+            foreach (T item in parsed)
             {
-                var key = keyOf(item);
+                TKey key = keyOf(item);
                 if (!rows.ContainsKey(key))
                 {
                     order.Add(key);
@@ -311,58 +466,171 @@ public static class SimulatorDataLoader
             }
         }
 
-        return order.Select(key => rows[key]).ToList();
+        List<T> result = new List<T>();
+        foreach (TKey key in order)
+        {
+            result.Add(rows[key]);
+        }
+
+        return result;
+    }
+
+    private static ServerRankingRow ParseRanking(CsvRow row)
+    {
+        return new ServerRankingRow(row.Guid(0), row.Int(1), row.Int(2), row.Timestamp(3));
+    }
+
+    private static Guid RankingKey(ServerRankingRow row)
+    {
+        return row.ServerId;
+    }
+
+    private static SampleRankingRow ParseSampleRanking(CsvRow row)
+    {
+        return new SampleRankingRow(row.Long(0), row.Timestamp(1), row.Guid(2), row.NullableInt(3));
+    }
+
+    private static long SampleRankingKey(SampleRankingRow row)
+    {
+        return row.Id;
+    }
+
+    private static PopulationSample ParsePopulation(CsvRow row)
+    {
+        return new PopulationSample(row.Long(0), row.Timestamp(1), row.Int(2), row.Int(3), row.Int(4));
+    }
+
+    private static long PopulationKey(PopulationSample row)
+    {
+        return row.Id;
+    }
+
+    private static TableWriteSample ParseTableWrite(CsvRow row)
+    {
+        return new TableWriteSample(row.Long(0), row.Timestamp(1), row.String(2), row.Long(3), row.Long(4), row.Long(5));
+    }
+
+    private static long TableWriteKey(TableWriteSample row)
+    {
+        return row.Id;
+    }
+
+    private static WipeObservationRow ParseWipeObservation(CsvRow row)
+    {
+        return new WipeObservationRow(
+            row.Long(0),
+            row.Guid(1),
+            row.Timestamp(2),
+            row.NullableTimestamp(3),
+            row.NullableTimestamp(4),
+            row.NullableTimestamp(5),
+            BoolOrFalse(row, 6),
+            row.NullableString(7));
+    }
+
+    private static long WipeObservationKey(WipeObservationRow row)
+    {
+        return row.Id;
+    }
+
+    private static PredictionSnapshotRow ParsePrediction(CsvRow row)
+    {
+        return new PredictionSnapshotRow(
+            row.Long(0),
+            row.Guid(1),
+            row.Timestamp(2),
+            row.NullableTimestamp(3),
+            row.NullableTimestamp(4),
+            row.NullableTimestamp(5));
+    }
+
+    private static long PredictionKey(PredictionSnapshotRow row)
+    {
+        return row.Id;
+    }
+
+    private static int IntOrZero(CsvRow row, int index)
+    {
+        int? value = row.NullableInt(index);
+        if (value == null)
+        {
+            return 0;
+        }
+
+        return value.Value;
+    }
+
+    private static bool BoolOrFalse(CsvRow row, int index)
+    {
+        bool? value = row.NullableBool(index);
+        if (value == null)
+        {
+            return false;
+        }
+
+        return value.Value;
     }
 
     private static IReadOnlyList<ProbeSeries> LoadProbes(IReadOnlyList<ExportManifest> manifests, int sampleCount)
     {
-        var builders = new ProbeSeriesBuilder[sampleCount];
-        for (var i = 0; i < sampleCount; i++)
+        ProbeSeriesBuilder[] builders = new ProbeSeriesBuilder[sampleCount];
+        for (int i = 0; i < sampleCount; i++)
         {
             builders[i] = new ProbeSeriesBuilder();
         }
 
-        foreach (var manifest in manifests)
+        foreach (ExportManifest manifest in manifests)
         {
-            var count = CsvFile.Read(manifest.PathOf(ProbesTable), ProbesHeader, row =>
+            long count = CsvFile.Read(manifest.PathOf(ProbesTable), ProbesHeader, row =>
             {
-                var idx = row.Int(0);
+                int idx = row.Int(0);
                 if (idx < 1 || idx > sampleCount)
                 {
                     throw new InvalidDataException($"{manifest.PathOf(ProbesTable)}: server_idx {idx} is not in the sample.");
                 }
 
-                var ok = row.NullableBool(2) ?? false;
+                bool ok = BoolOrFalse(row, 2);
                 builders[idx - 1].Add(
                     row.Long(1),
                     ok,
-                    (short)(row.NullableInt(3) ?? 0),
-                    (short)(row.NullableInt(4) ?? 0));
+                    (short)IntOrZero(row, 3),
+                    (short)IntOrZero(row, 4));
             });
             manifest.VerifyRowCount(ProbesTable, count);
         }
 
-        return builders.Select(builder => builder.Build()).ToArray();
+        ProbeSeries[] result = new ProbeSeries[sampleCount];
+        for (int i = 0; i < sampleCount; i++)
+        {
+            result[i] = builders[i].Build();
+        }
+
+        return result;
     }
 
     private static SnapshotSeriesBuilder LoadSnapshots(IReadOnlyList<ExportManifest> manifests, ServerIndex serverIndex)
     {
-        var builder = new SnapshotSeriesBuilder(dedupById: manifests.Count > 1);
-        foreach (var manifest in manifests)
+        SnapshotSeriesBuilder builder = new SnapshotSeriesBuilder(manifests.Count > 1);
+        foreach (ExportManifest manifest in manifests)
         {
-            var count = CsvFile.Read(manifest.PathOf(SnapshotsTable), SnapshotsHeader, row =>
+            long count = CsvFile.Read(manifest.PathOf(SnapshotsTable), SnapshotsHeader, row =>
             {
-                var serverId = row.Guid(1);
-                // Only this task registers ids while the big files load.
-                var index = serverIndex.GetOrAdd(serverId);
+                Guid serverId = row.Guid(1);
+                int index = serverIndex.GetOrAdd(serverId);
+
+                Guid snapshotId = Guid.Empty;
+                if (builder.DedupById)
+                {
+                    snapshotId = row.Guid(0);
+                }
 
                 builder.Add(
-                    builder.DedupById ? row.Guid(0) : Guid.Empty,
+                    snapshotId,
                     index,
                     row.Long(2),
-                    (short)(row.NullableInt(3) ?? 0),
-                    (short)(row.NullableInt(4) ?? 0),
-                    row.NullableBool(5) ?? false,
+                    (short)IntOrZero(row, 3),
+                    (short)IntOrZero(row, 4),
+                    BoolOrFalse(row, 5),
                     row.NullableBool(6),
                     ParsePollSource(row.Span(7)));
             });
@@ -372,15 +640,22 @@ public static class SimulatorDataLoader
         return builder;
     }
 
-    private static ServerPollSource ParsePollSource(ReadOnlySpan<char> text) =>
-        text.IsEmpty ? ServerPollSource.Unknown : Enum.Parse<ServerPollSource>(text);
+    private static ServerPollSource ParsePollSource(ReadOnlySpan<char> text)
+    {
+        if (text.IsEmpty)
+        {
+            return ServerPollSource.Unknown;
+        }
+
+        return Enum.Parse<ServerPollSource>(text);
+    }
 
     private sealed class ProbeSeriesBuilder
     {
-        private readonly List<long> _times = [];
-        private readonly List<bool> _ok = [];
-        private readonly List<short> _players = [];
-        private readonly List<short> _queue = [];
+        private readonly List<long> _times = new List<long>();
+        private readonly List<bool> _ok = new List<bool>();
+        private readonly List<short> _players = new List<short>();
+        private readonly List<short> _queue = new List<short>();
 
         public void Add(long timeMs, bool ok, short players, short queue)
         {
@@ -392,12 +667,21 @@ public static class SimulatorDataLoader
 
         public ProbeSeries Build()
         {
-            var order = SortedUniqueOrder(_times);
-            var series = new ProbeSeries(
-                order.Select(i => _times[i]).ToArray(),
-                order.Select(i => _ok[i]).ToArray(),
-                order.Select(i => _players[i]).ToArray(),
-                order.Select(i => _queue[i]).ToArray());
+            int[] order = SortedUniqueOrder(_times);
+            long[] times = new long[order.Length];
+            bool[] ok = new bool[order.Length];
+            short[] players = new short[order.Length];
+            short[] queue = new short[order.Length];
+            for (int i = 0; i < order.Length; i++)
+            {
+                int position = order[i];
+                times[i] = _times[position];
+                ok[i] = _ok[position];
+                players[i] = _players[position];
+                queue[i] = _queue[position];
+            }
+
+            ProbeSeries series = new ProbeSeries(times, ok, players, queue);
             _times.Clear();
             _ok.Clear();
             _players.Clear();
@@ -405,15 +689,18 @@ public static class SimulatorDataLoader
             return series;
         }
 
-        /// <summary>Indexes sorted by time; for equal times (the same probe in two exports) keeps the first.</summary>
         private static int[] SortedUniqueOrder(List<long> times)
         {
-            var keys = times.ToArray();
-            var order = Enumerable.Range(0, keys.Length).ToArray();
+            long[] keys = times.ToArray();
+            int[] order = new int[keys.Length];
+            for (int i = 0; i < order.Length; i++)
+            {
+                order[i] = i;
+            }
+
             Array.Sort(keys, order);
-            // Array.Sort is not stable; equal times are the same probe, so any one of them will do.
-            var unique = new List<int>(order.Length);
-            for (var i = 0; i < order.Length; i++)
+            List<int> unique = new List<int>(order.Length);
+            for (int i = 0; i < order.Length; i++)
             {
                 if (i == 0 || keys[i] != keys[i - 1])
                 {
@@ -425,12 +712,17 @@ public static class SimulatorDataLoader
         }
     }
 
-    private sealed class SnapshotSeriesBuilder(bool dedupById)
+    private sealed class SnapshotSeriesBuilder
     {
-        private readonly HashSet<Guid> _seenIds = [];
+        private readonly HashSet<Guid> _seenIds = new HashSet<Guid>();
         private List<Row>?[] _rows = new List<Row>?[1024];
 
-        public bool DedupById { get; } = dedupById;
+        public SnapshotSeriesBuilder(bool dedupById)
+        {
+            DedupById = dedupById;
+        }
+
+        public bool DedupById { get; }
 
         public long Duplicates { get; private set; }
 
@@ -455,44 +747,100 @@ public static class SimulatorDataLoader
                 Array.Resize(ref _rows, Math.Max(_rows.Length * 2, serverIndex + 1));
             }
 
-            (_rows[serverIndex] ??= []).Add(new Row(timeMs, players, maxPlayers, online, ok switch
+            sbyte okValue;
+            if (ok == null)
             {
-                true => (sbyte)1,
-                false => (sbyte)0,
-                null => (sbyte)-1
-            }, source));
+                okValue = -1;
+            }
+            else if (ok.Value)
+            {
+                okValue = 1;
+            }
+            else
+            {
+                okValue = 0;
+            }
+
+            List<Row>? list = _rows[serverIndex];
+            if (list == null)
+            {
+                list = new List<Row>();
+                _rows[serverIndex] = list;
+            }
+
+            list.Add(new Row(timeMs, players, maxPlayers, online, okValue, source));
         }
 
         public SnapshotSeries Build(int serverIndex)
         {
-            if (serverIndex >= _rows.Length || _rows[serverIndex] is not { Count: > 0 } rows)
+            if (serverIndex >= _rows.Length)
             {
                 return SnapshotSeries.Empty;
             }
 
-            var sorted = rows.ToArray();
-            // Stable by time, so two polls in the same millisecond keep their export order.
-            var positions = Enumerable.Range(0, sorted.Length).ToArray();
-            Array.Sort(positions, (a, b) => sorted[a].TimeMs != sorted[b].TimeMs
-                ? sorted[a].TimeMs.CompareTo(sorted[b].TimeMs)
-                : a.CompareTo(b));
+            List<Row>? rows = _rows[serverIndex];
+            if (rows == null || rows.Count == 0)
+            {
+                return SnapshotSeries.Empty;
+            }
+
+            Row[] sorted = rows.ToArray();
+            int[] positions = new int[sorted.Length];
+            for (int i = 0; i < positions.Length; i++)
+            {
+                positions[i] = i;
+            }
+
+            Array.Sort(positions, (a, b) =>
+            {
+                if (sorted[a].TimeMs != sorted[b].TimeMs)
+                {
+                    return sorted[a].TimeMs.CompareTo(sorted[b].TimeMs);
+                }
+
+                return a.CompareTo(b);
+            });
             _rows[serverIndex] = null;
 
-            return new SnapshotSeries(
-                positions.Select(i => sorted[i].TimeMs).ToArray(),
-                positions.Select(i => sorted[i].Players).ToArray(),
-                positions.Select(i => sorted[i].MaxPlayers).ToArray(),
-                positions.Select(i => sorted[i].Online).ToArray(),
-                positions.Select(i => sorted[i].Ok).ToArray(),
-                positions.Select(i => sorted[i].Source).ToArray());
+            int length = positions.Length;
+            long[] times = new long[length];
+            short[] players = new short[length];
+            short[] maxPlayers = new short[length];
+            bool[] online = new bool[length];
+            sbyte[] ok = new sbyte[length];
+            ServerPollSource[] sources = new ServerPollSource[length];
+            for (int i = 0; i < length; i++)
+            {
+                Row row = sorted[positions[i]];
+                times[i] = row.TimeMs;
+                players[i] = row.Players;
+                maxPlayers[i] = row.MaxPlayers;
+                online[i] = row.Online;
+                ok[i] = row.Ok;
+                sources[i] = row.Source;
+            }
+
+            return new SnapshotSeries(times, players, maxPlayers, online, ok, sources);
         }
 
-        private readonly record struct Row(
-            long TimeMs,
-            short Players,
-            short MaxPlayers,
-            bool Online,
-            sbyte Ok,
-            ServerPollSource Source);
+        private readonly struct Row
+        {
+            public readonly long TimeMs;
+            public readonly short Players;
+            public readonly short MaxPlayers;
+            public readonly bool Online;
+            public readonly sbyte Ok;
+            public readonly ServerPollSource Source;
+
+            public Row(long timeMs, short players, short maxPlayers, bool online, sbyte ok, ServerPollSource source)
+            {
+                TimeMs = timeMs;
+                Players = players;
+                MaxPlayers = maxPlayers;
+                Online = online;
+                Ok = ok;
+                Source = source;
+            }
+        }
     }
 }

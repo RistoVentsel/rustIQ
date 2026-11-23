@@ -3,9 +3,6 @@ using System.Security.Cryptography;
 
 namespace RustIQ.Simulator.Data;
 
-/// <summary>
-/// The <c>manifest.txt</c> of one export folder: its period, row count and sha256 per file.
-/// </summary>
 public sealed record ExportManifest(
     string Folder,
     string From,
@@ -18,7 +15,7 @@ public sealed record ExportManifest(
 
     public static ExportManifest Load(string folder)
     {
-        var path = Path.Combine(folder, FileName);
+        string path = Path.Combine(folder, FileName);
         if (!File.Exists(path))
         {
             throw new FileNotFoundException($"Export folder has no {FileName}.", path);
@@ -32,13 +29,13 @@ public sealed record ExportManifest(
         string? from = null;
         string? to = null;
         DateTimeOffset? exportedAt = null;
-        var rowCounts = new Dictionary<string, long>(StringComparer.Ordinal);
-        var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
-        var section = "";
+        Dictionary<string, long> rowCounts = new Dictionary<string, long>(StringComparer.Ordinal);
+        Dictionary<string, string> hashes = new Dictionary<string, string>(StringComparer.Ordinal);
+        string section = "";
 
-        foreach (var rawLine in lines)
+        foreach (string rawLine in lines)
         {
-            var line = rawLine.Trim();
+            string line = rawLine.Trim();
             if (line.Length == 0)
             {
                 continue;
@@ -46,15 +43,15 @@ public sealed record ExportManifest(
 
             if (line.StartsWith("from:", StringComparison.Ordinal))
             {
-                from = line["from:".Length..].Trim();
+                from = line.Substring("from:".Length).Trim();
             }
             else if (line.StartsWith("to:", StringComparison.Ordinal))
             {
-                to = line["to:".Length..].Trim();
+                to = line.Substring("to:".Length).Trim();
             }
             else if (line.StartsWith("exported_at:", StringComparison.Ordinal))
             {
-                exportedAt = PostgresTimestamp.Parse(line["exported_at:".Length..].Trim());
+                exportedAt = PostgresTimestamp.Parse(line.Substring("exported_at:".Length).Trim());
             }
             else if (line.StartsWith("rows", StringComparison.Ordinal))
             {
@@ -66,7 +63,7 @@ public sealed record ExportManifest(
             }
             else
             {
-                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                string[] parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length != 2)
                 {
                     throw new InvalidDataException($"{folder}/{FileName}: cannot read line '{line}'.");
@@ -78,13 +75,18 @@ public sealed record ExportManifest(
                 }
                 else if (section == "sha256")
                 {
-                    var fileName = parts[1].StartsWith("./", StringComparison.Ordinal) ? parts[1][2..] : parts[1];
+                    string fileName = parts[1];
+                    if (fileName.StartsWith("./", StringComparison.Ordinal))
+                    {
+                        fileName = fileName.Substring(2);
+                    }
+
                     hashes[fileName] = parts[0].ToLowerInvariant();
                 }
             }
         }
 
-        if (from is null || to is null || exportedAt is null)
+        if (from == null || to == null || exportedAt == null)
         {
             throw new InvalidDataException($"{folder}/{FileName}: from, to or exported_at is missing.");
         }
@@ -92,27 +94,34 @@ public sealed record ExportManifest(
         return new ExportManifest(folder, from, to, exportedAt.Value, rowCounts, hashes);
     }
 
-    public string PathOf(string table) => Path.Combine(Folder, table + ".csv.gz");
+    public string PathOf(string table)
+    {
+        return Path.Combine(Folder, table + ".csv.gz");
+    }
 
     public long ExpectedRows(string table)
     {
-        var fileName = table + ".csv.gz";
-        return RowCounts.TryGetValue(fileName, out var rows)
-            ? rows
-            : throw new InvalidDataException($"{Folder}/{FileName} has no row count for {fileName}.");
+        string fileName = table + ".csv.gz";
+        long rows;
+        if (!RowCounts.TryGetValue(fileName, out rows))
+        {
+            throw new InvalidDataException($"{Folder}/{FileName} has no row count for {fileName}.");
+        }
+
+        return rows;
     }
 
-    /// <summary>Checks a file's sha256 against the manifest.</summary>
     public void VerifyChecksum(string table)
     {
-        var fileName = table + ".csv.gz";
-        if (!Sha256.TryGetValue(fileName, out var expected))
+        string fileName = table + ".csv.gz";
+        string? expected;
+        if (!Sha256.TryGetValue(fileName, out expected))
         {
             throw new InvalidDataException($"{Folder}/{FileName} has no sha256 for {fileName}.");
         }
 
-        using var stream = File.OpenRead(PathOf(table));
-        var actual = Convert.ToHexStringLower(SHA256.HashData(stream));
+        using FileStream stream = File.OpenRead(PathOf(table));
+        string actual = Convert.ToHexStringLower(SHA256.HashData(stream));
         if (!string.Equals(actual, expected, StringComparison.Ordinal))
         {
             throw new InvalidDataException($"{PathOf(table)}: sha256 is {actual}, manifest says {expected}.");
@@ -121,7 +130,7 @@ public sealed record ExportManifest(
 
     public void VerifyRowCount(string table, long actualRows)
     {
-        var expected = ExpectedRows(table);
+        long expected = ExpectedRows(table);
         if (actualRows != expected)
         {
             throw new InvalidDataException($"{PathOf(table)}: {actualRows} rows read, manifest says {expected}.");

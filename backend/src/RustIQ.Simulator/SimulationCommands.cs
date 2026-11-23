@@ -8,99 +8,161 @@ using RustIQ.Simulator.Reporting;
 
 namespace RustIQ.Simulator;
 
-/// <summary>The <c>run</c>, <c>sweep</c> and <c>tune</c> commands (plan sections 6 and 9).</summary>
 public static class SimulationCommands
 {
     public static readonly DateTimeOffset DefaultFrom = DateTimeOffset.Parse("2026-11-04T00:00:00Z", CultureInfo.InvariantCulture);
     public static readonly DateTimeOffset DefaultTo = DateTimeOffset.Parse("2026-11-18T00:00:00Z", CultureInfo.InvariantCulture);
     public static readonly DateTimeOffset DefaultSplit = DateTimeOffset.Parse("2026-11-11T00:00:00Z", CultureInfo.InvariantCulture);
 
-    private static readonly string[] SharedOptions =
-        ["data", "from", "to", "eval-from", "split", "seed", "out", "no-checksums", "ranking",
-         "no-timing", "answered-poll-seconds", "unanswered-poll-seconds", "jitter-ms", "concurrency"];
+    private static readonly string[] SharedOptions = new string[]
+    {
+        "data", "from", "to", "eval-from", "split", "seed", "out", "no-checksums", "ranking",
+        "no-timing", "answered-poll-seconds", "unanswered-poll-seconds", "jitter-ms", "concurrency"
+    };
 
-    private static readonly string[] PriorityOptionNames =
-        ["min-interval", "max-backoff", "wipe-boost", "ewma-alpha", "prior-changes", "prior-seconds", "score", "max-age", "max-age-share", "no-predicted-wipes", "flat-backoff"];
+    private static readonly string[] PriorityOptionNames = new string[]
+    {
+        "min-interval", "max-backoff", "wipe-boost", "ewma-alpha", "prior-changes", "prior-seconds", "score", "max-age", "max-age-share", "no-predicted-wipes", "flat-backoff"
+    };
 
-    /// <summary>One run of one strategy; with <c>--validate</c> also the plan 8 validation.</summary>
     public static void Run(CommandLine commandLine, Action<string> log)
     {
-        CheckOptions(commandLine, ["strategy", "budget", "batch-scale", "validate", .. PriorityOptionNames]);
-        var period = Period.From(commandLine);
-        var data = SimulatorCommands.LoadData(commandLine, log);
-        period = period.ClampedTo(data);
-        var outDir = commandLine.Required("out");
+        List<string> allowedOptions = new List<string> { "strategy", "budget", "batch-scale", "validate" };
+        allowedOptions.AddRange(PriorityOptionNames);
+        CheckOptions(commandLine, allowedOptions);
 
-        var strategy = CreateStrategy(commandLine, commandLine.Required("strategy"), commandLine.Optional("budget") is { } b ? Parse(b) : null, commandLine.Double("batch-scale", 1));
-        var result = Simulate(data, strategy, period, commandLine, log);
+        Period period = Period.From(commandLine);
+        SimulatorData data = SimulatorCommands.LoadData(commandLine, log);
+        period = period.ClampedTo(data);
+        string outDir = commandLine.Required("out");
+
+        string strategyName = commandLine.Required("strategy");
+        double? budget = null;
+        string? budgetText = commandLine.Optional("budget");
+        if (budgetText != null)
+        {
+            budget = Parse(budgetText);
+        }
+        double batchScale = commandLine.Double("batch-scale", 1);
+
+        IPollingStrategy strategy = CreateStrategy(commandLine, strategyName, budget, batchScale);
+        SimulationResult result = Simulate(data, strategy, period, commandLine, log);
 
         RunReport.WriteRunFiles(outDir, data, result, period.EvalFromMs, period.ToMs, period.SplitMs, Arguments(commandLine));
         PrintRun(result, data, period, log);
 
         if (commandLine.Has("validate"))
         {
-            var passed = ValidationReport.Write(outDir, data, result, period.EvalFromMs, period.ToMs, Limitations(data, period));
-            log($"validation: {(passed ? "PASS" : "FAIL")}, see {Path.Combine(outDir, "validation.md")}");
+            bool passed = ValidationReport.Write(outDir, data, result, period.EvalFromMs, period.ToMs, Limitations(data, period), period.SplitMs);
+            string passedText;
+            if (passed)
+            {
+                passedText = "PASS";
+            }
+            else
+            {
+                passedText = "FAIL";
+            }
+            log($"validation: {passedText}, see {Path.Combine(outDir, "validation.md")}");
         }
 
         log($"wrote {outDir}");
     }
 
-    /// <summary>
-    /// The main comparison and the budget sweep: fourlane at production settings fixes the reference
-    /// budget; then fourlane scaled towards each <c>--budgets</c> value, and the other strategies at the
-    /// volume fourlane reached there.
-    /// </summary>
     public static void Sweep(CommandLine commandLine, Action<string> log)
     {
-        CheckOptions(commandLine, ["budgets", "strategies", .. PriorityOptionNames]);
-        var period = Period.From(commandLine);
-        var data = SimulatorCommands.LoadData(commandLine, log);
-        period = period.ClampedTo(data);
-        var outDir = commandLine.Required("out");
-        var budgets = commandLine.Has("budgets")
-            ? commandLine.Values("budgets").Select(Parse).ToArray()
-            : [150, 200, 350, 450];
-        var strategies = commandLine.Has("strategies") ? commandLine.Values("strategies").ToArray() : ["fourlane", "uniform", "priority"];
+        List<string> allowedOptions = new List<string> { "budgets", "strategies" };
+        allowedOptions.AddRange(PriorityOptionNames);
+        CheckOptions(commandLine, allowedOptions);
 
-        var rows = new List<string>();
-        var baseline = Simulate(data, CreateStrategy(commandLine, "fourlane", null, 1), period, commandLine, log);
-        // Rounded to 0.1, so a run given the printed budget by hand reproduces the sweep exactly.
-        var baselineBudget = Math.Round(StrategyBudget(baseline, period), 1);
+        Period period = Period.From(commandLine);
+        SimulatorData data = SimulatorCommands.LoadData(commandLine, log);
+        period = period.ClampedTo(data);
+        string outDir = commandLine.Required("out");
+
+        List<double> budgets = new List<double>();
+        if (commandLine.Has("budgets"))
+        {
+            foreach (string text in commandLine.Values("budgets"))
+            {
+                budgets.Add(Parse(text));
+            }
+        }
+        else
+        {
+            budgets.Add(150);
+            budgets.Add(200);
+            budgets.Add(350);
+            budgets.Add(450);
+        }
+
+        List<string> strategies = new List<string>();
+        if (commandLine.Has("strategies"))
+        {
+            foreach (string text in commandLine.Values("strategies"))
+            {
+                strategies.Add(text);
+            }
+        }
+        else
+        {
+            strategies.Add("fourlane");
+            strategies.Add("uniform");
+            strategies.Add("priority");
+        }
+
+        List<string> rows = new List<string>();
+        SimulationResult baseline = Simulate(data, CreateStrategy(commandLine, "fourlane", null, 1), period, commandLine, log);
+        double baselineBudget = Math.Round(StrategyBudget(baseline, period), 1);
         log($"fourlane at production settings: {baselineBudget:0.0} queries per minute");
         RunReport.WriteRunFiles(Path.Combine(outDir, "fourlane-production"), data, baseline, period.EvalFromMs, period.ToMs, period.SplitMs, Arguments(commandLine));
         rows.AddRange(SweepRows("fourlane", "production", 1, baseline, data, period));
 
-        // Each sweep point: fourlane with its batches scaled towards the target, then the budget strategies
-        // at the volume fourlane actually reached, so every comparison is at the same query volume.
-        foreach (var target in new double?[] { null }.Concat(budgets.Select(b => (double?)b)))
+        List<double?> targets = new List<double?>();
+        targets.Add(null);
+        foreach (double b in budgets)
         {
-            var label = target is { } t ? t.ToString("0", CultureInfo.InvariantCulture) : "fourlane-budget";
-            var achieved = baselineBudget;
-            if (target is { } targetBudget && strategies.Contains("fourlane"))
-            {
-                var scale = targetBudget / baselineBudget;
-                var fourlane = Simulate(data, CreateStrategy(commandLine, "fourlane", null, scale), period, commandLine, log);
-                achieved = Math.Round(StrategyBudget(fourlane, period), 1);
-                WritePoint("fourlane", label, scale, fourlane);
-            }
-            else if (target is { } plain)
-            {
-                achieved = plain;
-            }
-
-            foreach (var name in strategies.Where(name => name != "fourlane"))
-            {
-                WritePoint(name, label, 1, Simulate(data, CreateStrategy(commandLine, name, achieved, 1), period, commandLine, log));
-            }
+            targets.Add(b);
         }
 
-        void WritePoint(string name, string label, double scale, SimulationResult result)
+        foreach (double? target in targets)
         {
-            RunReport.WriteRunFiles(Path.Combine(outDir, $"{name}-{label}"), data, result, period.EvalFromMs, period.ToMs, period.SplitMs, Arguments(commandLine));
-            rows.AddRange(SweepRows(name, label, scale, result, data, period));
-            log($"{name} at {label}: {StrategyBudget(result, period):0.0} queries per minute, " +
-                $"overall mean AoI {RunReport.EvaluateSimulated(data, result, period.EvalFromMs, period.ToMs).Single(r => r.Group == FreshnessEvaluator.AllGroup).AoiMeanSeconds:0} s");
+            string label;
+            if (target.HasValue)
+            {
+                label = target.Value.ToString("0", CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                label = "fourlane-budget";
+            }
+
+            double achieved = baselineBudget;
+            if (target.HasValue)
+            {
+                if (strategies.Contains("fourlane"))
+                {
+                    double scale = target.Value / baselineBudget;
+                    SimulationResult fourlane = Simulate(data, CreateStrategy(commandLine, "fourlane", null, scale), period, commandLine, log);
+                    achieved = Math.Round(StrategyBudget(fourlane, period), 1);
+                    WritePoint(outDir, data, period, commandLine, rows, log, "fourlane", label, scale, fourlane);
+                }
+                else
+                {
+                    achieved = target.Value;
+                }
+            }
+
+            foreach (string name in strategies)
+            {
+                if (name == "fourlane")
+                {
+                    continue;
+                }
+
+                SimulationResult result = Simulate(data, CreateStrategy(commandLine, name, achieved, 1), period, commandLine, log);
+                WritePoint(outDir, data, period, commandLine, rows, log, name, label, 1, result);
+            }
         }
 
         Directory.CreateDirectory(outDir);
@@ -110,107 +172,173 @@ public static class SimulationCommands
         log($"wrote {Path.Combine(outDir, "sweep.csv")}");
     }
 
-    /// <summary>
-    /// Tunes Priority on the tuning window only (plan 6.3: 2026-11-04 to 2026-11-11 by default) at a fixed
-    /// budget, by a small grid. The objective is the overall player-weighted AoI, averaged over the usual
-    /// evaluation grid and one shifted by 7 min 30 s.
-    /// </summary>
+    private static void WritePoint(string outDir, SimulatorData data, Period period, CommandLine commandLine, List<string> rows, Action<string> log,
+        string name, string label, double scale, SimulationResult result)
+    {
+        RunReport.WriteRunFiles(Path.Combine(outDir, $"{name}-{label}"), data, result, period.EvalFromMs, period.ToMs, period.SplitMs, Arguments(commandLine));
+        rows.AddRange(SweepRows(name, label, scale, result, data, period));
+        double budget = StrategyBudget(result, period);
+        FreshnessSummary all = FindAllGroup(RunReport.EvaluateSimulated(data, result, period.EvalFromMs, period.ToMs));
+        log($"{name} at {label}: {budget:0.0} queries per minute, " +
+            $"overall mean AoI {all.AoiMeanSeconds:0} s");
+    }
+
     public static void Tune(CommandLine commandLine, Action<string> log)
     {
-        CheckOptions(commandLine, ["budget", "min-intervals", "prior-seconds-values", "wipe-boosts", "ewma-alphas", "objective", "max-age", "max-age-share", "flat-backoff"]);
-        var period = Period.From(commandLine);
-        var data = SimulatorCommands.LoadData(commandLine, log);
+        List<string> allowedOptions = new List<string> { "budget", "min-intervals", "prior-seconds-values", "wipe-boosts", "ewma-alphas", "objective", "max-age", "max-age-share", "flat-backoff" };
+        CheckOptions(commandLine, allowedOptions);
+
+        Period period = Period.From(commandLine);
+        SimulatorData data = SimulatorCommands.LoadData(commandLine, log);
         period = period.ClampedTo(data);
 
-        // Only the tuning window is simulated, so nothing after the split can influence the choice.
-        var tuningEnd = period.SplitMs ?? period.ToMs;
-        var tuning = period with { ToMs = tuningEnd, SplitMs = null };
-        var budget = Parse(commandLine.Required("budget"));
-        var objective = commandLine.Optional("objective") ?? "pw-aoi";
-
-        var grid =
-            from minInterval in Values(commandLine, "min-intervals", [45, 90])
-            from priorSeconds in Values(commandLine, "prior-seconds-values", [600, 1800, 3600])
-            from wipeBoost in Values(commandLine, "wipe-boosts", [1])
-            from alpha in Values(commandLine, "ewma-alphas", [0.2])
-            select new PriorityOptions
-            {
-                MinIntervalSeconds = minInterval,
-                PriorSeconds = priorSeconds,
-                WipeBoost = wipeBoost,
-                PlayersEwmaAlpha = alpha,
-                MaxAgeSeconds = commandLine.Double("max-age", 0),
-                MaxAgeBudgetShare = commandLine.Has("max-age")
-                    ? 0
-                    : commandLine.Double("max-age-share", PriorityOptions.DefaultMaxAgeBudgetShare),
-                BackoffScalesWithWeight = !commandLine.Has("flat-backoff")
-            };
-
-        var lines = new List<string>();
-        (double Score, PriorityOptions Options)? best = null;
-        foreach (var options in grid)
+        long tuningEnd;
+        if (period.SplitMs.HasValue)
         {
-            var result = Simulate(data, new PriorityPollingStrategy(budget, options), tuning, commandLine, log);
-            // Scored on the usual 15 min grid and on one shifted by half a step, so a minimum interval that
-            // happens to divide 900 s cannot win by lining its polls up with the grid.
-            var all = RunReport.EvaluateSimulated(data, result, tuning.EvalFromMs, tuning.ToMs).Single(r => r.Group == FreshnessEvaluator.AllGroup);
-            var shifted = RunReport.EvaluateSimulated(data, result, tuning.EvalFromMs + RunReport.ShiftedGridOffsetMs, tuning.ToMs)
-                .Single(r => r.Group == FreshnessEvaluator.AllGroup);
-            double Objective(FreshnessSummary row) => objective switch
+            tuningEnd = period.SplitMs.Value;
+        }
+        else
+        {
+            tuningEnd = period.ToMs;
+        }
+        Period tuning = new Period(period.FromMs, tuningEnd, period.EvalFromMs, null);
+
+        double budget = Parse(commandLine.Required("budget"));
+        string? objectiveText = commandLine.Optional("objective");
+        string objective;
+        if (objectiveText != null)
+        {
+            objective = objectiveText;
+        }
+        else
+        {
+            objective = "pw-aoi";
+        }
+
+        double[] minIntervals = Values(commandLine, "min-intervals", new double[] { 45, 90 });
+        double[] priorSecondsValues = Values(commandLine, "prior-seconds-values", new double[] { 600, 1800, 3600 });
+        double[] wipeBoosts = Values(commandLine, "wipe-boosts", new double[] { 1 });
+        double[] alphas = Values(commandLine, "ewma-alphas", new double[] { 0.2 });
+
+        List<string> lines = new List<string>();
+        double bestScore = 0;
+        PriorityOptions? bestOptions = null;
+
+        foreach (double minInterval in minIntervals)
+        {
+            foreach (double priorSeconds in priorSecondsValues)
             {
-                "pw-aoi" => row.PlayerWeightedAoiSeconds ?? double.MaxValue,
-                "mean-aoi" => row.AoiMeanSeconds ?? double.MaxValue,
-                "mae" => row.PlayerMae ?? double.MaxValue,
-                _ => throw new ArgumentException("--objective is pw-aoi, mean-aoi or mae.")
-            };
-            var score = (Objective(all) + Objective(shifted)) / 2;
-            lines.Add(RunReport.Invariant(
-                $"{options.MinIntervalSeconds},{options.PriorSeconds},{options.WipeBoost},{options.PlayersEwmaAlpha},{options.MaxAgeSeconds},{all.AoiMeanSeconds:0.#},{all.AoiMedianSeconds:0.#},{all.PlayerWeightedAoiSeconds:0.#},{all.PlayerMae:0.###},{shifted.AoiMeanSeconds:0.#},{shifted.AoiMedianSeconds:0.#},{shifted.PlayerWeightedAoiSeconds:0.#},{shifted.PlayerMae:0.###}"));
-            log(lines[^1]);
-            if (best is null || score < best.Value.Score)
-            {
-                best = (score, options);
+                foreach (double wipeBoost in wipeBoosts)
+                {
+                    foreach (double alpha in alphas)
+                    {
+                        PriorityOptions options = new PriorityOptions
+                        {
+                            MinIntervalSeconds = minInterval,
+                            PriorSeconds = priorSeconds,
+                            WipeBoost = wipeBoost,
+                            PlayersEwmaAlpha = alpha,
+                            MaxAgeSeconds = commandLine.Double("max-age", 0),
+                            MaxAgeBudgetShare = MaxAgeShare(commandLine),
+                            BackoffScalesWithWeight = !commandLine.Has("flat-backoff")
+                        };
+
+                        SimulationResult result = Simulate(data, new PriorityPollingStrategy(budget, options), tuning, commandLine, log);
+                        FreshnessSummary all = FindAllGroup(RunReport.EvaluateSimulated(data, result, tuning.EvalFromMs, tuning.ToMs));
+                        FreshnessSummary shifted = FindAllGroup(RunReport.EvaluateSimulated(data, result, tuning.EvalFromMs + RunReport.ShiftedGridOffsetMs, tuning.ToMs));
+                        double allScore = ObjectiveValue(objective, all);
+                        double shiftedScore = ObjectiveValue(objective, shifted);
+                        double score = (allScore + shiftedScore) / 2;
+
+                        string line = RunReport.Invariant(
+                            $"{options.MinIntervalSeconds},{options.PriorSeconds},{options.WipeBoost},{options.PlayersEwmaAlpha},{options.MaxAgeSeconds},{all.AoiMeanSeconds:0.#},{all.AoiMedianSeconds:0.#},{all.PlayerWeightedAoiSeconds:0.#},{all.PlayerMae:0.###},{shifted.AoiMeanSeconds:0.#},{shifted.AoiMedianSeconds:0.#},{shifted.PlayerWeightedAoiSeconds:0.#},{shifted.PlayerMae:0.###}");
+                        lines.Add(line);
+                        log(line);
+
+                        if (bestOptions == null || score < bestScore)
+                        {
+                            bestScore = score;
+                            bestOptions = options;
+                        }
+                    }
+                }
             }
         }
 
-        var outDir = commandLine.Required("out");
+        string outDir = commandLine.Required("out");
         Directory.CreateDirectory(outDir);
         File.WriteAllText(Path.Combine(outDir, "tuning.csv"),
             "min_interval_s,prior_seconds,wipe_boost,ewma_alpha,aoi_mean_s,aoi_median_s,player_weighted_aoi_s,player_mae\n" +
             string.Join("\n", lines) + "\n");
-        var chosen = best!.Value.Options;
+        PriorityOptions chosen = bestOptions!;
         log(RunReport.Invariant(
             $"best by {objective}, mean of both grids: --min-interval {chosen.MinIntervalSeconds} --prior-seconds {chosen.PriorSeconds} --wipe-boost {chosen.WipeBoost} --ewma-alpha {chosen.PlayersEwmaAlpha}"));
     }
 
-    /// <summary>
-    /// Diagnostics, no design change: fourlane at production settings and priority at <c>--budget</c> side by
-    /// side, per day and stratum, over a window, and how many sample servers priority held offline or in back-off.
-    /// </summary>
+    private static double ObjectiveValue(string objective, FreshnessSummary row)
+    {
+        double? value;
+        if (objective == "pw-aoi")
+        {
+            value = row.PlayerWeightedAoiSeconds;
+        }
+        else if (objective == "mean-aoi")
+        {
+            value = row.AoiMeanSeconds;
+        }
+        else if (objective == "mae")
+        {
+            value = row.PlayerMae;
+        }
+        else
+        {
+            throw new ArgumentException("--objective is pw-aoi, mean-aoi or mae.");
+        }
+
+        if (value.HasValue)
+        {
+            return value.Value;
+        }
+        return double.MaxValue;
+    }
+
     public static void Diagnose(CommandLine commandLine, Action<string> log)
     {
-        CheckOptions(commandLine, ["budget", "window-from", "window-to", .. PriorityOptionNames]);
-        var period = Period.From(commandLine);
-        var data = SimulatorCommands.LoadData(commandLine, log);
-        period = period.ClampedTo(data);
-        var outDir = commandLine.Required("out");
-        Directory.CreateDirectory(outDir);
-        var windowFrom = commandLine.Time("window-from", DateTimeOffset.FromUnixTimeMilliseconds(period.EvalFromMs)).ToUnixTimeMilliseconds();
-        var windowTo = commandLine.Time("window-to", DateTimeOffset.FromUnixTimeMilliseconds(period.ToMs)).ToUnixTimeMilliseconds();
-        var budget = Parse(commandLine.Required("budget"));
+        List<string> allowedOptions = new List<string> { "budget", "window-from", "window-to" };
+        allowedOptions.AddRange(PriorityOptionNames);
+        CheckOptions(commandLine, allowedOptions);
 
-        var sampleIndexes = data.SampleServers.Select(s => (s.ServerIndex, s.ServerIdx, s.Stratum)).ToArray();
-        var daily = new StringBuilder("strategy,day,group,points_with_value,aoi_mean_s,aoi_median_s,player_weighted_aoi_s,player_mae\n");
-        var window = new StringBuilder("strategy," + SummaryCsv.Header + "\n");
-        var states = new StringBuilder(
+        Period period = Period.From(commandLine);
+        SimulatorData data = SimulatorCommands.LoadData(commandLine, log);
+        period = period.ClampedTo(data);
+        string outDir = commandLine.Required("out");
+        Directory.CreateDirectory(outDir);
+        long windowFrom = commandLine.Time("window-from", DateTimeOffset.FromUnixTimeMilliseconds(period.EvalFromMs)).ToUnixTimeMilliseconds();
+        long windowTo = commandLine.Time("window-to", DateTimeOffset.FromUnixTimeMilliseconds(period.ToMs)).ToUnixTimeMilliseconds();
+        double budget = Parse(commandLine.Required("budget"));
+
+        StringBuilder daily = new StringBuilder("strategy,day,group,points_with_value,aoi_mean_s,aoi_median_s,player_weighted_aoi_s,player_mae\n");
+        StringBuilder window = new StringBuilder("strategy," + SummaryCsv.Header + "\n");
+        StringBuilder states = new StringBuilder(
             "strategy,stratum,avg_believed_offline,max_believed_offline,avg_in_backoff,max_in_backoff," +
             "avg_believed_offline_but_answering,servers_ever_believed_offline\n");
 
-        foreach (var name in new[] { "fourlane", "priority" })
+        string[] names = new string[] { "fourlane", "priority" };
+        foreach (string name in names)
         {
-            var strategy = CreateStrategy(commandLine, name, name == "fourlane" ? null : budget, 1);
-            var priority = strategy as PriorityPollingStrategy;
-            var stats = Enum.GetValues<Domain.Study.StudyStratum>().ToDictionary(s => s, _ => new StateStats());
+            double? strategyBudget = null;
+            if (name != "fourlane")
+            {
+                strategyBudget = budget;
+            }
+
+            IPollingStrategy strategy = CreateStrategy(commandLine, name, strategyBudget, 1);
+            PriorityPollingStrategy? priority = strategy as PriorityPollingStrategy;
+            Dictionary<Domain.Study.StudyStratum, StateStats> stats = new Dictionary<Domain.Study.StudyStratum, StateStats>();
+            foreach (Domain.Study.StudyStratum stratum in Enum.GetValues<Domain.Study.StudyStratum>())
+            {
+                stats.Add(stratum, new StateStats());
+            }
 
             void OnTick(long nowMs, IReadOnlyList<PolledServer> servers)
             {
@@ -219,39 +347,55 @@ public static class SimulationCommands
                     return;
                 }
 
-                foreach (var group in stats.Values) group.BeginTick();
-                foreach (var (serverIndex, serverIdx, stratum) in sampleIndexes)
+                foreach (StateStats group in stats.Values)
                 {
-                    var server = servers[serverIndex];
-                    var offline = server.Status != Domain.Servers.ServerStatus.Online;
-                    var backoff = (priority?.UnansweredInRow(serverIndex) ?? 0) > 0;
-                    var answering = Evaluation.FreshnessEvaluator.TruthAt(data.Probes[serverIdx - 1], nowMs) is not null;
-                    stats[stratum].Add(serverIdx, offline, backoff, offline && answering);
+                    group.BeginTick();
                 }
 
-                foreach (var group in stats.Values) group.EndTick();
+                foreach (SampleServer sample in data.SampleServers)
+                {
+                    PolledServer server = servers[sample.ServerIndex];
+                    bool offline = server.Status != Domain.Servers.ServerStatus.Online;
+                    int unansweredInRow = 0;
+                    if (priority != null)
+                    {
+                        unansweredInRow = priority.UnansweredInRow(sample.ServerIndex);
+                    }
+                    bool backoff = unansweredInRow > 0;
+                    bool answering = FreshnessEvaluator.TruthAt(data.Probes[sample.ServerIdx - 1], nowMs) != null;
+                    stats[sample.Stratum].Add(sample.ServerIdx, offline, backoff, offline && answering);
+                }
+
+                foreach (StateStats group in stats.Values)
+                {
+                    group.EndTick();
+                }
             }
 
-            var result = Simulate(data, strategy, period, commandLine, log, OnTick);
+            SimulationResult result = Simulate(data, strategy, period, commandLine, log, OnTick);
 
-            for (var day = period.EvalFromMs; day < period.ToMs; day += 86_400_000L)
+            for (long day = period.EvalFromMs; day < period.ToMs; day += 86_400_000L)
             {
-                var label = DateTimeOffset.FromUnixTimeMilliseconds(day).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-                foreach (var row in RunReport.EvaluateSimulated(data, result, day, Math.Min(day + 86_400_000L, period.ToMs)))
+                string label = DateTimeOffset.FromUnixTimeMilliseconds(day).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                long dayEnd = Math.Min(day + 86_400_000L, period.ToMs);
+                foreach (FreshnessSummary row in RunReport.EvaluateSimulated(data, result, day, dayEnd))
                 {
                     daily.AppendLine(RunReport.Invariant(
                         $"{name},{label},{row.Group},{row.PointsWithValue},{row.AoiMeanSeconds:0.#},{row.AoiMedianSeconds:0.#},{row.PlayerWeightedAoiSeconds:0.#},{row.PlayerMae:0.###}"));
                 }
             }
 
-            foreach (var line in SummaryCsv.Format(RunReport.EvaluateSimulated(data, result, windowFrom, windowTo))
-                         .Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1))
+            string windowCsv = SummaryCsv.Format(RunReport.EvaluateSimulated(data, result, windowFrom, windowTo));
+            string[] windowLines = windowCsv.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 1; i < windowLines.Length; i++)
             {
-                window.AppendLine(name + "," + line);
+                window.AppendLine(name + "," + windowLines[i]);
             }
 
-            foreach (var (stratum, s) in stats)
+            foreach (KeyValuePair<Domain.Study.StudyStratum, StateStats> pair in stats)
             {
+                Domain.Study.StudyStratum stratum = pair.Key;
+                StateStats s = pair.Value;
                 states.AppendLine(RunReport.Invariant(
                     $"{name},{stratum},{s.AverageOffline:0.##},{s.MaxOffline},{s.AverageBackoff:0.##},{s.MaxBackoff},{s.AverageOfflineButAnswering:0.##},{s.EverOffline}"));
             }
@@ -265,26 +409,199 @@ public static class SimulationCommands
         log($"wrote {outDir}");
     }
 
+    public static void Trace(CommandLine commandLine, Action<string> log)
+    {
+        List<string> allowedOptions = new List<string> { "strategy", "budget", "servers" };
+        allowedOptions.AddRange(PriorityOptionNames);
+        CheckOptions(commandLine, allowedOptions);
+
+        Period period = Period.From(commandLine);
+        SimulatorData data = SimulatorCommands.LoadData(commandLine, log);
+        period = period.ClampedTo(data);
+        string outDir = commandLine.Required("out");
+        Directory.CreateDirectory(outDir);
+
+        HashSet<int> wanted = new HashSet<int>();
+        foreach (string text in commandLine.Values("servers"))
+        {
+            wanted.Add(int.Parse(text));
+        }
+
+        List<SampleServer> tracked = new List<SampleServer>();
+        foreach (SampleServer sample in data.SampleServers)
+        {
+            if (wanted.Contains(sample.ServerIdx))
+            {
+                tracked.Add(sample);
+            }
+        }
+
+        Dictionary<int, TracedState> last = new Dictionary<int, TracedState>();
+        foreach (SampleServer sample in tracked)
+        {
+            last.Add(sample.ServerIdx, new TracedState());
+        }
+
+        StringBuilder trace = new StringBuilder("server_idx,tick_utc,last_checked_utc,status,players,rank,last_seen_utc\n");
+        StringBuilder population = new StringBuilder("hour_utc,existing,online,offline,very_stale_offline\n");
+        long nextHourMs = period.FromMs;
+
+        void OnTick(long nowMs, IReadOnlyList<PolledServer> servers)
+        {
+            if (nowMs >= nextHourMs)
+            {
+                nextHourMs += 3_600_000L;
+                int existing = 0;
+                int online = 0;
+                int veryStale = 0;
+                foreach (PolledServer server in servers)
+                {
+                    if (!server.Exists)
+                    {
+                        continue;
+                    }
+
+                    existing++;
+                    if (server.Status == Domain.Servers.ServerStatus.Online)
+                    {
+                        online++;
+                    }
+                    else if (!server.LastSeenAtMs.HasValue || server.LastSeenAtMs.Value < nowMs - 86_400_000L)
+                    {
+                        veryStale++;
+                    }
+                }
+
+                population.AppendLine(RunReport.Invariant($"{FormatUtc(nowMs)},{existing},{online},{existing - online},{veryStale}"));
+            }
+
+            foreach (SampleServer sample in tracked)
+            {
+                PolledServer server = servers[sample.ServerIndex];
+                TracedState previous = last[sample.ServerIdx];
+                if (previous.Checked == server.LastCheckedAtMs && previous.Status == server.Status && previous.Rank == server.Rank)
+                {
+                    continue;
+                }
+
+                previous.Checked = server.LastCheckedAtMs;
+                previous.Status = server.Status;
+                previous.Rank = server.Rank;
+                trace.AppendLine(RunReport.Invariant(
+                    $"{sample.ServerIdx},{FormatUtc(nowMs)},{FormatUtc(server.LastCheckedAtMs)},{server.Status},{server.Players},{server.Rank},{FormatUtc(server.LastSeenAtMs)}"));
+            }
+        }
+
+        string strategyName = commandLine.Required("strategy");
+        double? budget = null;
+        string? budgetText = commandLine.Optional("budget");
+        if (budgetText != null)
+        {
+            budget = Parse(budgetText);
+        }
+
+        IPollingStrategy strategy = CreateStrategy(commandLine, strategyName, budget, 1);
+        Simulate(data, strategy, period, commandLine, log, OnTick);
+        File.WriteAllText(Path.Combine(outDir, "trace.csv"), trace.ToString());
+        File.WriteAllText(Path.Combine(outDir, "population.csv"), population.ToString());
+        log($"wrote {outDir}");
+    }
+
+    private static string FormatUtc(long? ms)
+    {
+        if (ms.HasValue)
+        {
+            return DateTimeOffset.FromUnixTimeMilliseconds(ms.Value).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+        }
+        return "";
+    }
+
+    private sealed class TracedState
+    {
+        public long? Checked = null;
+        public Domain.Servers.ServerStatus Status = Domain.Servers.ServerStatus.Unknown;
+        public int? Rank = null;
+    }
+
     private sealed class StateStats
     {
-        private readonly HashSet<int> _everOffline = [];
-        private long _ticks, _offline, _backoff, _offlineAnswering;
-        private int _tickOffline, _tickBackoff;
+        private readonly HashSet<int> _everOffline = new HashSet<int>();
+        private long _ticks;
+        private long _offline;
+        private long _backoff;
+        private long _offlineAnswering;
+        private int _tickOffline;
+        private int _tickBackoff;
 
         public int MaxOffline { get; private set; }
         public int MaxBackoff { get; private set; }
-        public int EverOffline => _everOffline.Count;
-        public double AverageOffline => _ticks == 0 ? 0 : (double)_offline / _ticks;
-        public double AverageBackoff => _ticks == 0 ? 0 : (double)_backoff / _ticks;
-        public double AverageOfflineButAnswering => _ticks == 0 ? 0 : (double)_offlineAnswering / _ticks;
 
-        public void BeginTick() { _tickOffline = 0; _tickBackoff = 0; }
+        public int EverOffline
+        {
+            get { return _everOffline.Count; }
+        }
+
+        public double AverageOffline
+        {
+            get
+            {
+                if (_ticks == 0)
+                {
+                    return 0;
+                }
+                return (double)_offline / _ticks;
+            }
+        }
+
+        public double AverageBackoff
+        {
+            get
+            {
+                if (_ticks == 0)
+                {
+                    return 0;
+                }
+                return (double)_backoff / _ticks;
+            }
+        }
+
+        public double AverageOfflineButAnswering
+        {
+            get
+            {
+                if (_ticks == 0)
+                {
+                    return 0;
+                }
+                return (double)_offlineAnswering / _ticks;
+            }
+        }
+
+        public void BeginTick()
+        {
+            _tickOffline = 0;
+            _tickBackoff = 0;
+        }
 
         public void Add(int serverIdx, bool offline, bool backoff, bool offlineButAnswering)
         {
-            if (offline) { _offline++; _tickOffline++; _everOffline.Add(serverIdx); }
-            if (backoff) { _backoff++; _tickBackoff++; }
-            if (offlineButAnswering) _offlineAnswering++;
+            if (offline)
+            {
+                _offline++;
+                _tickOffline++;
+                _everOffline.Add(serverIdx);
+            }
+
+            if (backoff)
+            {
+                _backoff++;
+                _tickBackoff++;
+            }
+
+            if (offlineButAnswering)
+            {
+                _offlineAnswering++;
+            }
         }
 
         public void EndTick()
@@ -298,37 +615,26 @@ public static class SimulationCommands
     public static SimulationResult Simulate(SimulatorData data, IPollingStrategy strategy, Period period, CommandLine commandLine, Action<string> log,
         Action<long, IReadOnlyList<PolledServer>>? onTick = null)
     {
-        var options = new SimulationOptions
+        SimulationOptions options = new SimulationOptions
         {
             FromMs = period.FromMs,
             ToMs = period.ToMs,
             Seed = commandLine.Int("seed", 1),
             OnTick = onTick,
-            Ranking = (commandLine.Optional("ranking") ?? "frozen") switch
-            {
-                "frozen" => RankingMode.Frozen,
-                "hourly" => RankingMode.Hourly,
-                _ => throw new ArgumentException("--ranking is frozen or hourly.")
-            },
-            Timing = commandLine.Has("no-timing")
-                ? null
-                : new WorkerTiming
-                {
-                    Concurrency = commandLine.Int("concurrency", 32),
-                    AnsweredPollSeconds = commandLine.Double("answered-poll-seconds", 0.5),
-                    UnansweredPollSeconds = commandLine.Double("unanswered-poll-seconds", 6),
-                    JitterMs = commandLine.Int("jitter-ms", 50)
-                }
+            Ranking = ParseRanking(commandLine),
+            Timing = CreateTiming(commandLine)
         };
-        if (strategy is PriorityPollingStrategy statistics)
+
+        PriorityPollingStrategy? priority = strategy as PriorityPollingStrategy;
+        if (priority != null)
         {
-            statistics.StatisticsFromMs = period.EvalFromMs;
+            priority.StatisticsFromMs = period.EvalFromMs;
         }
 
-        var started = DateTime.UtcNow;
-        var result = new SimulationEngine(data, strategy, options).Run();
+        DateTime started = DateTime.UtcNow;
+        SimulationResult result = new SimulationEngine(data, strategy, options).Run();
         log($"simulated {strategy.Name} in {(DateTime.UtcNow - started).TotalSeconds:0} s");
-        if (strategy is PriorityPollingStrategy priority)
+        if (priority != null)
         {
             log($"priority: average maximum age {priority.AverageMaxAgeSeconds / 60:0.00} min, " +
                 $"average servers believed online {priority.AverageOnlineServers:0}");
@@ -336,51 +642,145 @@ public static class SimulationCommands
         return result;
     }
 
-    public static IPollingStrategy CreateStrategy(CommandLine commandLine, string name, double? budget, double batchScale) => name switch
+    private static RankingMode ParseRanking(CommandLine commandLine)
     {
-        "fourlane" => new FourLanePollingStrategy(new FourLaneOptions { BatchScale = batchScale }),
-        "uniform" => new UniformPollingStrategy(budget ?? throw new ArgumentException("uniform needs --budget.")),
-        "priority" => new PriorityPollingStrategy(
-            budget ?? throw new ArgumentException("priority needs --budget."),
-            new PriorityOptions
+        string? ranking = commandLine.Optional("ranking");
+        if (ranking == null)
+        {
+            ranking = "frozen";
+        }
+
+        if (ranking == "frozen")
+        {
+            return RankingMode.Frozen;
+        }
+        if (ranking == "hourly")
+        {
+            return RankingMode.Hourly;
+        }
+        throw new ArgumentException("--ranking is frozen or hourly.");
+    }
+
+    private static WorkerTiming? CreateTiming(CommandLine commandLine)
+    {
+        if (commandLine.Has("no-timing"))
+        {
+            return null;
+        }
+
+        return new WorkerTiming
+        {
+            Concurrency = commandLine.Int("concurrency", 32),
+            AnsweredPollSeconds = commandLine.Double("answered-poll-seconds", 0.5),
+            UnansweredPollSeconds = commandLine.Double("unanswered-poll-seconds", 6),
+            JitterMs = commandLine.Int("jitter-ms", 50)
+        };
+    }
+
+    public static IPollingStrategy CreateStrategy(CommandLine commandLine, string name, double? budget, double batchScale)
+    {
+        if (name == "fourlane")
+        {
+            return new FourLanePollingStrategy(new FourLaneOptions { BatchScale = batchScale });
+        }
+
+        if (name == "uniform")
+        {
+            if (!budget.HasValue)
+            {
+                throw new ArgumentException("uniform needs --budget.");
+            }
+            return new UniformPollingStrategy(budget.Value);
+        }
+
+        if (name == "priority")
+        {
+            if (!budget.HasValue)
+            {
+                throw new ArgumentException("priority needs --budget.");
+            }
+
+            PriorityOptions options = new PriorityOptions
             {
                 MinIntervalSeconds = commandLine.Double("min-interval", 165),
                 MaxBackoffSeconds = commandLine.Double("max-backoff", 6 * 3600),
-                // --max-age <s> fixes the maximum age; otherwise it follows the budget via --max-age-share.
                 MaxAgeSeconds = commandLine.Double("max-age", 0),
-                MaxAgeBudgetShare = commandLine.Has("max-age")
-                    ? 0
-                    : commandLine.Double("max-age-share", PriorityOptions.DefaultMaxAgeBudgetShare),
+                MaxAgeBudgetShare = MaxAgeShare(commandLine),
                 BackoffScalesWithWeight = !commandLine.Has("flat-backoff"),
                 UsePredictedWipes = !commandLine.Has("no-predicted-wipes"),
                 WipeBoost = commandLine.Double("wipe-boost", 1),
                 PlayersEwmaAlpha = commandLine.Double("ewma-alpha", 0.2),
                 PriorChanges = commandLine.Double("prior-changes", 1),
                 PriorSeconds = commandLine.Double("prior-seconds", 3600),
-                Score = (commandLine.Optional("score") ?? "expected-age") switch
-                {
-                    "expected-age" => PriorityScore.ExpectedAge,
-                    "change-probability" => PriorityScore.ChangeProbability,
-                    _ => throw new ArgumentException("--score is expected-age or change-probability.")
-                }
-            }),
-        _ => throw new ArgumentException($"Unknown strategy '{name}': fourlane, uniform or priority.")
-    };
+                Score = ParseScore(commandLine)
+            };
+            return new PriorityPollingStrategy(budget.Value, options);
+        }
 
-    public static double StrategyBudget(SimulationResult result, Period period) =>
-        RunReport.LaneRates(result, period.EvalFromMs, period.ToMs).Single(rate => rate.Lane == "StrategyTotal").PollsPerMinute;
+        throw new ArgumentException($"Unknown strategy '{name}': fourlane, uniform or priority.");
+    }
+
+    private static double MaxAgeShare(CommandLine commandLine)
+    {
+        if (commandLine.Has("max-age"))
+        {
+            return 0;
+        }
+        return commandLine.Double("max-age-share", PriorityOptions.DefaultMaxAgeBudgetShare);
+    }
+
+    private static PriorityScore ParseScore(CommandLine commandLine)
+    {
+        string? score = commandLine.Optional("score");
+        if (score == null)
+        {
+            score = "expected-age";
+        }
+
+        if (score == "expected-age")
+        {
+            return PriorityScore.ExpectedAge;
+        }
+        if (score == "change-probability")
+        {
+            return PriorityScore.ChangeProbability;
+        }
+        throw new ArgumentException("--score is expected-age or change-probability.");
+    }
+
+    public static double StrategyBudget(SimulationResult result, Period period)
+    {
+        LaneRate total = FindStrategyTotal(RunReport.LaneRates(result, period.EvalFromMs, period.ToMs));
+        return total.PollsPerMinute;
+    }
 
     public static IReadOnlyList<string> Limitations(SimulatorData data, Period period)
     {
-        var notes = new List<string>();
-        var firstSnapshot = data.Snapshots.Where(s => s.Count > 0).Select(s => s.TimesMs[0]).DefaultIfEmpty(long.MaxValue).Min();
-        notes.Add($"The starting state of every server (players, status, last seen, last checked) comes from its last " +
-                  $"snapshot before {RunReport.Iso(period.FromMs)}; only server_type and created_at come from the servers file. " +
-                  $"The export's snapshots start at {RunReport.Iso(firstSnapshot)}" +
-                  (firstSnapshot >= period.FromMs - 60_000
-                      ? ", so every server starts as never polled and the first hours are a warm-up; " +
-                        $"the comparison starts at {RunReport.Iso(period.EvalFromMs)}. The 7-day ranking window also has no history before the period."
-                      : "."));
+        List<string> notes = new List<string>();
+
+        long firstSnapshot = long.MaxValue;
+        foreach (SnapshotSeries series in data.Snapshots)
+        {
+            if (series.Count > 0 && series.TimesMs[0] < firstSnapshot)
+            {
+                firstSnapshot = series.TimesMs[0];
+            }
+        }
+
+        string firstNote = $"The starting state of every server (players, status, last seen, last checked) comes from its last " +
+                           $"snapshot before {RunReport.Iso(period.FromMs)}; only server_type and created_at come from the servers file. " +
+                           $"The export's snapshots start at {RunReport.Iso(firstSnapshot)}";
+        if (firstSnapshot >= period.FromMs - 60_000)
+        {
+            firstNote = firstNote + ", so every server starts as never polled and the first hours are a warm-up; " +
+                        $"the comparison starts at {RunReport.Iso(period.EvalFromMs)}. The 7-day ranking window also has no history before the period.";
+        }
+        else
+        {
+            firstNote = firstNote + ".";
+        }
+        notes.Add(firstNote);
+
         notes.Add("Non-sample servers answer with the production snapshot nearest in time, so they are only known at production's poll times. " +
                   "This affects how the budget and lanes are spent, not the measured metrics.");
         notes.Add("Queue: server_snapshots has no queue column, so a non-sample server never shows a queue in the simulation. " +
@@ -426,38 +826,95 @@ public static class SimulationCommands
                   "466 against 474 s). Fourlane polls a Popular sample server 13.0 times an hour, Priority 9.3 (10.1 with 60 s), because " +
                   "57.5 % of Priority's queries go to the maximum-age queue. The median gap is the price of that guarantee; Priority's " +
                   "Popular mean AoI is still lower (621 against 1092 s).");
-        notes.Add("Phantom servers fill the gap between study_population_samples.TotalServers and the known servers; they never answer.");
+        notes.Add("Phantom servers fill the gap between study_population_samples.TotalServers and the known servers. Of them, " +
+                  "OnlineServers minus the known servers the oracle answers for (counted hourly) answer, with no players and 100 max " +
+                  "players, so the online/offline split follows production; the rest never answer. Answering phantoms present at the start " +
+                  "begin online, last polled at a random moment of the previous 75 min; later ones join never polled.");
         notes.Add("Worker timing is modelled, not replayed: 32 queries in flight, 0.5 s per answered and 6 s per unanswered query " +
                   "(two 3 s attempts), lanes one after another, PeriodicTimer's one kept tick, and a few ms of jitter in reading the clock. " +
                   "Without it the Fast lane always runs every 45 s (133 polls/min against production's 105).");
         return notes;
     }
 
-    private static IEnumerable<string> SweepRows(string name, string label, double scale, SimulationResult result, SimulatorData data, Period period)
+    private static List<string> SweepRows(string name, string label, double scale, SimulationResult result, SimulatorData data, Period period)
     {
-        var windows = new List<(string Name, long From, long To)> { ("full", period.EvalFromMs, period.ToMs) };
-        if (period.SplitMs is { } split && split > period.EvalFromMs && split < period.ToMs)
+        List<string> rows = new List<string>();
+        AddSweepRows(rows, name, label, scale, result, data, "full", period.EvalFromMs, period.ToMs);
+        if (period.SplitMs.HasValue)
         {
-            windows.Add(("before_split", period.EvalFromMs, split));
-            windows.Add(("after_split", split, period.ToMs));
-        }
-
-        foreach (var (window, from, to) in windows)
-        {
-            var total = RunReport.LaneRates(result, from, to).Single(rate => rate.Lane == "StrategyTotal");
-            var summary = SummaryCsv.Format(RunReport.EvaluateSimulated(data, result, from, to))
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                .Skip(1);
-            foreach (var row in summary)
+            long split = period.SplitMs.Value;
+            if (split > period.EvalFromMs && split < period.ToMs)
             {
-                yield return RunReport.Invariant($"{name},{label},{scale:0.####},{window},{total.PollsPerMinute:0.##},{total.UnansweredShare:0.####},") + row;
+                AddSweepRows(rows, name, label, scale, result, data, "before_split", period.EvalFromMs, split);
+                AddSweepRows(rows, name, label, scale, result, data, "after_split", split, period.ToMs);
             }
         }
+        return rows;
+    }
+
+    private static void AddSweepRows(List<string> rows, string name, string label, double scale, SimulationResult result, SimulatorData data,
+        string window, long from, long to)
+    {
+        LaneRate total = FindStrategyTotal(RunReport.LaneRates(result, from, to));
+        string summaryCsv = SummaryCsv.Format(RunReport.EvaluateSimulated(data, result, from, to));
+        string[] summaryLines = summaryCsv.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 1; i < summaryLines.Length; i++)
+        {
+            rows.Add(RunReport.Invariant($"{name},{label},{scale:0.####},{window},{total.PollsPerMinute:0.##},{total.UnansweredShare:0.####},") + summaryLines[i]);
+        }
+    }
+
+    private static LaneRate FindStrategyTotal(IReadOnlyList<LaneRate> rates)
+    {
+        LaneRate? found = null;
+        int matches = 0;
+        foreach (LaneRate rate in rates)
+        {
+            if (rate.Lane == "StrategyTotal")
+            {
+                found = rate;
+                matches++;
+            }
+        }
+
+        if (matches == 0)
+        {
+            throw new InvalidOperationException("Sequence contains no matching element");
+        }
+        if (matches > 1)
+        {
+            throw new InvalidOperationException("Sequence contains more than one matching element");
+        }
+        return found!;
+    }
+
+    private static FreshnessSummary FindAllGroup(IReadOnlyList<FreshnessSummary> rows)
+    {
+        FreshnessSummary? found = null;
+        int matches = 0;
+        foreach (FreshnessSummary row in rows)
+        {
+            if (row.Group == FreshnessEvaluator.AllGroup)
+            {
+                found = row;
+                matches++;
+            }
+        }
+
+        if (matches == 0)
+        {
+            throw new InvalidOperationException("Sequence contains no matching element");
+        }
+        if (matches > 1)
+        {
+            throw new InvalidOperationException("Sequence contains more than one matching element");
+        }
+        return found!;
     }
 
     private static void PrintRun(SimulationResult result, SimulatorData data, Period period, Action<string> log)
     {
-        foreach (var rate in RunReport.LaneRates(result, period.EvalFromMs, period.ToMs))
+        foreach (LaneRate rate in RunReport.LaneRates(result, period.EvalFromMs, period.ToMs))
         {
             log(RunReport.Invariant($"  {rate.Lane,-18} {rate.PollsPerMinute,7:0.0} per min, {rate.UnansweredShare,6:P1} unanswered"));
         }
@@ -465,13 +922,29 @@ public static class SimulationCommands
         Console.WriteLine(SummaryCsv.FormatTable(RunReport.EvaluateSimulated(data, result, period.EvalFromMs, period.ToMs)));
     }
 
-    private static Dictionary<string, object?> Arguments(CommandLine commandLine) =>
-        commandLine.Options.ToDictionary(pair => pair.Key, pair => (object?)pair.Value.ToArray());
+    private static Dictionary<string, object?> Arguments(CommandLine commandLine)
+    {
+        Dictionary<string, object?> arguments = new Dictionary<string, object?>();
+        foreach (KeyValuePair<string, List<string>> pair in commandLine.Options)
+        {
+            arguments.Add(pair.Key, pair.Value.ToArray());
+        }
+        return arguments;
+    }
 
     private static void CheckOptions(CommandLine commandLine, IEnumerable<string> extra)
     {
-        var allowed = SharedOptions.Concat(extra).ToHashSet(StringComparer.Ordinal);
-        foreach (var name in commandLine.Options.Keys)
+        HashSet<string> allowed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string name in SharedOptions)
+        {
+            allowed.Add(name);
+        }
+        foreach (string name in extra)
+        {
+            allowed.Add(name);
+        }
+
+        foreach (string name in commandLine.Options.Keys)
         {
             if (!allowed.Contains(name))
             {
@@ -480,21 +953,36 @@ public static class SimulationCommands
         }
     }
 
-    private static double[] Values(CommandLine commandLine, string name, double[] fallback) =>
-        commandLine.Has(name) ? commandLine.Values(name).Select(Parse).ToArray() : fallback;
+    private static double[] Values(CommandLine commandLine, string name, double[] fallback)
+    {
+        if (!commandLine.Has(name))
+        {
+            return fallback;
+        }
 
-    private static double Parse(string text) => double.Parse(text, CultureInfo.InvariantCulture);
+        IReadOnlyList<string> texts = commandLine.Values(name);
+        double[] values = new double[texts.Count];
+        for (int i = 0; i < texts.Count; i++)
+        {
+            values[i] = Parse(texts[i]);
+        }
+        return values;
+    }
+
+    private static double Parse(string text)
+    {
+        return double.Parse(text, CultureInfo.InvariantCulture);
+    }
 }
 
-/// <summary>The simulated period, the start of the compared window and the tuning split.</summary>
 public sealed record Period(long FromMs, long ToMs, long EvalFromMs, long? SplitMs)
 {
     public static Period From(CommandLine commandLine)
     {
-        var from = commandLine.Time("from", SimulationCommands.DefaultFrom).ToUnixTimeMilliseconds();
-        var to = commandLine.Time("to", SimulationCommands.DefaultTo).ToUnixTimeMilliseconds();
-        var evalFrom = commandLine.Time("eval-from", DateTimeOffset.FromUnixTimeMilliseconds(from)).ToUnixTimeMilliseconds();
-        var split = commandLine.Time("split", SimulationCommands.DefaultSplit).ToUnixTimeMilliseconds();
+        long from = commandLine.Time("from", SimulationCommands.DefaultFrom).ToUnixTimeMilliseconds();
+        long to = commandLine.Time("to", SimulationCommands.DefaultTo).ToUnixTimeMilliseconds();
+        long evalFrom = commandLine.Time("eval-from", DateTimeOffset.FromUnixTimeMilliseconds(from)).ToUnixTimeMilliseconds();
+        long split = commandLine.Time("split", SimulationCommands.DefaultSplit).ToUnixTimeMilliseconds();
         if (to <= from || evalFrom < from || evalFrom >= to)
         {
             throw new ArgumentException("Need --from <= --eval-from < --to.");
@@ -503,16 +991,31 @@ public sealed record Period(long FromMs, long ToMs, long EvalFromMs, long? Split
         return new Period(from, to, evalFrom, split);
     }
 
-    /// <summary>Ends the period where the probes end, so no step runs without ground truth.</summary>
     public Period ClampedTo(SimulatorData data)
     {
-        var lastProbe = data.Probes.Where(p => p.Count > 0).Select(p => p.TimesMs[^1]).DefaultIfEmpty(ToMs).Max();
-        var end = Math.Min(ToMs, (lastProbe / 60_000 + 1) * 60_000);
+        long lastProbe = ToMs;
+        bool foundProbe = false;
+        foreach (ProbeSeries probes in data.Probes)
+        {
+            if (probes.Count == 0)
+            {
+                continue;
+            }
+
+            long probeEnd = probes.TimesMs[probes.TimesMs.Length - 1];
+            if (!foundProbe || probeEnd > lastProbe)
+            {
+                lastProbe = probeEnd;
+                foundProbe = true;
+            }
+        }
+
+        long end = Math.Min(ToMs, (lastProbe / 60_000 + 1) * 60_000);
         if (end <= EvalFromMs)
         {
             throw new ArgumentException("The data ends before the compared window starts.");
         }
 
-        return this with { ToMs = end };
+        return new Period(FromMs, end, EvalFromMs, SplitMs);
     }
 }

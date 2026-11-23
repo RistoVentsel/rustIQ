@@ -3,26 +3,18 @@ using RustIQ.Domain.Study;
 
 namespace RustIQ.Simulator.Data;
 
-/// <summary>
-/// Everything the simulator reads from one or more merged exports. Times are Unix milliseconds UTC.
-/// </summary>
 public sealed record SimulatorData
 {
     public required IReadOnlyList<ExportManifest> Manifests { get; init; }
 
-    /// <summary>Indexed by <c>server_idx - 1</c>.</summary>
     public required IReadOnlyList<SampleServer> SampleServers { get; init; }
 
-    /// <summary>Ground truth, indexed like <see cref="SampleServers"/>. Sorted by time, unique times.</summary>
     public required IReadOnlyList<ProbeSeries> Probes { get; init; }
 
-    /// <summary>Every server seen in any file. A server's position is its index everywhere else.</summary>
     public required ServerIndex ServerIndex { get; init; }
 
-    /// <summary>The <c>servers</c> row per server index, or null when no export still had the server.</summary>
     public required IReadOnlyList<ServerRecord?> Servers { get; init; }
 
-    /// <summary>Production polls per server index, sorted by time.</summary>
     public required IReadOnlyList<SnapshotSeries> Snapshots { get; init; }
 
     public required IReadOnlyList<ServerRankingRow> Rankings { get; init; }
@@ -37,9 +29,33 @@ public sealed record SimulatorData
 
     public required IReadOnlyList<PredictionSnapshotRow> PredictionSnapshots { get; init; }
 
-    public long SnapshotCount => Snapshots.Sum(series => (long)series.Count);
+    public long SnapshotCount
+    {
+        get
+        {
+            long total = 0;
+            foreach (SnapshotSeries series in Snapshots)
+            {
+                total += series.Count;
+            }
 
-    public long ProbeCount => Probes.Sum(series => (long)series.Count);
+            return total;
+        }
+    }
+
+    public long ProbeCount
+    {
+        get
+        {
+            long total = 0;
+            foreach (ProbeSeries series in Probes)
+            {
+                total += series.Count;
+            }
+
+            return total;
+        }
+    }
 }
 
 public sealed record SampleServer(
@@ -51,21 +67,25 @@ public sealed record SampleServer(
     string? Country,
     DateTimeOffset SelectedAtUtc);
 
-/// <summary>
-/// Maps server ids to dense indexes, so per-server data can live in arrays.
-/// </summary>
 public sealed class ServerIndex
 {
-    private readonly Dictionary<Guid, int> _indexes = new();
-    private readonly List<Guid> _ids = [];
+    private readonly Dictionary<Guid, int> _indexes = new Dictionary<Guid, int>();
+    private readonly List<Guid> _ids = new List<Guid>();
 
-    public int Count => _ids.Count;
+    public int Count
+    {
+        get { return _ids.Count; }
+    }
 
-    public IReadOnlyList<Guid> Ids => _ids;
+    public IReadOnlyList<Guid> Ids
+    {
+        get { return _ids; }
+    }
 
     public int GetOrAdd(Guid id)
     {
-        if (_indexes.TryGetValue(id, out var index))
+        int index;
+        if (_indexes.TryGetValue(id, out index))
         {
             return index;
         }
@@ -76,7 +96,10 @@ public sealed class ServerIndex
         return index;
     }
 
-    public bool TryGet(Guid id, out int index) => _indexes.TryGetValue(id, out index);
+    public bool TryGet(Guid id, out int index)
+    {
+        return _indexes.TryGetValue(id, out index);
+    }
 }
 
 public sealed record ServerRecord(
@@ -131,13 +154,9 @@ public sealed record PredictionSnapshotRow(
     DateTimeOffset? DisplayedNextWipeAtUtc,
     DateTimeOffset? LastWipeAtUtc);
 
-/// <summary>
-/// One sample server's probes as parallel arrays (time, ok, players, queue), sorted by time.
-/// Failed probes have <c>Ok = false</c> and zero players.
-/// </summary>
 public sealed class ProbeSeries
 {
-    public static readonly ProbeSeries Empty = new([], [], [], []);
+    public static readonly ProbeSeries Empty = new ProbeSeries(new long[0], new bool[0], new short[0], new short[0]);
 
     public ProbeSeries(long[] timesMs, bool[] ok, short[] players, short[] queue)
     {
@@ -151,15 +170,22 @@ public sealed class ProbeSeries
     public bool[] Ok { get; }
     public short[] Players { get; }
     public short[] Queue { get; }
-    public int Count => TimesMs.Length;
+
+    public int Count
+    {
+        get { return TimesMs.Length; }
+    }
 }
 
-/// <summary>
-/// One server's production polls as parallel arrays, sorted by time.
-/// </summary>
 public sealed class SnapshotSeries
 {
-    public static readonly SnapshotSeries Empty = new([], [], [], [], [], []);
+    public static readonly SnapshotSeries Empty = new SnapshotSeries(
+        new long[0],
+        new short[0],
+        new short[0],
+        new bool[0],
+        new sbyte[0],
+        new ServerPollSource[0]);
 
     public SnapshotSeries(
         long[] timesMs,
@@ -181,18 +207,26 @@ public sealed class SnapshotSeries
     public short[] Players { get; }
     public short[] MaxPlayers { get; }
     public bool[] Online { get; }
-
-    /// <summary><c>QuerySucceeded</c>: 1, 0, or -1 when null (rows before 2026-11-03).</summary>
     public sbyte[] Ok { get; }
-
     public ServerPollSource[] Sources { get; }
-    public int Count => TimesMs.Length;
 
-    /// <summary>Whether the query was answered; falls back to <c>online</c> where <c>ok</c> is null.</summary>
-    public bool Answered(int i) => Ok[i] switch
+    public int Count
     {
-        1 => true,
-        0 => false,
-        _ => Online[i]
-    };
+        get { return TimesMs.Length; }
+    }
+
+    public bool Answered(int i)
+    {
+        if (Ok[i] == 1)
+        {
+            return true;
+        }
+
+        if (Ok[i] == 0)
+        {
+            return false;
+        }
+
+        return Online[i];
+    }
 }

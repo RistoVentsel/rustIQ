@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using RustIQ.Domain.Servers;
+using RustIQ.Domain.Study;
 using RustIQ.Simulator.Data;
 using RustIQ.Simulator.Engine;
 using RustIQ.Simulator.Evaluation;
@@ -11,106 +12,171 @@ namespace RustIQ.Simulator.Reporting;
 
 public sealed record LaneRate(string Lane, bool Exogenous, double PollsPerMinute, double UnansweredShare);
 
-/// <summary>Turns a run into the plain files of plan section 9.</summary>
 public static class RunReport
 {
-    /// <summary>Half the 15 min grid step: the second grid used to check for alignment with polling intervals.</summary>
     public const long ShiftedGridOffsetMs = FreshnessEvaluator.DefaultGridStepMs / 2;
 
     public static IReadOnlyList<FreshnessSummary> EvaluateSimulated(
-        SimulatorData data, SimulationResult result, long fromMs, long toMs) =>
-        FreshnessEvaluator.Evaluate(
-            data.SampleServers
-                .Select(sample => new EvaluationInput(sample.Stratum, data.Probes[sample.ServerIdx - 1], result.Shown(sample.ServerIdx)))
-                .ToArray(),
-            fromMs,
-            toMs);
-
-    public static IReadOnlyList<FreshnessSummary> EvaluateReal(SimulatorData data, long fromMs, long toMs) =>
-        FreshnessEvaluator.Evaluate(
-            data.SampleServers
-                .Select(sample => new EvaluationInput(
-                    sample.Stratum,
-                    data.Probes[sample.ServerIdx - 1],
-                    ShownSeries.FromSnapshots(data.Snapshots[sample.ServerIndex])))
-                .ToArray(),
-            fromMs,
-            toMs);
-
-    /// <summary>Polls per minute and unanswered share per lane over [fromMs, toMs), strategy lanes first.</summary>
-    public static IReadOnlyList<LaneRate> LaneRates(SimulationResult result, long fromMs, long toMs)
+        SimulatorData data, SimulationResult result, long fromMs, long toMs)
     {
-        var minutes = result.MinuteRange(fromMs, toMs).ToArray();
-        var rates = result.Lanes.Values
-            .Select(log =>
-            {
-                long polls = 0, unanswered = 0;
-                foreach (var minute in minutes)
-                {
-                    polls += log.Polls[minute];
-                    unanswered += log.Unanswered[minute];
-                }
+        List<EvaluationInput> inputs = new List<EvaluationInput>();
+        foreach (SampleServer sample in data.SampleServers)
+        {
+            inputs.Add(new EvaluationInput(sample.Stratum, data.Probes[sample.ServerIdx - 1], result.Shown(sample.ServerIdx)));
+        }
 
-                return new LaneRate(
-                    log.Lane,
-                    log.Exogenous,
-                    minutes.Length == 0 ? 0 : (double)polls / minutes.Length,
-                    polls == 0 ? 0 : (double)unanswered / polls);
-            })
-            .OrderBy(rate => rate.Exogenous)
-            .ThenBy(rate => LaneOrder(rate.Lane))
-            .ToList();
-
-        var own = rates.Where(rate => !rate.Exogenous).ToArray();
-        var total = own.Sum(rate => rate.PollsPerMinute);
-        rates.Insert(own.Length, new LaneRate(
-            "StrategyTotal",
-            false,
-            total,
-            total == 0 ? 0 : own.Sum(rate => rate.PollsPerMinute * rate.UnansweredShare) / total));
-        return rates;
+        return FreshnessEvaluator.Evaluate(inputs, fromMs, toMs);
     }
 
-    /// <summary>Production's polls per minute per <c>PollSource</c> over [fromMs, toMs), from the exported snapshots.</summary>
-    public static Dictionary<string, double> RealLaneRates(SimulatorData data, long fromMs, long toMs)
+    public static IReadOnlyList<FreshnessSummary> EvaluateReal(SimulatorData data, long fromMs, long toMs)
     {
-        var counts = new Dictionary<string, long>(StringComparer.Ordinal);
-        foreach (var series in data.Snapshots)
+        List<EvaluationInput> inputs = new List<EvaluationInput>();
+        foreach (SampleServer sample in data.SampleServers)
         {
-            var start = FreshnessEvaluator.LastAtOrBefore(series.TimesMs, fromMs - 1) + 1;
-            for (var i = start; i < series.Count && series.TimesMs[i] < toMs; i++)
+            inputs.Add(new EvaluationInput(
+                sample.Stratum,
+                data.Probes[sample.ServerIdx - 1],
+                ShownSeries.FromSnapshots(data.Snapshots[sample.ServerIndex])));
+        }
+
+        return FreshnessEvaluator.Evaluate(inputs, fromMs, toMs);
+    }
+
+    public static IReadOnlyList<LaneRate> LaneRates(SimulationResult result, long fromMs, long toMs)
+    {
+        List<int> minutes = new List<int>();
+        foreach (int minute in result.MinuteRange(fromMs, toMs))
+        {
+            minutes.Add(minute);
+        }
+
+        List<LaneRate> rates = new List<LaneRate>();
+        foreach (LaneLog log in result.Lanes.Values)
+        {
+            long polls = 0;
+            long unanswered = 0;
+            foreach (int minute in minutes)
             {
-                var lane = series.Sources[i].ToString();
-                counts[lane] = counts.GetValueOrDefault(lane) + 1;
+                polls += log.Polls[minute];
+                unanswered += log.Unanswered[minute];
+            }
+
+            double pollsPerMinute = 0;
+            if (minutes.Count != 0)
+            {
+                pollsPerMinute = (double)polls / minutes.Count;
+            }
+
+            double unansweredShare = 0;
+            if (polls != 0)
+            {
+                unansweredShare = (double)unanswered / polls;
+            }
+
+            LaneRate rate = new LaneRate(log.Lane, log.Exogenous, pollsPerMinute, unansweredShare);
+
+            int position = rates.Count;
+            while (position > 0 && CompareLaneRates(rates[position - 1], rate) > 0)
+            {
+                position--;
+            }
+
+            rates.Insert(position, rate);
+        }
+
+        int ownCount = 0;
+        double total = 0;
+        double weightedUnanswered = 0;
+        foreach (LaneRate rate in rates)
+        {
+            if (!rate.Exogenous)
+            {
+                ownCount++;
+                total += rate.PollsPerMinute;
+                weightedUnanswered += rate.PollsPerMinute * rate.UnansweredShare;
             }
         }
 
-        var minutes = (toMs - fromMs) / 60_000.0;
-        return counts.ToDictionary(pair => pair.Key, pair => pair.Value / minutes, StringComparer.Ordinal);
+        double totalUnansweredShare = 0;
+        if (total != 0)
+        {
+            totalUnansweredShare = weightedUnanswered / total;
+        }
+
+        rates.Insert(ownCount, new LaneRate("StrategyTotal", false, total, totalUnansweredShare));
+        return rates;
     }
 
-    /// <summary>server_snapshots inserts per minute from the cumulative write counters, or null.</summary>
+    public static Dictionary<string, double> RealLaneRates(SimulatorData data, long fromMs, long toMs)
+    {
+        Dictionary<string, long> counts = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (SnapshotSeries series in data.Snapshots)
+        {
+            int start = FreshnessEvaluator.LastAtOrBefore(series.TimesMs, fromMs - 1) + 1;
+            for (int i = start; i < series.Count && series.TimesMs[i] < toMs; i++)
+            {
+                string lane = series.Sources[i].ToString();
+                long count;
+                if (counts.TryGetValue(lane, out count))
+                {
+                    counts[lane] = count + 1;
+                }
+                else
+                {
+                    counts[lane] = 1;
+                }
+            }
+        }
+
+        double minutes = (toMs - fromMs) / 60_000.0;
+        Dictionary<string, double> rates = new Dictionary<string, double>(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, long> pair in counts)
+        {
+            rates.Add(pair.Key, pair.Value / minutes);
+        }
+
+        return rates;
+    }
+
     public static double? SnapshotInsertsPerMinute(SimulatorData data, long fromMs, long toMs)
     {
-        var rows = data.TableWriteSamples
-            .Where(row => row.TableName == "server_snapshots")
-            .Select(row => (AtMs: row.SampledAtUtc.ToUnixTimeMilliseconds(), row.Inserts))
-            .Where(row => row.AtMs >= fromMs && row.AtMs <= toMs)
-            .OrderBy(row => row.AtMs)
-            .ToArray();
-        if (rows.Length < 2)
+        List<long> times = new List<long>();
+        List<long> counters = new List<long>();
+        foreach (TableWriteSample row in data.TableWriteSamples)
+        {
+            if (row.TableName != "server_snapshots")
+            {
+                continue;
+            }
+
+            long atMs = row.SampledAtUtc.ToUnixTimeMilliseconds();
+            if (atMs < fromMs || atMs > toMs)
+            {
+                continue;
+            }
+
+            int position = times.Count;
+            while (position > 0 && times[position - 1] > atMs)
+            {
+                position--;
+            }
+
+            times.Insert(position, atMs);
+            counters.Insert(position, row.Inserts);
+        }
+
+        if (times.Count < 2)
         {
             return null;
         }
 
-        // Counters only reset on a restart; sum the non-negative differences.
         long inserts = 0;
-        for (var i = 1; i < rows.Length; i++)
+        for (int i = 1; i < times.Count; i++)
         {
-            inserts += Math.Max(0, rows[i].Inserts - rows[i - 1].Inserts);
+            inserts += Math.Max(0, counters[i] - counters[i - 1]);
         }
 
-        return inserts / ((rows[^1].AtMs - rows[0].AtMs) / 60_000.0);
+        return inserts / ((times[times.Count - 1] - times[0]) / 60_000.0);
     }
 
     public static void WriteRunFiles(
@@ -127,27 +193,29 @@ public static class RunReport
             SummaryCsv.Format(EvaluateSimulated(data, result, evalFromMs, evalToMs)));
         File.WriteAllText(Path.Combine(outDir, "summary_shifted_grid.csv"),
             SummaryCsv.Format(EvaluateSimulated(data, result, evalFromMs + ShiftedGridOffsetMs, evalToMs)));
-        if (splitMs is { } split && split > evalFromMs && split < evalToMs)
+        if (splitMs.HasValue && splitMs.Value > evalFromMs && splitMs.Value < evalToMs)
         {
+            long split = splitMs.Value;
             File.WriteAllText(Path.Combine(outDir, "summary_before_split.csv"),
                 SummaryCsv.Format(EvaluateSimulated(data, result, evalFromMs, split)));
             File.WriteAllText(Path.Combine(outDir, "summary_after_split.csv"),
                 SummaryCsv.Format(EvaluateSimulated(data, result, split, evalToMs)));
         }
 
-        var lanes = new StringBuilder("lane,exogenous,polls_per_min,unanswered_share\n");
-        foreach (var rate in LaneRates(result, evalFromMs, evalToMs))
+        StringBuilder lanes = new StringBuilder("lane,exogenous,polls_per_min,unanswered_share\n");
+        foreach (LaneRate rate in LaneRates(result, evalFromMs, evalToMs))
         {
             lanes.AppendLine(Invariant($"{rate.Lane},{(rate.Exogenous ? 1 : 0)},{rate.PollsPerMinute:0.###},{rate.UnansweredShare:0.####}"));
         }
 
         File.WriteAllText(Path.Combine(outDir, "polls_by_lane.csv"), lanes.ToString());
 
-        var perMinute = new StringBuilder("minute_utc,lane,polls,unanswered\n");
-        foreach (var minute in Enumerable.Range(0, result.Minutes))
+        List<LaneLog> orderedLogs = LogsInLaneOrder(result);
+        StringBuilder perMinute = new StringBuilder("minute_utc,lane,polls,unanswered\n");
+        for (int minute = 0; minute < result.Minutes; minute++)
         {
-            var at = DateTimeOffset.FromUnixTimeMilliseconds(result.FromMs + minute * 60_000L).ToString("yyyy-MM-ddTHH:mmZ", CultureInfo.InvariantCulture);
-            foreach (var log in result.Lanes.Values.OrderBy(log => LaneOrder(log.Lane)))
+            string at = DateTimeOffset.FromUnixTimeMilliseconds(result.FromMs + minute * 60_000L).ToString("yyyy-MM-ddTHH:mmZ", CultureInfo.InvariantCulture);
+            foreach (LaneLog log in orderedLogs)
             {
                 if (log.Polls[minute] > 0)
                 {
@@ -162,66 +230,120 @@ public static class RunReport
         File.WriteAllText(Path.Combine(outDir, "polls_by_stratum.csv"), PollsByStratumCsv(data, result, evalFromMs, evalToMs));
         File.WriteAllText(Path.Combine(outDir, "per_server.csv"), PerServerCsv(data, result, evalFromMs, evalToMs));
 
-        var population = result.AveragePopulation(evalFromMs, evalToMs);
-        var run = new Dictionary<string, object?>
+        (double Known, double Phantoms) population = result.AveragePopulation(evalFromMs, evalToMs);
+
+        string? splitText = null;
+        if (splitMs.HasValue)
         {
-            ["strategy"] = result.Strategy,
-            ["arguments"] = arguments,
-            ["simulated_from"] = Iso(result.FromMs),
-            ["simulated_to"] = Iso(result.ToMs),
-            ["evaluated_from"] = Iso(evalFromMs),
-            ["evaluated_to"] = Iso(evalToMs),
-            ["split"] = splitMs is { } s ? Iso(s) : null,
-            ["average_known_servers"] = Math.Round(population.Known, 1),
-            ["average_phantom_servers"] = Math.Round(population.Phantoms, 1),
-            ["ticks"] = result.Ticks,
-            ["late_ticks"] = result.LateTicks,
-            ["ranking_regenerations"] = result.Rankings.Select(r => new { at = Iso(r.AtMs), initial = r.Initial, ranked = r.RankedCount }),
-            ["git_commit"] = GitCommit(),
-            ["data"] = data.Manifests.Select(m => new
+            splitText = Iso(splitMs.Value);
+        }
+
+        List<object> rankingRegenerations = new List<object>();
+        foreach (RankingRegeneration r in result.Rankings)
+        {
+            rankingRegenerations.Add(new { at = Iso(r.AtMs), initial = r.Initial, ranked = r.RankedCount });
+        }
+
+        List<object> dataFolders = new List<object>();
+        foreach (ExportManifest m in data.Manifests)
+        {
+            dataFolders.Add(new
             {
                 folder = Path.GetFileName(m.Folder),
                 from = m.From,
                 to = m.To,
                 exported_at = m.ExportedAtUtc,
                 sha256 = m.Sha256
-            })
-        };
-        File.WriteAllText(Path.Combine(outDir, "run.json"),
-            JsonSerializer.Serialize(run, new JsonSerializerOptions { WriteIndented = true }));
+            });
+        }
+
+        Dictionary<string, object?> run = new Dictionary<string, object?>();
+        run["strategy"] = result.Strategy;
+        run["arguments"] = arguments;
+        run["simulated_from"] = Iso(result.FromMs);
+        run["simulated_to"] = Iso(result.ToMs);
+        run["evaluated_from"] = Iso(evalFromMs);
+        run["evaluated_to"] = Iso(evalToMs);
+        run["split"] = splitText;
+        run["average_known_servers"] = Math.Round(population.Known, 1);
+        run["average_phantom_servers"] = Math.Round(population.Phantoms, 1);
+        run["ticks"] = result.Ticks;
+        run["late_ticks"] = result.LateTicks;
+        run["ranking_regenerations"] = rankingRegenerations;
+        run["git_commit"] = GitCommit();
+        run["data"] = dataFolders;
+
+        JsonSerializerOptions options = new JsonSerializerOptions();
+        options.WriteIndented = true;
+        File.WriteAllText(Path.Combine(outDir, "run.json"), JsonSerializer.Serialize(run, options));
     }
 
-    /// <summary>Polls per minute of the sample servers per stratum and lane over [fromMs, toMs).</summary>
     public static string PollsByStratumCsv(SimulatorData data, SimulationResult result, long fromMs, long toMs)
     {
-        var minutes = (toMs - fromMs) / 60_000.0;
-        var builder = new StringBuilder().AppendLine("stratum,lane,polls_per_min,polls_per_server_per_hour");
-        foreach (var stratum in data.SampleServers.Select(s => s.Stratum).Distinct().OrderBy(s => s))
+        double minutes = (toMs - fromMs) / 60_000.0;
+        StringBuilder builder = new StringBuilder();
+        builder.AppendLine("stratum,lane,polls_per_min,polls_per_server_per_hour");
+
+        List<StudyStratum> strata = new List<StudyStratum>();
+        foreach (SampleServer sample in data.SampleServers)
         {
-            var samples = data.SampleServers.Where(s => s.Stratum == stratum).ToArray();
-            foreach (var log in result.Lanes.Values.OrderBy(l => LaneOrder(l.Lane)))
+            if (!strata.Contains(sample.Stratum))
             {
-                var polls = samples.Sum(s => log.SamplePolls[s.ServerIdx - 1].Count(t => t >= fromMs && t < toMs));
-                builder.AppendLine(Invariant($"{stratum},{log.Lane},{polls / minutes:0.###},{polls / minutes * 60 / samples.Length:0.###}"));
+                strata.Add(sample.Stratum);
+            }
+        }
+
+        strata.Sort();
+
+        List<LaneLog> orderedLogs = LogsInLaneOrder(result);
+        foreach (StudyStratum stratum in strata)
+        {
+            List<SampleServer> samples = new List<SampleServer>();
+            foreach (SampleServer sample in data.SampleServers)
+            {
+                if (sample.Stratum == stratum)
+                {
+                    samples.Add(sample);
+                }
+            }
+
+            foreach (LaneLog log in orderedLogs)
+            {
+                int polls = 0;
+                foreach (SampleServer sample in samples)
+                {
+                    polls += CountInRange(log.SamplePolls[sample.ServerIdx - 1], fromMs, toMs);
+                }
+
+                builder.AppendLine(Invariant($"{stratum},{log.Lane},{polls / minutes:0.###},{polls / minutes * 60 / samples.Count:0.###}"));
             }
         }
 
         return builder.ToString();
     }
 
-    /// <summary>Freshness per sample server, to see which servers move the player-weighted AoI.</summary>
     public static string PerServerCsv(SimulatorData data, SimulationResult result, long fromMs, long toMs)
     {
-        var builder = new StringBuilder().AppendLine(
+        StringBuilder builder = new StringBuilder();
+        builder.AppendLine(
             "server_idx,stratum,points,points_with_value,aoi_mean_s,aoi_p95_s,player_mae,player_weighted_aoi_s,polls");
-        foreach (var sample in data.SampleServers)
+        foreach (SampleServer sample in data.SampleServers)
         {
-            var shown = result.Shown(sample.ServerIdx);
-            var row = FreshnessEvaluator.Evaluate(
-                    [new EvaluationInput(sample.Stratum, data.Probes[sample.ServerIdx - 1], shown)], fromMs, toMs)
-                .Single(r => r.Group == FreshnessEvaluator.AllGroup);
-            var polls = result.Lanes.Values.Where(l => !l.Exogenous)
-                .Sum(l => l.SamplePolls[sample.ServerIdx - 1].Count(t => t >= fromMs && t < toMs));
+            ShownSeries shown = result.Shown(sample.ServerIdx);
+            List<EvaluationInput> input = new List<EvaluationInput>();
+            input.Add(new EvaluationInput(sample.Stratum, data.Probes[sample.ServerIdx - 1], shown));
+            IReadOnlyList<FreshnessSummary> summaries = FreshnessEvaluator.Evaluate(input, fromMs, toMs);
+            FreshnessSummary row = FindGroup(summaries, FreshnessEvaluator.AllGroup);
+
+            int polls = 0;
+            foreach (LaneLog log in result.Lanes.Values)
+            {
+                if (!log.Exogenous)
+                {
+                    polls += CountInRange(log.SamplePolls[sample.ServerIdx - 1], fromMs, toMs);
+                }
+            }
+
             builder.AppendLine(Invariant(
                 $"{sample.ServerIdx},{sample.Stratum},{row.Points},{row.PointsWithValue},{row.AoiMeanSeconds:0.#},{row.AoiP95Seconds:0.#},{row.PlayerMae:0.###},{row.PlayerWeightedAoiSeconds:0.#},{polls}"));
         }
@@ -229,56 +351,172 @@ public static class RunReport
         return builder.ToString();
     }
 
-    public static string Iso(long ms) =>
-        DateTimeOffset.FromUnixTimeMilliseconds(ms).ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
-
-    public static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
-
-    public static int LaneOrder(string lane) => lane switch
+    public static string Iso(long ms)
     {
-        nameof(ServerPollSource.FastLane) or "Fast" => 0,
-        nameof(ServerPollSource.NormalOnlineLane) or "NormalOnline" => 1,
-        nameof(ServerPollSource.SlowOfflineLane) or "SlowOffline" => 2,
-        nameof(ServerPollSource.VeryStaleOfflineLane) or "VeryStaleOffline" => 3,
-        "Priority" => 4,
-        "PriorityMaxAge" => 4,
-        "StrategyTotal" => 5,
-        nameof(ServerPollSource.Watched) => 6,
-        nameof(ServerPollSource.Discovery) => 7,
-        _ => 4
-    };
+        return DateTimeOffset.FromUnixTimeMilliseconds(ms).ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+    }
+
+    public static string Invariant(FormattableString text)
+    {
+        return text.ToString(CultureInfo.InvariantCulture);
+    }
+
+    public static int LaneOrder(string lane)
+    {
+        if (lane == nameof(ServerPollSource.FastLane) || lane == "Fast")
+        {
+            return 0;
+        }
+
+        if (lane == nameof(ServerPollSource.NormalOnlineLane) || lane == "NormalOnline")
+        {
+            return 1;
+        }
+
+        if (lane == nameof(ServerPollSource.SlowOfflineLane) || lane == "SlowOffline")
+        {
+            return 2;
+        }
+
+        if (lane == nameof(ServerPollSource.VeryStaleOfflineLane) || lane == "VeryStaleOffline")
+        {
+            return 3;
+        }
+
+        if (lane == "Priority" || lane == "PriorityMaxAge")
+        {
+            return 4;
+        }
+
+        if (lane == "StrategyTotal")
+        {
+            return 5;
+        }
+
+        if (lane == nameof(ServerPollSource.Watched))
+        {
+            return 6;
+        }
+
+        if (lane == nameof(ServerPollSource.Discovery))
+        {
+            return 7;
+        }
+
+        return 4;
+    }
+
+    private static int CompareLaneRates(LaneRate a, LaneRate b)
+    {
+        if (a.Exogenous != b.Exogenous)
+        {
+            if (a.Exogenous)
+            {
+                return 1;
+            }
+
+            return -1;
+        }
+
+        return LaneOrder(a.Lane).CompareTo(LaneOrder(b.Lane));
+    }
+
+    private static List<LaneLog> LogsInLaneOrder(SimulationResult result)
+    {
+        List<LaneLog> ordered = new List<LaneLog>();
+        foreach (LaneLog log in result.Lanes.Values)
+        {
+            int position = ordered.Count;
+            while (position > 0 && LaneOrder(ordered[position - 1].Lane) > LaneOrder(log.Lane))
+            {
+                position--;
+            }
+
+            ordered.Insert(position, log);
+        }
+
+        return ordered;
+    }
+
+    private static int CountInRange(List<long> times, long fromMs, long toMs)
+    {
+        int count = 0;
+        foreach (long t in times)
+        {
+            if (t >= fromMs && t < toMs)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static FreshnessSummary FindGroup(IReadOnlyList<FreshnessSummary> rows, string group)
+    {
+        FreshnessSummary? found = null;
+        int matches = 0;
+        foreach (FreshnessSummary row in rows)
+        {
+            if (row.Group == group)
+            {
+                found = row;
+                matches++;
+            }
+        }
+
+        if (matches != 1 || found == null)
+        {
+            throw new InvalidOperationException("Expected exactly one row for group " + group + ".");
+        }
+
+        return found;
+    }
 
     private static string? GitCommit()
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo("git", "rev-parse HEAD")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            });
-            if (process is null)
-            {
-                return null;
-            }
+            ProcessStartInfo headInfo = new ProcessStartInfo("git", "rev-parse HEAD");
+            headInfo.RedirectStandardOutput = true;
+            headInfo.RedirectStandardError = true;
+            headInfo.UseShellExecute = false;
 
-            var output = process.StandardOutput.ReadToEnd().Trim();
-            process.WaitForExit();
-            if (process.ExitCode != 0)
+            using (Process? process = Process.Start(headInfo))
             {
-                return null;
-            }
+                if (process == null)
+                {
+                    return null;
+                }
 
-            // Uncommitted changes make the commit alone not reproduce the run.
-            using var status = Process.Start(new ProcessStartInfo("git", "status --porcelain --untracked-files=no")
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute = false
-            });
-            var dirty = status?.StandardOutput.ReadToEnd().Trim().Length > 0;
-            status?.WaitForExit();
-            return dirty ? output + "-dirty" : output;
+                string output = process.StandardOutput.ReadToEnd().Trim();
+                process.WaitForExit();
+                if (process.ExitCode != 0)
+                {
+                    return null;
+                }
+
+                ProcessStartInfo statusInfo = new ProcessStartInfo("git", "status --porcelain --untracked-files=no");
+                statusInfo.RedirectStandardOutput = true;
+                statusInfo.UseShellExecute = false;
+
+                using (Process? status = Process.Start(statusInfo))
+                {
+                    bool dirty = false;
+                    if (status != null)
+                    {
+                        dirty = status.StandardOutput.ReadToEnd().Trim().Length > 0;
+                        status.WaitForExit();
+                    }
+
+                    if (dirty)
+                    {
+                        return output + "-dirty";
+                    }
+
+                    return output;
+                }
+            }
         }
         catch (Exception)
         {

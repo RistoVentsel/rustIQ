@@ -6,30 +6,48 @@ using RustIQ.Simulator.Evaluation;
 
 namespace RustIQ.Simulator.Reporting;
 
-/// <summary>
-/// Plan section 8: the simulated current strategy against what production measured over the same period.
-/// </summary>
 public static class ValidationReport
 {
     public const double AoiTolerance = 0.20;
     public const double LaneTolerance = 0.10;
 
-    /// <summary>Polls per minute measured per lane on 2026-11-12 (plan section 3).</summary>
-    private static readonly Dictionary<string, double> Measured1112 = new()
+    private static readonly Dictionary<string, double> Measured1112 = CreateMeasured1112();
+
+    private static readonly DateTimeOffset MeasuredWindowStart = new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero);
+
+    private static readonly string[] SimLanes =
     {
-        ["Fast"] = 105,
-        ["NormalOnline"] = 125,
-        ["SlowOffline"] = 14,
-        ["VeryStaleOffline"] = 30
+        "Fast",
+        "NormalOnline",
+        "SlowOffline",
+        "VeryStaleOffline"
     };
 
-    private static readonly (string SimLane, string RealLane)[] LaneMap =
-    [
-        ("Fast", nameof(ServerPollSource.FastLane)),
-        ("NormalOnline", nameof(ServerPollSource.NormalOnlineLane)),
-        ("SlowOffline", nameof(ServerPollSource.SlowOfflineLane)),
-        ("VeryStaleOffline", nameof(ServerPollSource.VeryStaleOfflineLane))
-    ];
+    private static readonly string[] RealLanes =
+    {
+        nameof(ServerPollSource.FastLane),
+        nameof(ServerPollSource.NormalOnlineLane),
+        nameof(ServerPollSource.SlowOfflineLane),
+        nameof(ServerPollSource.VeryStaleOfflineLane)
+    };
+
+    private sealed class StratumLaneTotal
+    {
+        public string Stratum = "";
+        public string Lane = "";
+        public long Sim;
+        public long Real;
+    }
+
+    private static Dictionary<string, double> CreateMeasured1112()
+    {
+        Dictionary<string, double> measured = new Dictionary<string, double>();
+        measured["Fast"] = 105;
+        measured["NormalOnline"] = 125;
+        measured["SlowOffline"] = 14;
+        measured["VeryStaleOffline"] = 30;
+        return measured;
+    }
 
     public static bool Write(
         string outDir,
@@ -37,10 +55,11 @@ public static class ValidationReport
         SimulationResult result,
         long evalFromMs,
         long evalToMs,
-        IReadOnlyList<string> notes)
+        IReadOnlyList<string> notes,
+        long? splitMs = null)
     {
-        var report = new StringBuilder();
-        var passed = true;
+        StringBuilder report = new StringBuilder();
+        bool passed = true;
         report.AppendLine($"# Validation: {result.Strategy}, ranking replay");
         report.AppendLine();
         report.AppendLine($"Simulated {RunReport.Iso(result.FromMs)} .. {RunReport.Iso(result.ToMs)}, " +
@@ -49,18 +68,26 @@ public static class ValidationReport
                           $"polls per minute per lane within {LaneTolerance:P0}.");
         report.AppendLine();
 
-        // 1. AoI per stratum.
-        var simulated = RunReport.EvaluateSimulated(data, result, evalFromMs, evalToMs);
-        var real = RunReport.EvaluateReal(data, evalFromMs, evalToMs);
+        IReadOnlyList<FreshnessSummary> simulated = RunReport.EvaluateSimulated(data, result, evalFromMs, evalToMs);
+        IReadOnlyList<FreshnessSummary> real = RunReport.EvaluateReal(data, evalFromMs, evalToMs);
         report.AppendLine("## 1. Freshness per stratum");
         report.AppendLine();
         report.AppendLine("| Stratum | Metric | Simulated | Real | Difference | Pass |");
         report.AppendLine("| --- | --- | --- | --- | --- | --- |");
-        foreach (var sim in simulated)
+        foreach (FreshnessSummary sim in simulated)
         {
-            var actual = real.Single(row => row.Group == sim.Group);
-            passed &= AppendComparison(report, sim.Group, "AoI mean (s)", sim.AoiMeanSeconds, actual.AoiMeanSeconds, AoiTolerance, sim.Group != FreshnessEvaluator.AllGroup);
-            passed &= AppendComparison(report, sim.Group, "AoI median (s)", sim.AoiMedianSeconds, actual.AoiMedianSeconds, AoiTolerance, sim.Group != FreshnessEvaluator.AllGroup);
+            FreshnessSummary actual = FindGroup(real, sim.Group);
+            bool counts = sim.Group != FreshnessEvaluator.AllGroup;
+            if (!AppendComparison(report, sim.Group, "AoI mean (s)", sim.AoiMeanSeconds, actual.AoiMeanSeconds, AoiTolerance, counts))
+            {
+                passed = false;
+            }
+
+            if (!AppendComparison(report, sim.Group, "AoI median (s)", sim.AoiMedianSeconds, actual.AoiMedianSeconds, AoiTolerance, counts))
+            {
+                passed = false;
+            }
+
             AppendComparison(report, sim.Group, "AoI p95 (s)", sim.AoiP95Seconds, actual.AoiP95Seconds, null, false);
             AppendComparison(report, sim.Group, "Player MAE", sim.PlayerMae, actual.PlayerMae, null, false);
             AppendComparison(report, sim.Group, "Share > 5 off", sim.ShareOffByMoreThan5, actual.ShareOffByMoreThan5, null, false);
@@ -69,41 +96,87 @@ public static class ValidationReport
 
         File.WriteAllText(Path.Combine(outDir, "summary_real.csv"), SummaryCsv.Format(real));
 
-        // 2. Polls per minute per lane.
-        var simRates = RunReport.LaneRates(result, evalFromMs, evalToMs).ToDictionary(rate => rate.Lane);
-        var realRates = RunReport.RealLaneRates(data, evalFromMs, evalToMs);
-        var inserts = RunReport.SnapshotInsertsPerMinute(data, evalFromMs, evalToMs);
-        var exportedTotal = realRates.Values.Sum();
-        var missing = inserts is { } i ? Math.Max(0, i - exportedTotal) : (double?)null;
+        if (splitMs.HasValue && splitMs.Value > evalFromMs && splitMs.Value < evalToMs)
+        {
+            long split = splitMs.Value;
+            report.AppendLine();
+            report.AppendLine("Player-weighted AoI per half of the period (no threshold):");
+            report.AppendLine();
+            report.AppendLine("| Window | Stratum | Simulated | Real | Difference |");
+            report.AppendLine("| --- | --- | --- | --- | --- |");
+            AppendHalf(report, data, result, "before split", evalFromMs, split);
+            AppendHalf(report, data, result, "after split", split, evalToMs);
+        }
+
+        Dictionary<string, LaneRate> simRates = new Dictionary<string, LaneRate>();
+        foreach (LaneRate rate in RunReport.LaneRates(result, evalFromMs, evalToMs))
+        {
+            simRates.Add(rate.Lane, rate);
+        }
+
+        Dictionary<string, double> realRates = RunReport.RealLaneRates(data, evalFromMs, evalToMs);
+        double? inserts = RunReport.SnapshotInsertsPerMinute(data, evalFromMs, evalToMs);
+
+        double exportedTotal = 0;
+        foreach (double value in realRates.Values)
+        {
+            exportedTotal += value;
+        }
+
+        double? missing = null;
+        if (inserts.HasValue)
+        {
+            missing = Math.Max(0, inserts.Value - exportedTotal);
+        }
 
         report.AppendLine();
         report.AppendLine("## 2. Polls per minute per lane");
         report.AppendLine();
         report.AppendLine("Fast and NormalOnline are compared with the exported snapshots (retention removed almost " +
                           "nothing from them). The offline lanes lost the snapshots of pruned servers, so they are compared " +
-                          "together, with the 44 polls per minute measured on 2026-11-12 as the reference (decided 2026-11-16). " +
-                          "The exported rate plus the whole gap between the write counter and the export is shown as well; it is " +
-                          "an upper bound, because the gap also holds the lost Watched and Discovery polls of pruned servers.");
+                          "together with the 44 polls per minute measured on 2026-11-12 over the previous 24 h (from about noon UTC), against the simulation over 2026-11-11 12:00 to 11-12 12:00. " +
+                          "The full period is compared with the exported rate plus the whole gap between the write counter and the " +
+                          "export; it is an upper bound, because the gap also holds the lost Watched and Discovery polls of pruned servers.");
         report.AppendLine();
         report.AppendLine("| Lane | Simulated | Exported | Measured 12.11 | Reference | Difference | Pass |");
         report.AppendLine("| --- | --- | --- | --- | --- | --- | --- |");
-        double simOffline = 0, exportedOffline = 0;
-        foreach (var (simLane, realLane) in LaneMap)
+        double simOffline = 0;
+        double exportedOffline = 0;
+        for (int k = 0; k < SimLanes.Length; k++)
         {
-            var sim = simRates.TryGetValue(simLane, out var rate) ? rate.PollsPerMinute : 0;
-            var exported = realRates.GetValueOrDefault(realLane);
-            var online = simLane is "Fast" or "NormalOnline";
+            string simLane = SimLanes[k];
+            string realLane = RealLanes[k];
+
+            double sim = 0;
+            LaneRate? rate;
+            if (simRates.TryGetValue(simLane, out rate))
+            {
+                sim = rate.PollsPerMinute;
+            }
+
+            double exported = 0;
+            double exportedValue;
+            if (realRates.TryGetValue(realLane, out exportedValue))
+            {
+                exported = exportedValue;
+            }
+
+            bool online = simLane == "Fast" || simLane == "NormalOnline";
             if (!online)
             {
                 simOffline += sim;
                 exportedOffline += exported;
             }
 
-            var line = $"| {simLane} | {sim:0.0} | {exported:0.0} | {Measured1112[simLane]:0} | ";
+            string line = $"| {simLane} | {sim:0.0} | {exported:0.0} | {Measured1112[simLane]:0} | ";
             if (online)
             {
-                var ok = Within(sim, exported, LaneTolerance);
-                passed &= ok;
+                bool ok = Within(sim, exported, LaneTolerance);
+                if (!ok)
+                {
+                    passed = false;
+                }
+
                 report.AppendLine(line + $"{exported:0.0} (exported) | {Diff(sim, exported)} | {Yes(ok)} |");
             }
             else
@@ -113,40 +186,102 @@ public static class ValidationReport
         }
 
         const double offlineMeasured = 44;
-        var offlineOk = Within(simOffline, offlineMeasured, LaneTolerance);
-        passed &= offlineOk;
-        report.AppendLine($"| Offline lanes combined | {simOffline:0.0} | {exportedOffline:0.0} | {offlineMeasured:0} | " +
-                          $"{offlineMeasured:0} (12.11) | {Diff(simOffline, offlineMeasured)} | {Yes(offlineOk)} |");
-        if (missing is { } gap)
+        long dayFrom = MeasuredWindowStart.ToUnixTimeMilliseconds();
+        long dayTo = dayFrom + 86_400_000L;
+        if (dayFrom >= evalFromMs && dayTo <= evalToMs)
         {
-            var upper = exportedOffline + gap;
+            Dictionary<string, LaneRate> dayRates = new Dictionary<string, LaneRate>();
+            foreach (LaneRate rate in RunReport.LaneRates(result, dayFrom, dayTo))
+            {
+                dayRates.Add(rate.Lane, rate);
+            }
+
+            double simOfflineDay = 0;
+            string[] offlineLanes = { "SlowOffline", "VeryStaleOffline" };
+            foreach (string lane in offlineLanes)
+            {
+                double lanePolls = 0;
+                LaneRate? dayRate;
+                if (dayRates.TryGetValue(lane, out dayRate))
+                {
+                    lanePolls = dayRate.PollsPerMinute;
+                }
+
+                simOfflineDay += lanePolls;
+            }
+
+            bool offlineOk = Within(simOfflineDay, offlineMeasured, LaneTolerance);
+            if (!offlineOk)
+            {
+                passed = false;
+            }
+
+            report.AppendLine($"| Offline lanes combined, 12.11 | {simOfflineDay:0.0} | | {offlineMeasured:0} | " +
+                              $"{offlineMeasured:0} (12.11) | {Diff(simOfflineDay, offlineMeasured)} | {Yes(offlineOk)} |");
+        }
+
+        report.AppendLine($"| Offline lanes combined, period | {simOffline:0.0} | {exportedOffline:0.0} | | | | - |");
+        if (missing.HasValue)
+        {
+            double gap = missing.Value;
+            double upper = exportedOffline + gap;
             report.AppendLine($"| Offline lanes, upper bound | {simOffline:0.0} | {exportedOffline:0.0} | | " +
                               $"{upper:0.0} (exported + {gap:0.0} lost) | {Diff(simOffline, upper)} | - |");
         }
 
-        var simExogenous = simRates.Values.Where(r => r.Exogenous).Sum(r => r.PollsPerMinute);
-        var simAll = simRates["StrategyTotal"].PollsPerMinute + simExogenous;
+        double simExogenous = 0;
+        foreach (LaneRate rate in simRates.Values)
+        {
+            if (rate.Exogenous)
+            {
+                simExogenous += rate.PollsPerMinute;
+            }
+        }
+
+        double simAll = simRates["StrategyTotal"].PollsPerMinute + simExogenous;
+
+        string counterText = "n/a";
+        string counterDiff = "";
+        if (inserts.HasValue)
+        {
+            double x = inserts.Value;
+            counterText = $"{x:0.0} (write counter)";
+            counterDiff = Diff(simAll, x);
+        }
+
         report.AppendLine($"| All polls incl. Watched/Discovery | {simAll:0.0} | {exportedTotal:0.0} | | " +
-                          $"{(inserts is { } x ? $"{x:0.0} (write counter)" : "n/a")} | " +
-                          $"{(inserts is { } y ? Diff(simAll, y) : "")} | - |");
+                          $"{counterText} | " +
+                          $"{counterDiff} | - |");
         report.AppendLine();
         report.AppendLine($"Unanswered share of the strategy's polls: {simRates["StrategyTotal"].UnansweredShare:P1}.");
-        var population = result.AveragePopulation(evalFromMs, evalToMs);
+        (double Known, double Phantoms) population = result.AveragePopulation(evalFromMs, evalToMs);
         report.AppendLine($"Population: {population.Known:0} known servers and {population.Phantoms:0} phantoms on average.");
 
-        // 3. Polls per sample server per lane.
-        var perServer = new StringBuilder("server_idx,stratum,lane,simulated_polls,real_polls\n");
-        var stratumTotals = new Dictionary<(string Stratum, string Lane), (long Sim, long Real)>();
-        foreach (var sample in data.SampleServers)
+        StringBuilder perServer = new StringBuilder("server_idx,stratum,lane,simulated_polls,real_polls\n");
+        List<StratumLaneTotal> stratumTotals = new List<StratumLaneTotal>();
+        foreach (SampleServer sample in data.SampleServers)
         {
-            var snapshots = data.Snapshots[sample.ServerIndex];
-            foreach (var (simLane, realLane) in LaneMap)
+            SnapshotSeries snapshots = data.Snapshots[sample.ServerIndex];
+            for (int k = 0; k < SimLanes.Length; k++)
             {
-                var sim = result.Lanes.TryGetValue(simLane, out var log)
-                    ? log.SamplePolls[sample.ServerIdx - 1].Count(t => t >= evalFromMs && t < evalToMs)
-                    : 0;
-                var realCount = 0;
-                for (var s = 0; s < snapshots.Count; s++)
+                string simLane = SimLanes[k];
+                string realLane = RealLanes[k];
+
+                int sim = 0;
+                LaneLog? log;
+                if (result.Lanes.TryGetValue(simLane, out log))
+                {
+                    foreach (long t in log.SamplePolls[sample.ServerIdx - 1])
+                    {
+                        if (t >= evalFromMs && t < evalToMs)
+                        {
+                            sim++;
+                        }
+                    }
+                }
+
+                int realCount = 0;
+                for (int s = 0; s < snapshots.Count; s++)
                 {
                     if (snapshots.TimesMs[s] >= evalFromMs && snapshots.TimesMs[s] < evalToMs
                         && snapshots.Sources[s].ToString() == realLane)
@@ -156,9 +291,28 @@ public static class ValidationReport
                 }
 
                 perServer.AppendLine($"{sample.ServerIdx},{sample.Stratum},{simLane},{sim},{realCount}");
-                var key = (sample.Stratum.ToString(), simLane);
-                var current = stratumTotals.GetValueOrDefault(key);
-                stratumTotals[key] = (current.Sim + sim, current.Real + realCount);
+
+                string stratumName = sample.Stratum.ToString();
+                StratumLaneTotal? total = null;
+                foreach (StratumLaneTotal existing in stratumTotals)
+                {
+                    if (existing.Stratum == stratumName && existing.Lane == simLane)
+                    {
+                        total = existing;
+                        break;
+                    }
+                }
+
+                if (total == null)
+                {
+                    total = new StratumLaneTotal();
+                    total.Stratum = stratumName;
+                    total.Lane = simLane;
+                    stratumTotals.Add(total);
+                }
+
+                total.Sim = total.Sim + sim;
+                total.Real = total.Real + realCount;
             }
         }
 
@@ -168,12 +322,28 @@ public static class ValidationReport
         report.AppendLine();
         report.AppendLine("| Stratum | Lane | Simulated | Real |");
         report.AppendLine("| --- | --- | --- | --- |");
-        foreach (var ((stratum, lane), (sim, realCount)) in stratumTotals.OrderBy(pair => pair.Key.Stratum).ThenBy(pair => RunReport.LaneOrder(pair.Key.Lane)))
+
+        List<StratumLaneTotal> sortedTotals = new List<StratumLaneTotal>();
+        foreach (StratumLaneTotal total in stratumTotals)
         {
+            int position = sortedTotals.Count;
+            while (position > 0 && CompareTotals(sortedTotals[position - 1], total) > 0)
+            {
+                position--;
+            }
+
+            sortedTotals.Insert(position, total);
+        }
+
+        foreach (StratumLaneTotal total in sortedTotals)
+        {
+            string stratum = total.Stratum;
+            string lane = total.Lane;
+            long sim = total.Sim;
+            long realCount = total.Real;
             report.AppendLine($"| {stratum} | {lane} | {sim} | {realCount} |");
         }
 
-        // 4. Ranking agreement.
         report.AppendLine();
         report.AppendLine("## 4. Ranking agreement on the sample servers");
         report.AppendLine();
@@ -182,7 +352,7 @@ public static class ValidationReport
         report.AppendLine();
         report.AppendLine("## Limitations");
         report.AppendLine();
-        foreach (var note in notes)
+        foreach (string note in notes)
         {
             report.AppendLine($"- {note}");
         }
@@ -193,32 +363,114 @@ public static class ValidationReport
         return passed;
     }
 
+    private static void AppendHalf(StringBuilder report, SimulatorData data, SimulationResult result, string label, long from, long to)
+    {
+        IReadOnlyList<FreshnessSummary> realHalf = RunReport.EvaluateReal(data, from, to);
+        foreach (FreshnessSummary sim in RunReport.EvaluateSimulated(data, result, from, to))
+        {
+            FreshnessSummary actual = FindGroup(realHalf, sim.Group);
+            if (sim.PlayerWeightedAoiSeconds.HasValue && actual.PlayerWeightedAoiSeconds.HasValue)
+            {
+                double s = sim.PlayerWeightedAoiSeconds.Value;
+                double r = actual.PlayerWeightedAoiSeconds.Value;
+                report.AppendLine($"| {label} | {sim.Group} | {s:0.0} | {r:0.0} | {Diff(s, r)} |");
+            }
+        }
+    }
+
     private static void AppendRankingAgreement(StringBuilder report, string outDir, SimulatorData data, SimulationResult result)
     {
-        var regenerations = result.Rankings.OrderBy(r => r.AtMs).ToArray();
-        var rows = new StringBuilder("sampled_at,sim_ranking_at,servers,ranked_status_agree,exact_rank_agree,both_ranked,mean_abs_rank_diff\n");
-        long servers = 0, statusAgree = 0, exactAgree = 0, bothRanked = 0;
+        List<RankingRegeneration> regenerations = new List<RankingRegeneration>();
+        foreach (RankingRegeneration regeneration in result.Rankings)
+        {
+            int position = regenerations.Count;
+            while (position > 0 && regenerations[position - 1].AtMs > regeneration.AtMs)
+            {
+                position--;
+            }
+
+            regenerations.Insert(position, regeneration);
+        }
+
+        List<DateTimeOffset> sampleTimes = new List<DateTimeOffset>();
+        Dictionary<DateTimeOffset, List<SampleRankingRow>> samplesByTime = new Dictionary<DateTimeOffset, List<SampleRankingRow>>();
+        foreach (SampleRankingRow row in data.SampleRankings)
+        {
+            List<SampleRankingRow>? group;
+            if (!samplesByTime.TryGetValue(row.SampledAtUtc, out group))
+            {
+                group = new List<SampleRankingRow>();
+                samplesByTime.Add(row.SampledAtUtc, group);
+                sampleTimes.Add(row.SampledAtUtc);
+            }
+
+            group.Add(row);
+        }
+
+        sampleTimes.Sort();
+
+        StringBuilder rows = new StringBuilder("sampled_at,sim_ranking_at,servers,ranked_status_agree,exact_rank_agree,both_ranked,mean_abs_rank_diff\n");
+        long servers = 0;
+        long statusAgree = 0;
+        long exactAgree = 0;
+        long bothRanked = 0;
         double absDiff = 0;
 
-        foreach (var sample in data.SampleRankings.GroupBy(row => row.SampledAtUtc).OrderBy(group => group.Key))
+        foreach (DateTimeOffset sampledAt in sampleTimes)
         {
-            var atMs = sample.Key.ToUnixTimeMilliseconds();
+            long atMs = sampledAt.ToUnixTimeMilliseconds();
             if (atMs < result.FromMs || atMs >= result.ToMs)
             {
                 continue;
             }
 
-            var active = regenerations.LastOrDefault(r => r.AtMs <= atMs);
-            var production = sample.ToDictionary(row => row.ServerId, row => row.Rank);
-            long n = 0, status = 0, exact = 0, both = 0;
-            double diff = 0;
-            foreach (var server in data.SampleServers)
+            RankingRegeneration? active = null;
+            for (int i = regenerations.Count - 1; i >= 0; i--)
             {
-                var simRank = active?.SampleRanks[server.ServerIdx - 1];
-                var realRank = production.GetValueOrDefault(server.ServerId);
+                if (regenerations[i].AtMs <= atMs)
+                {
+                    active = regenerations[i];
+                    break;
+                }
+            }
+
+            Dictionary<Guid, int?> production = new Dictionary<Guid, int?>();
+            foreach (SampleRankingRow row in samplesByTime[sampledAt])
+            {
+                production.Add(row.ServerId, row.Rank);
+            }
+
+            long n = 0;
+            long status = 0;
+            long exact = 0;
+            long both = 0;
+            double diff = 0;
+            foreach (SampleServer server in data.SampleServers)
+            {
+                int? simRank = null;
+                if (active != null)
+                {
+                    simRank = active.SampleRanks[server.ServerIdx - 1];
+                }
+
+                int? realRank = null;
+                int? productionRank;
+                if (production.TryGetValue(server.ServerId, out productionRank))
+                {
+                    realRank = productionRank;
+                }
+
                 n++;
-                if (simRank.HasValue == realRank.HasValue) status++;
-                if (simRank == realRank) exact++;
+                if (simRank.HasValue == realRank.HasValue)
+                {
+                    status++;
+                }
+
+                if (simRank == realRank)
+                {
+                    exact++;
+                }
+
                 if (simRank.HasValue && realRank.HasValue)
                 {
                     both++;
@@ -226,8 +478,20 @@ public static class ValidationReport
                 }
             }
 
+            string activeAt = "";
+            if (active != null)
+            {
+                activeAt = RunReport.Iso(active.AtMs);
+            }
+
+            double meanDiff = 0;
+            if (both != 0)
+            {
+                meanDiff = diff / both;
+            }
+
             rows.AppendLine(RunReport.Invariant(
-                $"{RunReport.Iso(atMs)},{(active is null ? "" : RunReport.Iso(active.AtMs))},{n},{status},{exact},{both},{(both == 0 ? 0 : diff / both):0.##}"));
+                $"{RunReport.Iso(atMs)},{activeAt},{n},{status},{exact},{both},{meanDiff:0.##}"));
             servers += n;
             statusAgree += status;
             exactAgree += exact;
@@ -242,34 +506,106 @@ public static class ValidationReport
             return;
         }
 
+        double meanAbsDiff = 0;
+        if (bothRanked != 0)
+        {
+            meanAbsDiff = absDiff / bothRanked;
+        }
+
+        List<string> regenerationTexts = new List<string>();
+        foreach (RankingRegeneration r in result.Rankings)
+        {
+            regenerationTexts.Add($"{RunReport.Iso(r.AtMs)}{(r.Initial ? " (initial)" : "")} [{r.RankedCount}]");
+        }
+
         report.AppendLine($"Over every hourly production sample in the period ({servers} server-hours):");
         report.AppendLine();
         report.AppendLine($"- ranked / not ranked agrees: {(double)statusAgree / servers:P1}");
         report.AppendLine($"- exact rank (or both unranked) agrees: {(double)exactAgree / servers:P1}");
-        report.AppendLine($"- mean |rank difference| where both ranked: {(bothRanked == 0 ? 0 : absDiff / bothRanked):0.0} over {bothRanked} server-hours");
-        report.AppendLine($"- regenerations: {string.Join(", ", result.Rankings.Select(r => $"{RunReport.Iso(r.AtMs)}{(r.Initial ? " (initial)" : "")} [{r.RankedCount}]"))}");
+        report.AppendLine($"- mean |rank difference| where both ranked: {meanAbsDiff:0.0} over {bothRanked} server-hours");
+        report.AppendLine($"- regenerations: {string.Join(", ", regenerationTexts)}");
     }
 
     private static bool AppendComparison(StringBuilder report, string group, string metric, double? sim, double? real, double? tolerance, bool counts)
     {
         string pass = "-";
-        var ok = true;
-        if (tolerance is { } t && counts)
+        bool ok = true;
+        if (tolerance.HasValue && counts)
         {
-            ok = sim is { } s && real is { } r && Within(s, r, t);
+            ok = sim.HasValue && real.HasValue && Within(sim.Value, real.Value, tolerance.Value);
             pass = Yes(ok);
         }
 
+        string difference = "";
+        if (sim.HasValue && real.HasValue)
+        {
+            difference = Diff(sim.Value, real.Value);
+        }
+
         report.AppendLine(RunReport.Invariant(
-            $"| {group} | {metric} | {sim:0.###} | {real:0.###} | {(sim is { } a && real is { } b ? Diff(a, b) : "")} | {pass} |"));
+            $"| {group} | {metric} | {sim:0.###} | {real:0.###} | {difference} | {pass} |"));
         return ok;
     }
 
-    private static bool Within(double sim, double real, double tolerance) =>
-        real == 0 ? sim == 0 : Math.Abs(sim - real) / Math.Abs(real) <= tolerance;
+    private static int CompareTotals(StratumLaneTotal a, StratumLaneTotal b)
+    {
+        int byStratum = string.Compare(a.Stratum, b.Stratum);
+        if (byStratum != 0)
+        {
+            return byStratum;
+        }
 
-    private static string Diff(double sim, double real) =>
-        real == 0 ? "n/a" : RunReport.Invariant($"{(sim - real) / real:+0.0%;-0.0%;0.0%}");
+        return RunReport.LaneOrder(a.Lane).CompareTo(RunReport.LaneOrder(b.Lane));
+    }
 
-    private static string Yes(bool ok) => ok ? "PASS" : "FAIL";
+    private static FreshnessSummary FindGroup(IReadOnlyList<FreshnessSummary> rows, string group)
+    {
+        FreshnessSummary? found = null;
+        int matches = 0;
+        foreach (FreshnessSummary row in rows)
+        {
+            if (row.Group == group)
+            {
+                found = row;
+                matches++;
+            }
+        }
+
+        if (matches != 1 || found == null)
+        {
+            throw new InvalidOperationException("Expected exactly one row for group " + group + ".");
+        }
+
+        return found;
+    }
+
+    private static bool Within(double sim, double real, double tolerance)
+    {
+        if (real == 0)
+        {
+            return sim == 0;
+        }
+
+        return Math.Abs(sim - real) / Math.Abs(real) <= tolerance;
+    }
+
+    private static string Diff(double sim, double real)
+    {
+        if (real == 0)
+        {
+            return "n/a";
+        }
+
+        return RunReport.Invariant($"{(sim - real) / real:+0.0%;-0.0%;0.0%}");
+    }
+
+    private static string Yes(bool ok)
+    {
+        if (ok)
+        {
+            return "PASS";
+        }
+
+        return "FAIL";
+    }
 }

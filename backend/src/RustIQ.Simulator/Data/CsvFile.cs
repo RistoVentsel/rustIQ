@@ -1,59 +1,67 @@
 using System.Globalization;
 using System.IO.Compression;
+using System.Text;
 
 namespace RustIQ.Simulator.Data;
 
-/// <summary>
-/// Reads the gzip CSV files written by <c>export-simulator-data.sh</c> (PostgreSQL <c>COPY ... CSV HEADER</c>).
-/// </summary>
 public static class CsvFile
 {
-    /// <summary>
-    /// Calls <paramref name="onRow"/> for every data row. The header is checked against
-    /// <paramref name="expectedHeader"/> so a changed export fails loudly instead of shifting columns.
-    /// </summary>
-    /// <returns>The number of data rows.</returns>
     public static long Read(string path, string expectedHeader, Action<CsvRow> onRow)
     {
-        using var file = File.OpenRead(path);
-        Stream stream = path.EndsWith(".gz", StringComparison.OrdinalIgnoreCase)
-            ? new GZipStream(file, CompressionMode.Decompress)
-            : file;
-        using var reader = new StreamReader(stream, bufferSize: 1 << 16);
+        using FileStream file = File.OpenRead(path);
+        Stream stream;
+        if (path.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+        {
+            stream = new GZipStream(file, CompressionMode.Decompress);
+        }
+        else
+        {
+            stream = file;
+        }
+
+        using StreamReader reader = new StreamReader(stream, bufferSize: 1 << 16);
         return Read(reader, expectedHeader, onRow, path);
     }
 
     public static long Read(TextReader reader, string expectedHeader, Action<CsvRow> onRow, string sourceName = "csv")
     {
-        var header = reader.ReadLine()?.TrimStart('﻿');
+        string? header = reader.ReadLine();
+        if (header != null)
+        {
+            header = header.TrimStart('﻿');
+        }
+
         if (!string.Equals(header, expectedHeader, StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 $"{sourceName}: header is '{header}', expected '{expectedHeader}'.");
         }
 
-        var fieldCount = expectedHeader.Split(',').Length;
-        var row = new CsvRow(fieldCount);
+        int fieldCount = expectedHeader.Split(',').Length;
+        CsvRow row = new CsvRow(fieldCount);
         long rows = 0;
-        string? line;
-        while ((line = reader.ReadLine()) is not null)
+        string? line = reader.ReadLine();
+        while (line != null)
         {
-            if (line.Length == 0)
+            if (line.Length > 0)
             {
-                continue;
+                while (HasOpenQuote(line))
+                {
+                    string? next = reader.ReadLine();
+                    if (next == null)
+                    {
+                        throw new InvalidDataException($"{sourceName}: unterminated quote on row {rows + 1}.");
+                    }
+
+                    line = line + "\n" + next;
+                }
+
+                row.Parse(line, rows + 1, sourceName);
+                onRow(row);
+                rows++;
             }
 
-            // A quoted field can contain a line break; keep reading until the quotes balance.
-            while (HasOpenQuote(line))
-            {
-                var next = reader.ReadLine()
-                    ?? throw new InvalidDataException($"{sourceName}: unterminated quote on row {rows + 1}.");
-                line = line + "\n" + next;
-            }
-
-            row.Parse(line, rows + 1, sourceName);
-            onRow(row);
-            rows++;
+            line = reader.ReadLine();
         }
 
         return rows;
@@ -66,8 +74,8 @@ public static class CsvFile
             return false;
         }
 
-        var open = false;
-        foreach (var c in line)
+        bool open = false;
+        foreach (char c in line)
         {
             if (c == '"')
             {
@@ -79,9 +87,6 @@ public static class CsvFile
     }
 }
 
-/// <summary>
-/// One parsed CSV row. The instance is reused between rows, so callers copy what they keep.
-/// </summary>
 public sealed class CsvRow
 {
     private readonly int[] _starts;
@@ -96,13 +101,16 @@ public sealed class CsvRow
         _unquoted = new string?[fieldCount];
     }
 
-    public int FieldCount => _starts.Length;
+    public int FieldCount
+    {
+        get { return _starts.Length; }
+    }
 
     internal void Parse(string line, long rowNumber, string sourceName)
     {
         _line = line;
-        var field = 0;
-        var position = 0;
+        int field = 0;
+        int position = 0;
         while (true)
         {
             if (field >= _starts.Length)
@@ -113,7 +121,7 @@ public sealed class CsvRow
             _unquoted[field] = null;
             if (position < line.Length && line[position] == '"')
             {
-                var builder = new System.Text.StringBuilder();
+                StringBuilder builder = new StringBuilder();
                 position++;
                 while (true)
                 {
@@ -145,7 +153,7 @@ public sealed class CsvRow
             }
             else
             {
-                var end = line.IndexOf(',', position);
+                int end = line.IndexOf(',', position);
                 if (end < 0)
                 {
                     end = line.Length;
@@ -170,7 +178,6 @@ public sealed class CsvRow
             position++;
             if (position == line.Length)
             {
-                // Trailing comma: one more empty field.
                 if (field >= _starts.Length)
                 {
                     throw new InvalidDataException($"{sourceName}: row {rowNumber} has more than {_starts.Length} fields.");
@@ -190,66 +197,136 @@ public sealed class CsvRow
         }
     }
 
-    public ReadOnlySpan<char> Span(int index) =>
-        _unquoted[index] is { } text ? text.AsSpan() : _line.AsSpan(_starts[index], _lengths[index]);
+    public ReadOnlySpan<char> Span(int index)
+    {
+        string? text = _unquoted[index];
+        if (text != null)
+        {
+            return text.AsSpan();
+        }
 
-    public bool IsEmpty(int index) => Span(index).IsEmpty;
+        return _line.AsSpan(_starts[index], _lengths[index]);
+    }
 
-    public string String(int index) => Span(index).ToString();
+    public bool IsEmpty(int index)
+    {
+        return Span(index).IsEmpty;
+    }
 
-    public string? NullableString(int index) => IsEmpty(index) ? null : String(index);
+    public string String(int index)
+    {
+        return Span(index).ToString();
+    }
 
-    public int Int(int index) => int.Parse(Span(index), NumberStyles.Integer, CultureInfo.InvariantCulture);
+    public string? NullableString(int index)
+    {
+        if (IsEmpty(index))
+        {
+            return null;
+        }
 
-    public int? NullableInt(int index) => IsEmpty(index) ? null : Int(index);
+        return String(index);
+    }
 
-    public long Long(int index) => long.Parse(Span(index), NumberStyles.Integer, CultureInfo.InvariantCulture);
+    public int Int(int index)
+    {
+        return int.Parse(Span(index), NumberStyles.Integer, CultureInfo.InvariantCulture);
+    }
 
-    public Guid Guid(int index) => System.Guid.Parse(Span(index));
+    public int? NullableInt(int index)
+    {
+        if (IsEmpty(index))
+        {
+            return null;
+        }
 
-    public Guid? NullableGuid(int index) => IsEmpty(index) ? null : Guid(index);
+        return Int(index);
+    }
 
-    /// <summary>PostgreSQL writes booleans cast to int as 0/1 and unconverted ones as t/f.</summary>
+    public long Long(int index)
+    {
+        return long.Parse(Span(index), NumberStyles.Integer, CultureInfo.InvariantCulture);
+    }
+
+    public Guid Guid(int index)
+    {
+        return System.Guid.Parse(Span(index));
+    }
+
+    public Guid? NullableGuid(int index)
+    {
+        if (IsEmpty(index))
+        {
+            return null;
+        }
+
+        return Guid(index);
+    }
+
     public bool? NullableBool(int index)
     {
-        var span = Span(index);
+        ReadOnlySpan<char> span = Span(index);
         if (span.IsEmpty)
         {
             return null;
         }
 
-        return span[0] switch
+        char first = span[0];
+        if (first == '1' || first == 't' || first == 'T')
         {
-            '1' or 't' or 'T' => true,
-            '0' or 'f' or 'F' => false,
-            _ => throw new FormatException($"'{span}' is not a boolean.")
-        };
+            return true;
+        }
+
+        if (first == '0' || first == 'f' || first == 'F')
+        {
+            return false;
+        }
+
+        throw new FormatException($"'{span}' is not a boolean.");
     }
 
-    public DateTimeOffset Timestamp(int index) => PostgresTimestamp.Parse(Span(index));
+    public DateTimeOffset Timestamp(int index)
+    {
+        return PostgresTimestamp.Parse(Span(index));
+    }
 
-    public DateTimeOffset? NullableTimestamp(int index) => IsEmpty(index) ? null : Timestamp(index);
+    public DateTimeOffset? NullableTimestamp(int index)
+    {
+        if (IsEmpty(index))
+        {
+            return null;
+        }
+
+        return Timestamp(index);
+    }
 }
 
 public static class PostgresTimestamp
 {
-    /// <summary>
-    /// Parses PostgreSQL <c>timestamptz</c> text output, e.g. <c>2026-11-09 13:15:46.044697+00</c>.
-    /// </summary>
     public static DateTimeOffset Parse(ReadOnlySpan<char> text)
     {
-        var value = text.ToString();
-        // PostgreSQL writes the offset as +00 (hours only); .NET wants +00:00.
-        if (value.Length >= 3 && (value[^3] == '+' || value[^3] == '-') && char.IsDigit(value[^1]))
+        string value = text.ToString();
+        if (value.Length >= 3)
         {
-            value += ":00";
+            char sign = value[value.Length - 3];
+            char last = value[value.Length - 1];
+            if ((sign == '+' || sign == '-') && char.IsDigit(last))
+            {
+                value += ":00";
+            }
         }
 
-        return DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal)
-            .ToUniversalTime();
+        DateTimeOffset parsed = DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
+        return parsed.ToUniversalTime();
     }
 
-    public static long ToUnixMs(DateTimeOffset value) => value.ToUnixTimeMilliseconds();
+    public static long ToUnixMs(DateTimeOffset value)
+    {
+        return value.ToUnixTimeMilliseconds();
+    }
 
-    public static DateTimeOffset FromUnixMs(long value) => DateTimeOffset.FromUnixTimeMilliseconds(value);
+    public static DateTimeOffset FromUnixMs(long value)
+    {
+        return DateTimeOffset.FromUnixTimeMilliseconds(value);
+    }
 }

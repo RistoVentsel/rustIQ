@@ -12,6 +12,8 @@
   <ItemGroup>
     <ProjectReference Include="..\RustIQ.Domain\RustIQ.Domain.csproj" />
     <ProjectReference Include="..\RustIQ.Application\RustIQ.Application.csproj" />
+    <!-- Only for the A2S keyword and description parsers the wipe evaluation reuses; no database access. -->
+    <ProjectReference Include="..\RustIQ.Infrastructure\RustIQ.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

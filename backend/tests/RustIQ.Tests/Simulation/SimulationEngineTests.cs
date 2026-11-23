@@ -9,7 +9,7 @@ namespace RustIQ.Tests.Simulation;
 
 public sealed class SimulationEngineTests
 {
-    private const long Start = 1_800_000_000_000; // a whole minute
+    private const long Start = 1_800_000_000_000;
     private const long Minute = 60_000;
 
     private static readonly Guid SampleId = Guid.Parse("00000000-0000-0000-0000-000000000001");
@@ -25,10 +25,10 @@ public sealed class SimulationEngineTests
         var answered = oracle.Answer(0, Start, state);
         Assert.True(answered.Answered);
         Assert.Equal(40, answered.Players);
-        Assert.Equal(100, answered.MaxPlayers); // from the nearest snapshot
+        Assert.Equal(100, answered.MaxPlayers);
 
-        Assert.False(oracle.Answer(0, Start + 10_000, state).Answered); // latest probe failed
-        Assert.False(oracle.Answer(0, Start + 15_000 + 20_000 + 1, state).Answered); // nothing in the window
+        Assert.False(oracle.Answer(0, Start + 10_000, state).Answered);
+        Assert.False(oracle.Answer(0, Start + 15_000 + 20_000 + 1, state).Answered);
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public sealed class SimulationEngineTests
         Assert.True(oracle.Answer(1, Start + 4 * Minute, state).Answered);
         Assert.Equal(10, oracle.Answer(1, Start - 60 * Minute, state).Players);
         Assert.False(oracle.Answer(1, Start + 6 * Minute, state).Answered);
-        Assert.False(oracle.Answer(99, Start, state).Answered); // a phantom
+        Assert.False(oracle.Answer(99, Start, state).Answered);
     }
 
     [Fact]
@@ -55,16 +55,48 @@ public sealed class SimulationEngineTests
 
         var result = engine.Run();
 
-        // Two known servers, so three phantoms.
         Assert.Equal(5, engine.Servers.Count);
         Assert.Equal(3, engine.Servers.Count(server => server.Index >= 2 && server.Exists));
         Assert.Equal((2.0, 3.0), result.AveragePopulation(Start, Start + 10 * Minute));
-        // One poll per tick, 40 ticks, oldest first. Phantoms join at the first tick, so after its first
-        // poll the sample server ties with them and wins on id once more; then it comes round every 5 ticks.
         Assert.Equal(40, result.Lanes[UniformPollingStrategy.Lane].Polls.Sum());
         Assert.Equal(
             new long[] { 0, 2, 7, 12, 17, 22, 27, 32, 37 },
             result.Shown(1).TimesMs.Select(t => (t - Start) / 15_000));
+    }
+
+    [Fact]
+    public void Engine_LetsPhantomsAnswerSoTheOnlineCountFollowsProduction()
+    {
+        var probes = Probes(Enumerable.Range(0, 8).Select(i => (Start + i * 15_000L, true, (short)20)).ToArray());
+        var data = Data(probes: probes, population: [Population(Start, 6, 3)]);
+        var engine = new SimulationEngine(data, new UniformPollingStrategy(24), Options(Start, Start + 2 * Minute));
+
+        engine.Run();
+
+        var phantoms = engine.Servers.Where(server => server.Index >= 2 && server.Exists).ToArray();
+        Assert.Equal(4, phantoms.Length);
+        Assert.Equal(2, phantoms.Count(server => server.Status == ServerStatus.Online));
+        Assert.Equal(2, phantoms.Count(server => server.Status == ServerStatus.Offline));
+        Assert.All(phantoms.Where(server => server.Status == ServerStatus.Online), server => Assert.Equal(0, server.Players));
+    }
+
+    [Fact]
+    public void Engine_TurnsAnsweringPhantomsSilentWhenProductionsOnlineCountFalls()
+    {
+        var probes = Probes(Enumerable.Range(0, 60).Select(i => (Start + i * 15_000L, true, (short)20)).ToArray());
+        var data = Data(probes: probes, population:
+        [
+            Population(Start, 6, 3),
+            Population(Start + 2 * Minute, 6, 1)
+        ]);
+        var engine = new SimulationEngine(data, new UniformPollingStrategy(24), Options(Start, Start + 14 * Minute));
+
+        engine.Run();
+
+        var phantoms = engine.Servers.Where(server => server.Index >= 2 && server.Exists).ToArray();
+        Assert.Equal(4, phantoms.Length);
+        Assert.All(phantoms, server => Assert.Equal(ServerStatus.Offline, server.Status));
+        Assert.Equal(2, phantoms.Count(server => server.LastSeenAtMs is not null));
     }
 
     [Fact]
@@ -81,7 +113,6 @@ public sealed class SimulationEngineTests
 
         Assert.Equal(1, result.Lanes[SimulationEngine.WatchedLane].Polls.Sum());
         Assert.True(result.Lanes[SimulationEngine.WatchedLane].Exogenous);
-        // Only the Discovery poll counts as shown.
         Assert.Equal([Start + 2 * Minute], result.Shown(1).TimesMs);
         Assert.Equal(Start + 2 * Minute, engine.Servers[0].LastCheckedAtMs);
     }
@@ -100,17 +131,16 @@ public sealed class SimulationEngineTests
         var sample = engine.Servers[0];
         Assert.Equal(Start - 10 * Minute, sample.LastCheckedAtMs);
         Assert.Equal(Start - 30 * Minute, sample.LastSeenAtMs);
-        Assert.Equal(ServerStatus.Online, sample.Status); // the snapshot's online flag
+        Assert.Equal(ServerStatus.Online, sample.Status);
 
         var other = engine.Servers[1];
-        Assert.Null(other.LastCheckedAtMs); // no snapshot before the period: never polled
+        Assert.Null(other.LastCheckedAtMs);
         Assert.Equal(ServerStatus.Unknown, other.Status);
     }
 
     [Fact]
     public void Engine_LateTicksFollowTheWorkerTiming()
     {
-        // 64 never-answering servers: a lane of them takes 64 * 6 s / 32 = 12 s; one of 128 takes 24 s.
         var data = Data(totalServers: 130);
         var engine = new SimulationEngine(data, new UniformPollingStrategy(128 * 4), new SimulationOptions
         {
@@ -141,7 +171,7 @@ public sealed class SimulationEngineTests
         {
             histories[0]!.Add(Start - k * Minute, 50, 100, true);
             histories[1]!.Add(Start - k * Minute, 80, 100, true);
-            histories[2]!.Add(Start - 2 * 86_400_000L - k * Minute, 200, 100, true); // not seen in 24 h
+            histories[2]!.Add(Start - 2 * 86_400_000L - k * Minute, 200, 100, true);
         }
 
         var ranked = RankingReplay.Compute(Start, servers, histories, new ServerRankingOptions());
@@ -178,7 +208,7 @@ public sealed class SimulationEngineTests
         var history = new ServerHistory();
         history.Add(10, 5, 50, true);
         history.Add(30, 7, 60, false);
-        history.Add(20, 9, 55, true); // out of order
+        history.Add(20, 9, 55, true);
 
         Assert.Equal((2, 8.0, 9), history.Window(15, 30));
         Assert.Equal(20, history.LastAnsweredAtOrBefore(30));
@@ -196,7 +226,8 @@ public sealed class SimulationEngineTests
         ProbeSeries? probes = null,
         SnapshotSeries? sampleSnapshots = null,
         SnapshotSeries? otherSnapshots = null,
-        int totalServers = 0)
+        int totalServers = 0,
+        PopulationSample[]? population = null)
     {
         var index = new ServerIndex();
         index.GetOrAdd(SampleId);
@@ -220,14 +251,17 @@ public sealed class SimulationEngineTests
             ],
             Rankings = [],
             SampleRankings = [],
-            PopulationSamples = totalServers == 0
+            PopulationSamples = population ?? (totalServers == 0
                 ? []
-                : [new PopulationSample(1, DateTimeOffset.FromUnixTimeMilliseconds(Start), totalServers, 0, 0)],
+                : [new PopulationSample(1, DateTimeOffset.FromUnixTimeMilliseconds(Start), totalServers, 0, 0)]),
             TableWriteSamples = [],
             WipeObservations = [],
             PredictionSnapshots = []
         };
     }
+
+    private static PopulationSample Population(long atMs, int total, int online) =>
+        new(atMs, DateTimeOffset.FromUnixTimeMilliseconds(atMs), total, online, 0);
 
     private static ServerRecord Record(Guid id, DateTimeOffset created) =>
         new(id, RustServerType.Community, ServerStatus.Online, 0, 100, 0, created, null, null, null, null, null, true);
@@ -240,7 +274,7 @@ public sealed class SimulationEngineTests
         new(rows.Select(r => r.Time).ToArray(),
             rows.Select(r => r.Players).ToArray(),
             rows.Select(_ => (short)100).ToArray(),
-            rows.Select(_ => true).ToArray(), // online: a failed poll inside the grace still records online
+            rows.Select(_ => true).ToArray(),
             rows.Select(r => r.Ok ? (sbyte)1 : (sbyte)0).ToArray(),
             rows.Select(r => r.Source).ToArray());
 }

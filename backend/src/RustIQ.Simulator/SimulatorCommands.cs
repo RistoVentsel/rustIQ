@@ -6,73 +6,150 @@ namespace RustIQ.Simulator;
 
 public static class SimulatorCommands
 {
-    public static SimulatorData LoadData(CommandLine commandLine, Action<string> log) =>
-        SimulatorDataLoader.Load(commandLine.Values("data"), new SimulatorDataLoadOptions
+    public static SimulatorData LoadData(CommandLine commandLine, Action<string> log)
+    {
+        SimulatorDataLoadOptions options = new SimulatorDataLoadOptions
         {
             VerifyChecksums = !commandLine.Has("no-checksums"),
             Log = log
-        });
+        };
+        return SimulatorDataLoader.Load(commandLine.Values("data"), options);
+    }
 
-    /// <summary>Step 1: loads the exports and prints the figures the plan's "known facts" are checked against.</summary>
     public static void CheckData(CommandLine commandLine, Action<string> log)
     {
-        var data = LoadData(commandLine, log);
-        log($"servers known: {data.ServerIndex.Count}, with a servers row: {data.Servers.Count(s => s is not null)}, " +
-            $"still in the latest export: {data.Servers.Count(s => s?.InLatestExport == true)}");
+        SimulatorData data = LoadData(commandLine, log);
 
-        foreach (var manifest in data.Manifests)
+        int withRow = 0;
+        int inLatest = 0;
+        foreach (ServerRecord? server in data.Servers)
         {
-            var from = PostgresTimestamp.Parse(manifest.From).ToUnixTimeMilliseconds();
-            var to = PostgresTimestamp.Parse(manifest.To).ToUnixTimeMilliseconds();
-            var minutes = (to - from) / 60_000.0;
+            if (server != null)
+            {
+                withRow++;
+                if (server.InLatestExport)
+                {
+                    inLatest++;
+                }
+            }
+        }
+
+        log($"servers known: {data.ServerIndex.Count}, with a servers row: {withRow}, " +
+            $"still in the latest export: {inLatest}");
+
+        foreach (ExportManifest manifest in data.Manifests)
+        {
+            long from = PostgresTimestamp.Parse(manifest.From).ToUnixTimeMilliseconds();
+            long to = PostgresTimestamp.Parse(manifest.To).ToUnixTimeMilliseconds();
+            double minutes = (to - from) / 60_000.0;
             log($"export {Path.GetFileName(manifest.Folder)}: {manifest.From} .. {manifest.To} ({minutes:0} min)");
 
-            var probes = data.Probes.Sum(series => (long)series.TimesMs.Count(t => t >= from && t < to));
-            log($"  probes per minute: {probes / minutes:0.0}");
-
-            var perSource = new Dictionary<ServerPollSource, long>();
-            foreach (var series in data.Snapshots)
+            long probes = 0;
+            foreach (ProbeSeries series in data.Probes)
             {
-                for (var i = 0; i < series.Count; i++)
+                foreach (long t in series.TimesMs)
                 {
-                    if (series.TimesMs[i] >= from && series.TimesMs[i] < to)
+                    if (t >= from && t < to)
                     {
-                        perSource[series.Sources[i]] = perSource.GetValueOrDefault(series.Sources[i]) + 1;
+                        probes++;
                     }
                 }
             }
 
-            foreach (var (source, count) in perSource.OrderByDescending(pair => pair.Value))
+            log($"  probes per minute: {probes / minutes:0.0}");
+
+            Dictionary<ServerPollSource, long> perSource = new Dictionary<ServerPollSource, long>();
+            foreach (SnapshotSeries series in data.Snapshots)
             {
-                log($"  snapshots per minute, {source}: {count / minutes:0.0}");
+                for (int i = 0; i < series.Count; i++)
+                {
+                    if (series.TimesMs[i] >= from && series.TimesMs[i] < to)
+                    {
+                        ServerPollSource source = series.Sources[i];
+                        long countSoFar;
+                        perSource.TryGetValue(source, out countSoFar);
+                        perSource[source] = countSoFar + 1;
+                    }
+                }
             }
 
-            log($"  snapshots per minute, all: {perSource.Values.Sum() / minutes:0.0}");
+            List<KeyValuePair<ServerPollSource, long>> sorted = new List<KeyValuePair<ServerPollSource, long>>();
+            foreach (KeyValuePair<ServerPollSource, long> pair in perSource)
+            {
+                sorted.Add(pair);
+            }
+
+            for (int i = 1; i < sorted.Count; i++)
+            {
+                KeyValuePair<ServerPollSource, long> current = sorted[i];
+                int j = i - 1;
+                while (j >= 0 && sorted[j].Value < current.Value)
+                {
+                    sorted[j + 1] = sorted[j];
+                    j--;
+                }
+
+                sorted[j + 1] = current;
+            }
+
+            foreach (KeyValuePair<ServerPollSource, long> pair in sorted)
+            {
+                log($"  snapshots per minute, {pair.Key}: {pair.Value / minutes:0.0}");
+            }
+
+            long allSnapshots = 0;
+            foreach (long count in perSource.Values)
+            {
+                allSnapshots += count;
+            }
+
+            log($"  snapshots per minute, all: {allSnapshots / minutes:0.0}");
         }
 
-        log($"sample ranking samples: {data.SampleRankings.Select(row => row.SampledAtUtc).Distinct().Count()}, " +
-            $"ranking generated at: {data.Rankings.Select(row => row.GeneratedAtUtc).DefaultIfEmpty().Max():u}");
+        HashSet<DateTimeOffset> sampleTimes = new HashSet<DateTimeOffset>();
+        foreach (SampleRankingRow row in data.SampleRankings)
+        {
+            sampleTimes.Add(row.SampledAtUtc);
+        }
+
+        DateTimeOffset latestRanking = default(DateTimeOffset);
+        bool foundRanking = false;
+        foreach (ServerRankingRow row in data.Rankings)
+        {
+            if (!foundRanking || row.GeneratedAtUtc > latestRanking)
+            {
+                latestRanking = row.GeneratedAtUtc;
+                foundRanking = true;
+            }
+        }
+
+        log($"sample ranking samples: {sampleTimes.Count}, " +
+            $"ranking generated at: {latestRanking:u}");
     }
 
-    /// <summary>Step 2: the evaluator on the real production snapshots, to compare with Table 5.</summary>
     public static void EvaluateReal(CommandLine commandLine, Action<string> log)
     {
-        var from = commandLine.Time("from", DateTimeOffset.Parse("2026-11-05T00:00:00Z"));
-        var to = commandLine.Time("to", DateTimeOffset.Parse("2026-11-12T00:00:00Z"));
-        var data = LoadData(commandLine, log);
+        DateTimeOffset from = commandLine.Time("from", DateTimeOffset.Parse("2026-11-05T00:00:00Z"));
+        DateTimeOffset to = commandLine.Time("to", DateTimeOffset.Parse("2026-11-12T00:00:00Z"));
+        SimulatorData data = LoadData(commandLine, log);
 
-        var inputs = data.SampleServers
-            .Select(server => new EvaluationInput(
+        EvaluationInput[] inputs = new EvaluationInput[data.SampleServers.Count];
+        for (int i = 0; i < data.SampleServers.Count; i++)
+        {
+            SampleServer server = data.SampleServers[i];
+            inputs[i] = new EvaluationInput(
                 server.Stratum,
                 data.Probes[server.ServerIdx - 1],
-                ShownSeries.FromSnapshots(data.Snapshots[server.ServerIndex])))
-            .ToArray();
-        var summary = FreshnessEvaluator.Evaluate(inputs, from.ToUnixTimeMilliseconds(), to.ToUnixTimeMilliseconds());
+                ShownSeries.FromSnapshots(data.Snapshots[server.ServerIndex]));
+        }
+
+        IReadOnlyList<FreshnessSummary> summary = FreshnessEvaluator.Evaluate(inputs, from.ToUnixTimeMilliseconds(), to.ToUnixTimeMilliseconds());
 
         log($"real snapshots, {from:u} .. {to:u}");
         Console.WriteLine(SummaryCsv.FormatTable(summary));
 
-        if (commandLine.Optional("out") is { } outDir)
+        string? outDir = commandLine.Optional("out");
+        if (outDir != null)
         {
             Directory.CreateDirectory(outDir);
             File.WriteAllText(Path.Combine(outDir, "summary.csv"), SummaryCsv.Format(summary));

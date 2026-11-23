@@ -2,13 +2,12 @@ using RustIQ.Simulator.Evaluation;
 
 namespace RustIQ.Simulator.Engine;
 
-/// <summary>Everything a run logs: polls per minute and lane, the sample servers' polls, rankings.</summary>
 public sealed class SimulationResult
 {
-    private readonly Dictionary<string, LaneLog> _lanes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LaneLog> _lanes = new Dictionary<string, LaneLog>(StringComparer.Ordinal);
     private readonly List<long>[] _shownTimes;
     private readonly List<short>[] _shownPlayers;
-    private readonly List<RankingRegeneration> _rankings = [];
+    private readonly List<RankingRegeneration> _rankings = new List<RankingRegeneration>();
     private readonly int _minutes;
     private readonly long[] _knownPerMinute;
     private readonly long[] _phantomsPerMinute;
@@ -21,8 +20,15 @@ public sealed class SimulationResult
         ToMs = toMs;
         SampleCount = sampleCount;
         _minutes = (int)Math.Ceiling((toMs - fromMs) / 60_000.0);
-        _shownTimes = Enumerable.Range(0, sampleCount).Select(_ => new List<long>()).ToArray();
-        _shownPlayers = Enumerable.Range(0, sampleCount).Select(_ => new List<short>()).ToArray();
+
+        _shownTimes = new List<long>[sampleCount];
+        _shownPlayers = new List<short>[sampleCount];
+        for (int i = 0; i < sampleCount; i++)
+        {
+            _shownTimes[i] = new List<long>();
+            _shownPlayers[i] = new List<short>();
+        }
+
         _knownPerMinute = new long[_minutes];
         _phantomsPerMinute = new long[_minutes];
         _ticksPerMinute = new int[_minutes];
@@ -32,19 +38,36 @@ public sealed class SimulationResult
     public long FromMs { get; }
     public long ToMs { get; }
     public int SampleCount { get; }
-    public int Minutes => _minutes;
-    public IReadOnlyDictionary<string, LaneLog> Lanes => _lanes;
-    public IReadOnlyList<RankingRegeneration> Rankings => _rankings;
+
+    public int Minutes
+    {
+        get { return _minutes; }
+    }
+
+    public IReadOnlyDictionary<string, LaneLog> Lanes
+    {
+        get { return _lanes; }
+    }
+
+    public IReadOnlyList<RankingRegeneration> Rankings
+    {
+        get { return _rankings; }
+    }
+
+    public long Ticks { get; private set; }
+
+    public long LateTicks { get; private set; }
 
     public void RecordPoll(long atMs, string lane, bool answered, bool exogenous, int sampleIdx)
     {
-        if (!_lanes.TryGetValue(lane, out var log))
+        LaneLog? log;
+        if (!_lanes.TryGetValue(lane, out log))
         {
             log = new LaneLog(lane, exogenous, _minutes, SampleCount);
             _lanes.Add(lane, log);
         }
 
-        var minute = (int)((atMs - FromMs) / 60_000);
+        int minute = (int)((atMs - FromMs) / 60_000);
         if (minute < 0 || minute >= _minutes)
         {
             return;
@@ -68,10 +91,11 @@ public sealed class SimulationResult
         _shownPlayers[sampleIdx - 1].Add((short)players);
     }
 
-    public void RecordRanking(long atMs, bool initial, int rankedCount, int?[] sampleRanks) =>
+    public void RecordRanking(long atMs, bool initial, int rankedCount, int?[] sampleRanks)
+    {
         _rankings.Add(new RankingRegeneration(atMs, initial, rankedCount, sampleRanks));
+    }
 
-    /// <summary>Gap to the next tick, for the tick-gap statistics.</summary>
     public void RecordTick(long gapMs)
     {
         Ticks++;
@@ -81,13 +105,9 @@ public sealed class SimulationResult
         }
     }
 
-    public long Ticks { get; private set; }
-
-    public long LateTicks { get; private set; }
-
     public void RecordPopulation(long atMs, int known, int phantoms)
     {
-        var minute = (int)((atMs - FromMs) / 60_000);
+        int minute = (int)((atMs - FromMs) / 60_000);
         if (minute >= 0 && minute < _minutes)
         {
             _knownPerMinute[minute] += known;
@@ -96,38 +116,45 @@ public sealed class SimulationResult
         }
     }
 
-    /// <summary>The sample server's shown polls, sorted by time (replayed polls can arrive out of order).</summary>
     public ShownSeries Shown(int sampleIdx)
     {
-        var times = _shownTimes[sampleIdx - 1].ToArray();
-        var players = _shownPlayers[sampleIdx - 1].ToArray();
+        long[] times = _shownTimes[sampleIdx - 1].ToArray();
+        short[] players = _shownPlayers[sampleIdx - 1].ToArray();
         Array.Sort(times, players);
         return new ShownSeries(times, players);
     }
 
-    /// <summary>Average known and phantom servers over the minutes in [fromMs, toMs).</summary>
     public (double Known, double Phantoms) AveragePopulation(long fromMs, long toMs)
     {
-        double known = 0, phantoms = 0;
+        double known = 0;
+        double phantoms = 0;
         long ticks = 0;
-        foreach (var minute in MinuteRange(fromMs, toMs))
+        foreach (int minute in MinuteRange(fromMs, toMs))
         {
             known += _knownPerMinute[minute];
             phantoms += _phantomsPerMinute[minute];
             ticks += _ticksPerMinute[minute];
         }
 
-        return ticks == 0 ? (0, 0) : (known / ticks, phantoms / ticks);
+        if (ticks == 0)
+        {
+            return (0, 0);
+        }
+
+        return (known / ticks, phantoms / ticks);
     }
 
     public IEnumerable<int> MinuteRange(long fromMs, long toMs)
     {
-        var first = (int)Math.Max(0, (fromMs - FromMs) / 60_000);
-        var last = (int)Math.Min(_minutes, (toMs - FromMs + 59_999) / 60_000);
-        for (var minute = first; minute < last; minute++)
+        int first = (int)Math.Max(0, (fromMs - FromMs) / 60_000);
+        int last = (int)Math.Min(_minutes, (toMs - FromMs + 59_999) / 60_000);
+        List<int> minutes = new List<int>();
+        for (int minute = first; minute < last; minute++)
         {
-            yield return minute;
+            minutes.Add(minute);
         }
+
+        return minutes;
     }
 }
 
@@ -139,19 +166,35 @@ public sealed class LaneLog
         Exogenous = exogenous;
         Polls = new int[minutes];
         Unanswered = new int[minutes];
-        SamplePolls = Enumerable.Range(0, sampleCount).Select(_ => new List<long>()).ToArray();
+        SamplePolls = new List<long>[sampleCount];
+        for (int i = 0; i < sampleCount; i++)
+        {
+            SamplePolls[i] = new List<long>();
+        }
     }
 
     public string Lane { get; }
 
-    /// <summary>Replayed Watched and Discovery polls: outside every strategy's budget.</summary>
     public bool Exogenous { get; }
 
     public int[] Polls { get; }
     public int[] Unanswered { get; }
 
-    /// <summary>Poll times per sample server (index server_idx - 1).</summary>
     public List<long>[] SamplePolls { get; }
 }
 
-public sealed record RankingRegeneration(long AtMs, bool Initial, int RankedCount, int?[] SampleRanks);
+public sealed class RankingRegeneration
+{
+    public RankingRegeneration(long atMs, bool initial, int rankedCount, int?[] sampleRanks)
+    {
+        AtMs = atMs;
+        Initial = initial;
+        RankedCount = rankedCount;
+        SampleRanks = sampleRanks;
+    }
+
+    public long AtMs { get; }
+    public bool Initial { get; }
+    public int RankedCount { get; }
+    public int?[] SampleRanks { get; }
+}

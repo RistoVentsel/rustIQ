@@ -40,7 +40,7 @@ public sealed class SimulatorDataLoaderTests : IDisposable
         Assert.Equal([1000L, 2000L], a.TimesMs);
         Assert.Equal(ServerPollSource.Discovery, a.Sources[0]);
         Assert.Equal(-1, a.Ok[0]);
-        Assert.True(a.Answered(0)); // ok is null, online = 1
+        Assert.True(a.Answered(0));
         Assert.Equal(ServerPollSource.FastLane, a.Sources[1]);
     }
 
@@ -50,24 +50,19 @@ public sealed class SimulatorDataLoaderTests : IDisposable
         var first = WriteExport("e1", "2026-11-15 21:38:03+00", First());
         var second = WriteExport("e2", "2026-11-18 00:05:00+00", Second());
 
-        // The order on the command line does not matter: exported_at decides which export is later.
         var data = SimulatorDataLoader.Load([second, first]);
 
-        // Probes: union by (server_idx, t_ms).
         Assert.Equal([1000L, 16000L, 31000L], data.Probes[0].TimesMs);
 
-        // Snapshots: union by id; the pruned server's snapshots survive from the first export.
         Assert.Equal(4, data.SnapshotCount);
         Assert.True(data.ServerIndex.TryGet(Pruned, out var prunedIndex));
         Assert.Equal(1, data.Snapshots[prunedIndex].Count);
 
-        // Servers: later export wins; a server missing from the latest export is marked as pruned.
         Assert.True(data.ServerIndex.TryGet(SampleA, out var aIndex));
         Assert.Equal(55, data.Servers[aIndex]!.Players);
         Assert.True(data.Servers[aIndex]!.InLatestExport);
         Assert.False(data.Servers[prunedIndex]!.InLatestExport);
 
-        // Study tables: union by id.
         Assert.Equal(3, data.PopulationSamples.Count);
     }
 
@@ -148,7 +143,6 @@ public sealed class SimulatorDataLoaderTests : IDisposable
             $"1,{SampleA},2026-11-13 08:48:39.70367+00,2026-12-03 19:00:00+00,,"
     };
 
-    /// <summary>A later export: the pruned server and its snapshot are gone, and server A has moved on.</summary>
     private static Dictionary<string, string> Second()
     {
         var files = First();

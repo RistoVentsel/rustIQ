@@ -235,9 +235,15 @@ simulated server count per minute matches `study_population_samples.TotalServers
 1. A known server exists from `created_at` (or its first snapshot, whichever is earlier) until it is
    still in the latest `servers` file. If it is no longer there, it exists until its last snapshot.
 2. `phantoms(t) = max(0, TotalServers(t) - known(t))`.
-3. Phantoms are offline, never answer, and have `LastSeenAtUtc` null, so the current strategy puts
-   them in VeryStaleOffline.
-4. Phantoms join and leave in FIFO order as the count changes.
+3. Of them, `max(0, OnlineServers(t) - known servers the oracle answers for at t)` answer (counted
+   hourly), with no players and 100 max players, so the online/offline split follows
+   `study_population_samples.OnlineServers`. The export lost the whole history of servers that were
+   online and later pruned. The rest never answer and have `LastSeenAtUtc` null, so the current
+   strategy puts them in VeryStaleOffline.
+4. When the answering count falls while the silent count rises, the oldest answering phantom stops
+   answering (it went offline), and the other way round. Otherwise phantoms join and leave in FIFO
+   order, silent ones first. Answering phantoms present at the start begin online, last polled at a
+   random moment of the previous 75 min; later ones join never polled.
 
 Validation should show VeryStaleOffline at roughly 30 polls per minute, not 11.
 
@@ -336,10 +342,17 @@ same period:
    diverges.
 4. Ranking agreement on the sample servers (4.4).
 
-Proposed acceptance thresholds, to be confirmed by Risto before the final run:
+Acceptance thresholds:
 
 - AoI mean and median per stratum within 20 % of real;
-- polls per minute per lane within 10 % of real.
+- polls per minute per lane within 10 % of real. Fast and NormalOnline against the exported rate of
+  the period; the offline lanes together against the 44 per minute measured on 2026-11-12 around noon
+  UTC over the previous 24 h, with the simulation taken over 2026-11-11 12:00 to 11-12 12:00 UTC.
+  The full period's offline lanes are also shown against the write
+  counter, an upper bound.
+
+Player-weighted AoI has no threshold; it is reported for the whole period and per half (before and
+after the tuning split).
 
 Write the outcome down even if it fails, and find the cause before comparing strategies.
 

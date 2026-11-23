@@ -10,8 +10,9 @@ public static class SummaryCsv
 
     public static string Format(IEnumerable<FreshnessSummary> rows)
     {
-        var builder = new StringBuilder().AppendLine(Header);
-        foreach (var row in rows)
+        StringBuilder builder = new StringBuilder();
+        builder.AppendLine(Header);
+        foreach (FreshnessSummary row in rows)
         {
             builder.AppendLine(string.Join(',',
                 row.Group,
@@ -28,13 +29,12 @@ public static class SummaryCsv
         return builder.ToString();
     }
 
-    /// <summary>A readable table for the console.</summary>
     public static string FormatTable(IEnumerable<FreshnessSummary> rows)
     {
-        var builder = new StringBuilder();
+        StringBuilder builder = new StringBuilder();
         builder.AppendLine(
             $"{"Group",-8} {"Points",8} {"Valued",8} {"Median",8} {"Mean",8} {"p95",8} {"MAE",6} {">5 off",7} {"PW AoI",8}");
-        foreach (var row in rows)
+        foreach (FreshnessSummary row in rows)
         {
             builder.AppendLine(string.Create(CultureInfo.InvariantCulture,
                 $"{row.Group,-8} {row.Points,8} {row.PointsWithValue,8} {row.AoiMedianSeconds,8:0} {row.AoiMeanSeconds,8:0} " +
@@ -44,6 +44,13 @@ public static class SummaryCsv
         return builder.ToString();
     }
 
-    private static string Number(double? value) =>
-        value?.ToString("0.######", CultureInfo.InvariantCulture) ?? "";
+    private static string Number(double? value)
+    {
+        if (value == null)
+        {
+            return "";
+        }
+
+        return value.Value.ToString("0.######", CultureInfo.InvariantCulture);
+    }
 }

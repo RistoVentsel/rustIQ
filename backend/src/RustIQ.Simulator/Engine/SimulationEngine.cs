@@ -12,32 +12,13 @@ public sealed class SimulationOptions
     public long TickMs { get; init; } = 15_000;
     public int Seed { get; init; } = 1;
     public RankingMode Ranking { get; init; } = RankingMode.Frozen;
-
-    /// <summary>Diagnostics only: called after every tick with the time and the server states.</summary>
     public Action<long, IReadOnlyList<PolledServer>>? OnTick { get; init; }
     public long OfflineThresholdMs { get; init; } = PollStateRules.DefaultOfflineThresholdMs;
-
-    /// <summary>How long recent snapshots are kept for the recent-peak rules; covers their 60 min windows.</summary>
     public long RecentSnapshotKeepMs { get; init; } = 2 * 3_600_000L;
-
-    public ServerRankingOptions RankingOptions { get; init; } = new();
-
-    /// <summary>How long polls take and how the worker's timer behaves; null polls instantly at the tick.</summary>
-    public WorkerTiming? Timing { get; init; } = new();
+    public ServerRankingOptions RankingOptions { get; init; } = new ServerRankingOptions();
+    public WorkerTiming? Timing { get; init; } = new WorkerTiming();
 }
 
-/// <summary>
-/// The production worker's timing, which decides how often the lanes really run:
-/// <list type="bullet">
-/// <item>A tick's lanes run one after another; a lane polls its batch with <see cref="Concurrency"/>
-/// queries at a time, an answered query taking <see cref="AnsweredPollSeconds"/> and an unanswered one
-/// <see cref="UnansweredPollSeconds"/> (two attempts of 3 s).</item>
-/// <item>The timer ticks every 15 s, but a tick that is still working lets the next one wait; PeriodicTimer
-/// keeps one missed tick, which fires as soon as the work ends.</item>
-/// <item><c>now</c> is read a few milliseconds after the tick fires (<see cref="JitterMs"/>), so a lane
-/// whose interval is a multiple of the tick is not due on about half of its ticks.</item>
-/// </list>
-/// </summary>
 public sealed class WorkerTiming
 {
     public int Concurrency { get; init; } = 32;
@@ -46,28 +27,31 @@ public sealed class WorkerTiming
     public long JitterMs { get; init; } = 50;
 }
 
-/// <summary>
-/// Replays a period in 15 s steps (plan 5.2). Each step: servers appear and disappear, the phantom
-/// population follows <c>study_population_samples</c>, exogenous polls (Watched, Discovery) are replayed,
-/// the ranking is regenerated when due, and then the strategy polls. A strategy only learns what polls
-/// return; it never reads probes or production snapshots.
-/// </summary>
 public sealed class SimulationEngine : IPollExecutor
 {
-    public const string WatchedLane = nameof(ServerPollSource.Watched);
-    public const string DiscoveryLane = nameof(ServerPollSource.Discovery);
+    public const string WatchedLane = "Watched";
+    public const string DiscoveryLane = "Discovery";
+
+    public const int AnsweringPhantomMaxPlayers = 100;
+
+    private const long InitialPhantomSpreadMs = 75 * 60_000L;
 
     private readonly SimulatorData _data;
     private readonly IPollingStrategy _strategy;
     private readonly SimulationOptions _options;
     private readonly ResponseOracle _oracle;
-    private readonly List<PolledServer> _servers = [];
-    private readonly List<ServerHistory?> _histories = [];
+    private readonly List<PolledServer> _servers = new List<PolledServer>();
+    private readonly List<ServerHistory?> _histories = new List<ServerHistory?>();
     private readonly SimulationResult _result;
     private readonly Random _random;
     private readonly int _knownCount;
-    private readonly Queue<PolledServer> _activePhantoms = new();
-    private readonly Queue<PolledServer> _freePhantomSlots = new();
+    private readonly Queue<PolledServer> _activePhantoms = new Queue<PolledServer>();
+    private readonly Queue<PolledServer> _answeringPhantoms = new Queue<PolledServer>();
+    private readonly Queue<PolledServer> _freePhantomSlots = new Queue<PolledServer>();
+    private readonly HashSet<int> _answeringPhantomIndexes = new HashSet<int>();
+    private long[] _knownAnsweringHourMs = new long[0];
+    private int[] _knownAnsweringPerHour = new int[0];
+    private bool _phantomsFilled;
     private long _nowMs;
     private long _workCursorMs;
     private int _knownExisting;
@@ -83,28 +67,55 @@ public sealed class SimulationEngine : IPollExecutor
         _result = new SimulationResult(strategy.Name, options.FromMs, options.ToMs, data.SampleServers.Count);
     }
 
-    public IReadOnlyList<PolledServer> Servers => _servers;
+    public IReadOnlyList<PolledServer> Servers
+    {
+        get { return _servers; }
+    }
 
     public SimulationResult Run()
     {
-        var lifetimes = BuildKnownServers();
-        var existenceEvents = ExistenceEvents(lifetimes);
-        var exogenous = ExogenousPolls();
-        var wipeEvents = NextWipeEvents();
-        var moments = (_options.Ranking == RankingMode.Frozen
-                ? RankingReplay.FrozenMoments(_data)
-                : RankingReplay.HourlyMoments(_data, _options.FromMs, _options.ToMs))
-            .OrderBy(moment => moment)
-            .ToArray();
-        var population = _data.PopulationSamples
-            .Select(sample => (AtMs: sample.SampledAtUtc.ToUnixTimeMilliseconds(), sample.TotalServers))
-            .ToArray();
+        Lifetime[] lifetimes = BuildKnownServers();
+        List<ExistenceEvent> existenceEvents = ExistenceEvents(lifetimes);
+        List<ExogenousPoll> exogenous = ExogenousPolls();
+        List<WipeEvent> wipeEvents = NextWipeEvents();
 
-        int existenceAt = 0, exogenousAt = 0, wipeAt = 0, populationAt = 0;
+        IReadOnlyList<long> momentList;
+        if (_options.Ranking == RankingMode.Frozen)
+        {
+            momentList = RankingReplay.FrozenMoments(_data);
+        }
+        else
+        {
+            momentList = RankingReplay.HourlyMoments(_data, _options.FromMs, _options.ToMs);
+        }
 
-        // The ranking production had at the start: the last regeneration before the period, recomputed
-        // from the history before it (empty when the export starts at the period start).
-        var momentAt = 0;
+        long[] moments = new long[momentList.Count];
+        for (int i = 0; i < momentList.Count; i++)
+        {
+            moments[i] = momentList[i];
+        }
+
+        Array.Sort(moments);
+
+        PopulationPoint[] population = new PopulationPoint[_data.PopulationSamples.Count];
+        for (int i = 0; i < _data.PopulationSamples.Count; i++)
+        {
+            PopulationSample sample = _data.PopulationSamples[i];
+            PopulationPoint point = new PopulationPoint();
+            point.AtMs = sample.SampledAtUtc.ToUnixTimeMilliseconds();
+            point.TotalServers = sample.TotalServers;
+            point.OnlineServers = sample.OnlineServers;
+            population[i] = point;
+        }
+
+        CountKnownAnswering(lifetimes);
+
+        int existenceAt = 0;
+        int exogenousAt = 0;
+        int wipeAt = 0;
+        int populationAt = 0;
+
+        int momentAt = 0;
         while (momentAt < moments.Length && moments[momentAt] <= _options.FromMs)
         {
             momentAt++;
@@ -113,40 +124,61 @@ public sealed class SimulationEngine : IPollExecutor
         if (momentAt > 0)
         {
             ApplyExistence(existenceEvents, ref existenceAt, _options.FromMs);
-            Regenerate(moments[momentAt - 1], initial: true);
+            Regenerate(moments[momentAt - 1], true);
         }
 
-        var fireMs = _options.FromMs;
+        long fireMs = _options.FromMs;
         while (fireMs < _options.ToMs)
         {
-            _nowMs = fireMs + (_options.Timing is { JitterMs: > 0 } timing ? _random.NextInt64(timing.JitterMs) : 0);
+            long jitter = 0;
+            WorkerTiming? timing = _options.Timing;
+            if (timing != null && timing.JitterMs > 0)
+            {
+                jitter = _random.NextInt64(timing.JitterMs);
+            }
+
+            _nowMs = fireMs + jitter;
             _workCursorMs = _nowMs;
             ApplyExistence(existenceEvents, ref existenceAt, _nowMs);
             UpdatePhantoms(population, ref populationAt);
 
             while (wipeAt < wipeEvents.Count && wipeEvents[wipeAt].AtMs <= _nowMs)
             {
-                var (_, serverIndex, nextWipe) = wipeEvents[wipeAt++];
-                _servers[serverIndex].NextWipeAtMs = nextWipe;
+                WipeEvent wipeEvent = wipeEvents[wipeAt];
+                wipeAt++;
+                _servers[wipeEvent.ServerIndex].NextWipeAtMs = wipeEvent.NextWipeAtMs;
             }
 
             while (exogenousAt < exogenous.Count && exogenous[exogenousAt].AtMs <= _nowMs)
             {
-                ApplyExogenous(exogenous[exogenousAt++]);
+                ApplyExogenous(exogenous[exogenousAt]);
+                exogenousAt++;
             }
 
             while (momentAt < moments.Length && moments[momentAt] <= _nowMs)
             {
-                Regenerate(moments[momentAt++], initial: false);
+                Regenerate(moments[momentAt], false);
+                momentAt++;
             }
 
             _strategy.Tick(_nowMs, _servers, this);
-            _options.OnTick?.Invoke(_nowMs, _servers);
-            _result.RecordPopulation(_nowMs, _knownExisting, _activePhantoms.Count);
+            if (_options.OnTick != null)
+            {
+                _options.OnTick(_nowMs, _servers);
+            }
 
-            // The next timer tick; if the work ran past it, the one kept missed tick fires when the work ends.
-            var nextGrid = _options.FromMs + ((fireMs - _options.FromMs) / _options.TickMs + 1) * _options.TickMs;
-            fireMs = _workCursorMs > nextGrid ? _workCursorMs : nextGrid;
+            _result.RecordPopulation(_nowMs, _knownExisting, _activePhantoms.Count + _answeringPhantoms.Count);
+
+            long nextGrid = _options.FromMs + ((fireMs - _options.FromMs) / _options.TickMs + 1) * _options.TickMs;
+            if (_workCursorMs > nextGrid)
+            {
+                fireMs = _workCursorMs;
+            }
+            else
+            {
+                fireMs = nextGrid;
+            }
+
             _result.RecordTick(fireMs - _nowMs);
         }
 
@@ -155,32 +187,39 @@ public sealed class SimulationEngine : IPollExecutor
 
     void IPollExecutor.Poll(IReadOnlyList<PolledServer> servers, string lane)
     {
-        var timing = _options.Timing;
-        if (timing is null)
+        WorkerTiming? timing = _options.Timing;
+        if (timing == null)
         {
-            foreach (var server in servers)
+            foreach (PolledServer server in servers)
             {
-                Apply(server, _oracle.Answer(server.Index, _nowMs, server), lane, exogenous: false);
+                Apply(server, AnswerOf(server, _nowMs), lane, false);
             }
 
             return;
         }
 
-        // The lane starts when the previous lane of this tick finished. With N queries in flight, the
-        // i-th finishes after its own duration or after 1/N of the work queued up to it, whichever is later.
-        var laneStart = _workCursorMs;
-        var queuedSeconds = 0.0;
-        var laneSeconds = 0.0;
-        foreach (var server in servers)
+        long laneStart = _workCursorMs;
+        double queuedSeconds = 0.0;
+        double laneSeconds = 0.0;
+        foreach (PolledServer server in servers)
         {
-            var answered = _oracle.Answer(server.Index, laneStart, server).Answered;
-            var cost = answered ? timing.AnsweredPollSeconds : timing.UnansweredPollSeconds;
+            bool answered = AnswerOf(server, laneStart).Answered;
+            double cost;
+            if (answered)
+            {
+                cost = timing.AnsweredPollSeconds;
+            }
+            else
+            {
+                cost = timing.UnansweredPollSeconds;
+            }
+
             queuedSeconds += cost;
-            var doneSeconds = Math.Max(cost, queuedSeconds / timing.Concurrency);
+            double doneSeconds = Math.Max(cost, queuedSeconds / timing.Concurrency);
             laneSeconds = Math.Max(laneSeconds, doneSeconds);
 
-            var atMs = laneStart + (long)(doneSeconds * 1000);
-            Apply(server, _oracle.Answer(server.Index, atMs, server), lane, exogenous: false);
+            long atMs = laneStart + (long)(doneSeconds * 1000);
+            Apply(server, AnswerOf(server, atMs), lane, false);
         }
 
         _workCursorMs = laneStart + (long)(laneSeconds * 1000);
@@ -189,11 +228,17 @@ public sealed class SimulationEngine : IPollExecutor
     private void Apply(PolledServer server, PollOutcome outcome, string lane, bool exogenous)
     {
         int recordedPlayers;
-        if (server.LastCheckedAtMs is { } lastChecked && outcome.AtMs < lastChecked)
+        long? lastChecked = server.LastCheckedAtMs;
+        if (lastChecked != null && outcome.AtMs < lastChecked.Value)
         {
-            // A replayed poll older than a poll of the previous (long) tick: in production the later
-            // write wins, so it leaves the state alone but is still a snapshot.
-            recordedPlayers = outcome.Answered ? outcome.Players : server.Players;
+            if (outcome.Answered)
+            {
+                recordedPlayers = outcome.Players;
+            }
+            else
+            {
+                recordedPlayers = server.Players;
+            }
         }
         else
         {
@@ -201,12 +246,21 @@ public sealed class SimulationEngine : IPollExecutor
         }
 
         server.AddSnapshot(outcome.AtMs, recordedPlayers, _options.RecentSnapshotKeepMs);
-        _histories[server.Index]?.Add(outcome.AtMs, recordedPlayers, server.MaxPlayers, outcome.Answered);
 
-        var sampleIdx = server.Index < _knownCount ? _oracle.SampleIdxOf(server.Index) : 0;
+        ServerHistory? history = _histories[server.Index];
+        if (history != null)
+        {
+            history.Add(outcome.AtMs, recordedPlayers, server.MaxPlayers, outcome.Answered);
+        }
+
+        int sampleIdx = 0;
+        if (server.Index < _knownCount)
+        {
+            sampleIdx = _oracle.SampleIdxOf(server.Index);
+        }
+
         _result.RecordPoll(outcome.AtMs, lane, outcome.Answered, exogenous, sampleIdx);
 
-        // What the sample server shows: the strategy's own answered polls and replayed Discovery polls.
         if (sampleIdx > 0 && outcome.Answered && lane != WatchedLane)
         {
             _result.RecordShown(sampleIdx, outcome.AtMs, outcome.Players);
@@ -217,73 +271,104 @@ public sealed class SimulationEngine : IPollExecutor
 
     private void ApplyExogenous(ExogenousPoll poll)
     {
-        var server = _servers[poll.ServerIndex];
+        PolledServer server = _servers[poll.ServerIndex];
         if (!server.Exists)
         {
             return;
         }
 
-        // Replayed as production recorded it: its answer, or a failed query.
-        Apply(server, new PollOutcome(poll.AtMs, poll.Answered, poll.Players, poll.MaxPlayers, 0), poll.Lane, exogenous: true);
+        PollOutcome outcome = new PollOutcome(poll.AtMs, poll.Answered, poll.Players, poll.MaxPlayers, 0);
+        Apply(server, outcome, poll.Lane, true);
     }
 
     private void Regenerate(long atMs, bool initial)
     {
-        var ranked = RankingReplay.Compute(atMs, _servers, _histories, _options.RankingOptions);
+        IReadOnlyList<int> ranked = RankingReplay.Compute(atMs, _servers, _histories, _options.RankingOptions);
 
-        // Production keeps the old ranking when the new one is empty.
         if (ranked.Count > 0)
         {
-            foreach (var server in _servers)
+            foreach (PolledServer server in _servers)
             {
                 server.Rank = null;
             }
 
-            for (var rank = 0; rank < ranked.Count; rank++)
+            for (int rank = 0; rank < ranked.Count; rank++)
             {
                 _servers[ranked[rank]].Rank = rank + 1;
             }
         }
 
-        _result.RecordRanking(atMs, initial, ranked.Count, _data.SampleServers
-            .Select(sample => _servers[sample.ServerIndex].Rank)
-            .ToArray());
+        int?[] sampleRanks = new int?[_data.SampleServers.Count];
+        for (int i = 0; i < _data.SampleServers.Count; i++)
+        {
+            SampleServer sample = _data.SampleServers[i];
+            sampleRanks[i] = _servers[sample.ServerIndex].Rank;
+        }
+
+        _result.RecordRanking(atMs, initial, ranked.Count, sampleRanks);
     }
 
-    /// <summary>
-    /// Creates a slot per known server with its starting state. Only immutable fields come from the
-    /// <c>servers</c> file (type, created_at); the state comes from the last snapshot before the period.
-    /// </summary>
-    private (long StartMs, long EndMs)[] BuildKnownServers()
+    private Lifetime[] BuildKnownServers()
     {
-        var lifetimes = new (long StartMs, long EndMs)[_knownCount];
-        var historyStart = _options.FromMs - _options.RankingOptions.RankingWindowDays * 86_400_000L;
+        Lifetime[] lifetimes = new Lifetime[_knownCount];
+        long historyStart = _options.FromMs - _options.RankingOptions.RankingWindowDays * 86_400_000L;
 
-        for (var i = 0; i < _knownCount; i++)
+        for (int i = 0; i < _knownCount; i++)
         {
-            var record = _data.Servers[i];
-            var snapshots = _data.Snapshots[i];
-            long? firstSnapshot = snapshots.Count > 0 ? snapshots.TimesMs[0] : null;
-            long? lastSnapshot = snapshots.Count > 0 ? snapshots.TimesMs[^1] : null;
+            ServerRecord? record = _data.Servers[i];
+            SnapshotSeries snapshots = _data.Snapshots[i];
 
-            // A known server exists from created_at or its first snapshot, whichever is earlier, until it is
-            // in the latest servers file; a pruned one until its last snapshot.
-            long start = Math.Min(
-                record?.CreatedAtUtc.ToUnixTimeMilliseconds() ?? long.MaxValue,
-                firstSnapshot ?? long.MaxValue);
-            long end = record?.InLatestExport == true ? long.MaxValue : lastSnapshot ?? long.MinValue;
-            lifetimes[i] = (start, end);
+            long createdMs = long.MaxValue;
+            if (record != null)
+            {
+                createdMs = record.CreatedAtUtc.ToUnixTimeMilliseconds();
+            }
 
-            var server = new PolledServer(
-                i,
-                _data.ServerIndex.Ids[i],
-                record?.ServerType ?? RustServerType.Unknown,
-                start == long.MaxValue ? _options.FromMs : start);
+            long firstSnapshotMs = long.MaxValue;
+            if (snapshots.Count > 0)
+            {
+                firstSnapshotMs = snapshots.TimesMs[0];
+            }
 
-            var history = new ServerHistory();
-            var lastBefore = -1;
+            long start = Math.Min(createdMs, firstSnapshotMs);
+
+            long end;
+            if (record != null && record.InLatestExport)
+            {
+                end = long.MaxValue;
+            }
+            else if (snapshots.Count > 0)
+            {
+                end = snapshots.TimesMs[snapshots.TimesMs.Length - 1];
+            }
+            else
+            {
+                end = long.MinValue;
+            }
+
+            Lifetime lifetime = new Lifetime();
+            lifetime.StartMs = start;
+            lifetime.EndMs = end;
+            lifetimes[i] = lifetime;
+
+            RustServerType serverType = RustServerType.Unknown;
+            if (record != null)
+            {
+                serverType = record.ServerType;
+            }
+
+            long createdAtMs = start;
+            if (start == long.MaxValue)
+            {
+                createdAtMs = _options.FromMs;
+            }
+
+            PolledServer server = new PolledServer(i, _data.ServerIndex.Ids[i], serverType, createdAtMs);
+
+            ServerHistory history = new ServerHistory();
+            int lastBefore = -1;
             long? lastSeen = null;
-            for (var s = 0; s < snapshots.Count && snapshots.TimesMs[s] < _options.FromMs; s++)
+            for (int s = 0; s < snapshots.Count && snapshots.TimesMs[s] < _options.FromMs; s++)
             {
                 lastBefore = s;
                 if (snapshots.Answered(s))
@@ -302,12 +387,19 @@ public sealed class SimulationEngine : IPollExecutor
                 }
             }
 
-            // Without a snapshot before the period the server starts as never polled.
             if (lastBefore >= 0)
             {
                 server.LastCheckedAtMs = snapshots.TimesMs[lastBefore];
                 server.LastSeenAtMs = lastSeen;
-                server.Status = snapshots.Online[lastBefore] ? ServerStatus.Online : ServerStatus.Offline;
+                if (snapshots.Online[lastBefore])
+                {
+                    server.Status = ServerStatus.Online;
+                }
+                else
+                {
+                    server.Status = ServerStatus.Offline;
+                }
+
                 server.Players = snapshots.Players[lastBefore];
                 server.MaxPlayers = snapshots.MaxPlayers[lastBefore];
             }
@@ -319,47 +411,156 @@ public sealed class SimulationEngine : IPollExecutor
         return lifetimes;
     }
 
-    private static List<(long AtMs, int Index, bool Appears)> ExistenceEvents((long StartMs, long EndMs)[] lifetimes)
+    private static List<ExistenceEvent> ExistenceEvents(Lifetime[] lifetimes)
     {
-        var events = new List<(long AtMs, int Index, bool Appears)>();
-        for (var i = 0; i < lifetimes.Length; i++)
+        List<ExistenceEvent> events = new List<ExistenceEvent>();
+        for (int i = 0; i < lifetimes.Length; i++)
         {
-            var (start, end) = lifetimes[i];
+            long start = lifetimes[i].StartMs;
+            long end = lifetimes[i].EndMs;
             if (start == long.MaxValue || end < start)
             {
                 continue;
             }
 
-            events.Add((start, i, true));
+            ExistenceEvent appear = new ExistenceEvent();
+            appear.AtMs = start;
+            appear.Index = i;
+            appear.Appears = true;
+            events.Add(appear);
+
             if (end != long.MaxValue)
             {
-                // Exists through its last snapshot; gone from the next step on.
-                events.Add((end + 1, i, false));
+                ExistenceEvent disappear = new ExistenceEvent();
+                disappear.AtMs = end + 1;
+                disappear.Index = i;
+                disappear.Appears = false;
+                events.Add(disappear);
             }
         }
 
-        return events.OrderBy(e => e.AtMs).ThenBy(e => e.Index).ThenBy(e => e.Appears).ToList();
+        events.Sort(CompareExistenceEvents);
+        return events;
     }
 
-    private void ApplyExistence(List<(long AtMs, int Index, bool Appears)> events, ref int at, long nowMs)
+    private static int CompareExistenceEvents(ExistenceEvent a, ExistenceEvent b)
+    {
+        if (a.AtMs < b.AtMs)
+        {
+            return -1;
+        }
+
+        if (a.AtMs > b.AtMs)
+        {
+            return 1;
+        }
+
+        if (a.Index < b.Index)
+        {
+            return -1;
+        }
+
+        if (a.Index > b.Index)
+        {
+            return 1;
+        }
+
+        if (!a.Appears && b.Appears)
+        {
+            return -1;
+        }
+
+        if (a.Appears && !b.Appears)
+        {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private void ApplyExistence(List<ExistenceEvent> events, ref int at, long nowMs)
     {
         while (at < events.Count && events[at].AtMs <= nowMs)
         {
-            var (_, index, appears) = events[at++];
-            var server = _servers[index];
-            if (server.Exists != appears)
+            ExistenceEvent existenceEvent = events[at];
+            at++;
+            PolledServer server = _servers[existenceEvent.Index];
+            if (server.Exists != existenceEvent.Appears)
             {
-                server.Exists = appears;
-                _knownExisting += appears ? 1 : -1;
+                server.Exists = existenceEvent.Appears;
+                if (existenceEvent.Appears)
+                {
+                    _knownExisting += 1;
+                }
+                else
+                {
+                    _knownExisting -= 1;
+                }
             }
         }
     }
 
-    /// <summary>
-    /// Fills the part of the population the export lost (plan 5.5): phantoms(t) = max(0, TotalServers(t) - known(t)).
-    /// Phantoms never answer, start never polled and join and leave first in, first out.
-    /// </summary>
-    private void UpdatePhantoms((long AtMs, int TotalServers)[] population, ref int at)
+    private PollOutcome AnswerOf(PolledServer server, long atMs)
+    {
+        if (server.Index >= _knownCount)
+        {
+            if (_answeringPhantomIndexes.Contains(server.Index))
+            {
+                return new PollOutcome(atMs, true, 0, AnsweringPhantomMaxPlayers, 0);
+            }
+
+            return new PollOutcome(atMs, false, 0, 0, 0);
+        }
+
+        return _oracle.Answer(server.Index, atMs, server);
+    }
+
+    private void CountKnownAnswering(Lifetime[] lifetimes)
+    {
+        int hours = (int)((_options.ToMs - _options.FromMs + 3_599_999L) / 3_600_000L);
+        _knownAnsweringHourMs = new long[hours];
+        _knownAnsweringPerHour = new int[hours];
+        for (int h = 0; h < hours; h++)
+        {
+            long atMs = _options.FromMs + h * 3_600_000L;
+            int answering = 0;
+            for (int i = 0; i < _knownCount; i++)
+            {
+                long start = lifetimes[i].StartMs;
+                long end = lifetimes[i].EndMs;
+                if (start <= atMs && atMs <= end && _oracle.Answer(i, atMs, _servers[i]).Answered)
+                {
+                    answering++;
+                }
+            }
+
+            _knownAnsweringHourMs[h] = atMs;
+            _knownAnsweringPerHour[h] = answering;
+        }
+    }
+
+    private int KnownAnsweringAt(long atMs)
+    {
+        if (_knownAnsweringPerHour.Length == 0)
+        {
+            return 0;
+        }
+
+        long hour = (atMs - _options.FromMs) / 3_600_000L;
+        if (hour < 0)
+        {
+            hour = 0;
+        }
+
+        if (hour > _knownAnsweringPerHour.Length - 1)
+        {
+            hour = _knownAnsweringPerHour.Length - 1;
+        }
+
+        return _knownAnsweringPerHour[(int)hour];
+    }
+
+    private void UpdatePhantoms(PopulationPoint[] population, ref int at)
     {
         if (population.Length == 0)
         {
@@ -371,29 +572,86 @@ public sealed class SimulationEngine : IPollExecutor
             at++;
         }
 
-        var target = Math.Max(0, population[at].TotalServers - _knownExisting);
-        while (_activePhantoms.Count > target)
-        {
-            var leaving = _activePhantoms.Dequeue();
-            leaving.Exists = false;
-            _freePhantomSlots.Enqueue(leaving);
-        }
+        int total = Math.Max(0, population[at].TotalServers - _knownExisting);
+        int answering = Math.Clamp(population[at].OnlineServers - KnownAnsweringAt(_nowMs), 0, total);
+        int silent = total - answering;
 
-        while (_activePhantoms.Count < target)
+        while (_answeringPhantoms.Count > answering && _activePhantoms.Count < silent)
         {
-            var slot = _freePhantomSlots.Count > 0
-                ? _freePhantomSlots.Dequeue()
-                : AddPhantomSlot();
-            slot.Reset(NewGuid(), RustServerType.Unknown, _nowMs);
-            slot.Exists = true;
-            _strategy.OnServerReset(slot);
+            PolledServer slot = _answeringPhantoms.Dequeue();
+            _answeringPhantomIndexes.Remove(slot.Index);
             _activePhantoms.Enqueue(slot);
         }
+
+        while (_activePhantoms.Count > silent && _answeringPhantoms.Count < answering)
+        {
+            PolledServer slot = _activePhantoms.Dequeue();
+            _answeringPhantomIndexes.Add(slot.Index);
+            _answeringPhantoms.Enqueue(slot);
+        }
+
+        Shrink(_activePhantoms, silent);
+        Shrink(_answeringPhantoms, answering);
+
+        while (_activePhantoms.Count < silent)
+        {
+            _activePhantoms.Enqueue(NewPhantom(false));
+        }
+
+        while (_answeringPhantoms.Count < answering)
+        {
+            _answeringPhantoms.Enqueue(NewPhantom(true));
+        }
+
+        _phantomsFilled = true;
+    }
+
+    private void Shrink(Queue<PolledServer> phantoms, int target)
+    {
+        while (phantoms.Count > target)
+        {
+            PolledServer leaving = phantoms.Dequeue();
+            leaving.Exists = false;
+            _answeringPhantomIndexes.Remove(leaving.Index);
+            _freePhantomSlots.Enqueue(leaving);
+        }
+    }
+
+    private PolledServer NewPhantom(bool answers)
+    {
+        PolledServer slot;
+        if (_freePhantomSlots.Count > 0)
+        {
+            slot = _freePhantomSlots.Dequeue();
+        }
+        else
+        {
+            slot = AddPhantomSlot();
+        }
+
+        Guid id = NewGuid();
+        slot.Reset(id, RustServerType.Unknown, _nowMs);
+        if (answers)
+        {
+            _answeringPhantomIndexes.Add(slot.Index);
+            if (!_phantomsFilled)
+            {
+                long checkedAt = _nowMs - _random.NextInt64(InitialPhantomSpreadMs);
+                slot.LastCheckedAtMs = checkedAt;
+                slot.LastSeenAtMs = checkedAt;
+                slot.Status = ServerStatus.Online;
+                slot.MaxPlayers = AnsweringPhantomMaxPlayers;
+            }
+        }
+
+        slot.Exists = true;
+        _strategy.OnServerReset(slot);
+        return slot;
     }
 
     private PolledServer AddPhantomSlot()
     {
-        var slot = new PolledServer(_servers.Count, Guid.Empty, RustServerType.Unknown, _nowMs);
+        PolledServer slot = new PolledServer(_servers.Count, Guid.Empty, RustServerType.Unknown, _nowMs);
         _servers.Add(slot);
         _histories.Add(null);
         return slot;
@@ -408,62 +666,221 @@ public sealed class SimulationEngine : IPollExecutor
 
     private List<ExogenousPoll> ExogenousPolls()
     {
-        var polls = new List<ExogenousPoll>();
-        for (var i = 0; i < _knownCount; i++)
+        List<ExogenousPoll> polls = new List<ExogenousPoll>();
+        for (int i = 0; i < _knownCount; i++)
         {
-            var snapshots = _data.Snapshots[i];
-            for (var s = 0; s < snapshots.Count; s++)
+            SnapshotSeries snapshots = _data.Snapshots[i];
+            for (int s = 0; s < snapshots.Count; s++)
             {
-                var source = snapshots.Sources[s];
-                if ((source == ServerPollSource.Watched || source == ServerPollSource.Discovery)
+                ServerPollSource source = snapshots.Sources[s];
+                bool exogenousSource = source == ServerPollSource.Watched || source == ServerPollSource.Discovery;
+                if (exogenousSource
                     && snapshots.TimesMs[s] >= _options.FromMs
                     && snapshots.TimesMs[s] < _options.ToMs)
                 {
-                    polls.Add(new ExogenousPoll(
-                        snapshots.TimesMs[s],
-                        i,
-                        source.ToString(),
-                        snapshots.Answered(s),
-                        snapshots.Players[s],
-                        snapshots.MaxPlayers[s]));
+                    ExogenousPoll poll = new ExogenousPoll();
+                    poll.AtMs = snapshots.TimesMs[s];
+                    poll.ServerIndex = i;
+                    poll.Lane = source.ToString();
+                    poll.Answered = snapshots.Answered(s);
+                    poll.Players = snapshots.Players[s];
+                    poll.MaxPlayers = snapshots.MaxPlayers[s];
+                    poll.Order = polls.Count;
+                    polls.Add(poll);
                 }
             }
         }
 
-        return polls.OrderBy(poll => poll.AtMs).ThenBy(poll => poll.ServerIndex).ToList();
+        polls.Sort(CompareExogenousPolls);
+        return polls;
     }
 
-    /// <summary>
-    /// RustIQ's stored next wipe over time, for the strategies that use it. A wipe observation records
-    /// what RustIQ showed just before it (<c>previous_next_wipe_at</c>); that value is taken to hold from
-    /// the server's previous observation on.
-    /// </summary>
-    private List<(long AtMs, int ServerIndex, long? NextWipeAtMs)> NextWipeEvents()
+    private static int CompareExogenousPolls(ExogenousPoll a, ExogenousPoll b)
     {
-        var events = new List<(long AtMs, int ServerIndex, long? NextWipeAtMs)>();
-        foreach (var group in _data.WipeObservations.GroupBy(row => row.ServerId))
+        if (a.AtMs < b.AtMs)
         {
-            if (!_data.ServerIndex.TryGet(group.Key, out var index))
+            return -1;
+        }
+
+        if (a.AtMs > b.AtMs)
+        {
+            return 1;
+        }
+
+        if (a.ServerIndex < b.ServerIndex)
+        {
+            return -1;
+        }
+
+        if (a.ServerIndex > b.ServerIndex)
+        {
+            return 1;
+        }
+
+        if (a.Order < b.Order)
+        {
+            return -1;
+        }
+
+        if (a.Order > b.Order)
+        {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private List<WipeEvent> NextWipeEvents()
+    {
+        Dictionary<Guid, List<WipeObservationRow>> groups = new Dictionary<Guid, List<WipeObservationRow>>();
+        List<Guid> groupOrder = new List<Guid>();
+        foreach (WipeObservationRow row in _data.WipeObservations)
+        {
+            List<WipeObservationRow>? group;
+            if (!groups.TryGetValue(row.ServerId, out group))
+            {
+                group = new List<WipeObservationRow>();
+                groups.Add(row.ServerId, group);
+                groupOrder.Add(row.ServerId);
+            }
+
+            group.Add(row);
+        }
+
+        List<WipeEvent> events = new List<WipeEvent>();
+        foreach (Guid serverId in groupOrder)
+        {
+            int index;
+            if (!_data.ServerIndex.TryGet(serverId, out index))
             {
                 continue;
             }
 
-            var previousAt = long.MinValue;
-            foreach (var observation in group.OrderBy(row => row.ObservedAtUtc).ThenBy(row => row.Id))
+            List<WipeObservationRow> observations = groups[serverId];
+            SortObservations(observations);
+
+            long previousAt = long.MinValue;
+            foreach (WipeObservationRow observation in observations)
             {
-                events.Add((previousAt, index, observation.PreviousNextWipeAtUtc?.ToUnixTimeMilliseconds()));
+                long? nextWipe = null;
+                if (observation.PreviousNextWipeAtUtc != null)
+                {
+                    nextWipe = observation.PreviousNextWipeAtUtc.Value.ToUnixTimeMilliseconds();
+                }
+
+                WipeEvent wipeEvent = new WipeEvent();
+                wipeEvent.AtMs = previousAt;
+                wipeEvent.ServerIndex = index;
+                wipeEvent.NextWipeAtMs = nextWipe;
+                wipeEvent.Order = events.Count;
+                events.Add(wipeEvent);
+
                 previousAt = observation.ObservedAtUtc.ToUnixTimeMilliseconds();
             }
         }
 
-        return events.OrderBy(e => e.AtMs).ThenBy(e => e.ServerIndex).ToList();
+        events.Sort(CompareWipeEvents);
+        return events;
     }
 
-    private readonly record struct ExogenousPoll(
-        long AtMs,
-        int ServerIndex,
-        string Lane,
-        bool Answered,
-        int Players,
-        int MaxPlayers);
+    private static void SortObservations(List<WipeObservationRow> observations)
+    {
+        for (int i = 1; i < observations.Count; i++)
+        {
+            WipeObservationRow current = observations[i];
+            int j = i - 1;
+            while (j >= 0 && CompareObservations(observations[j], current) > 0)
+            {
+                observations[j + 1] = observations[j];
+                j--;
+            }
+
+            observations[j + 1] = current;
+        }
+    }
+
+    private static int CompareObservations(WipeObservationRow a, WipeObservationRow b)
+    {
+        int byTime = a.ObservedAtUtc.CompareTo(b.ObservedAtUtc);
+        if (byTime != 0)
+        {
+            return byTime;
+        }
+
+        return a.Id.CompareTo(b.Id);
+    }
+
+    private static int CompareWipeEvents(WipeEvent a, WipeEvent b)
+    {
+        if (a.AtMs < b.AtMs)
+        {
+            return -1;
+        }
+
+        if (a.AtMs > b.AtMs)
+        {
+            return 1;
+        }
+
+        if (a.ServerIndex < b.ServerIndex)
+        {
+            return -1;
+        }
+
+        if (a.ServerIndex > b.ServerIndex)
+        {
+            return 1;
+        }
+
+        if (a.Order < b.Order)
+        {
+            return -1;
+        }
+
+        if (a.Order > b.Order)
+        {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    private sealed class Lifetime
+    {
+        public long StartMs;
+        public long EndMs;
+    }
+
+    private sealed class ExistenceEvent
+    {
+        public long AtMs;
+        public int Index;
+        public bool Appears;
+    }
+
+    private sealed class PopulationPoint
+    {
+        public long AtMs;
+        public int TotalServers;
+        public int OnlineServers;
+    }
+
+    private sealed class WipeEvent
+    {
+        public long AtMs;
+        public int ServerIndex;
+        public long? NextWipeAtMs;
+        public int Order;
+    }
+
+    private sealed class ExogenousPoll
+    {
+        public long AtMs;
+        public int ServerIndex;
+        public string Lane = "";
+        public bool Answered;
+        public int Players;
+        public int MaxPlayers;
+        public int Order;
+    }
 }

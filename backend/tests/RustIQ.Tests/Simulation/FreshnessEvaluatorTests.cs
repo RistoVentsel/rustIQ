@@ -12,7 +12,6 @@ public sealed class FreshnessEvaluatorTests
     [Fact]
     public void Evaluate_MeasuresAgeAndErrorAgainstTheProbeAtEachGridPoint()
     {
-        // Grid points at 0 and 15 min. Truth 10 then 20; the last poll (at -60 s) showed 12.
         var truth = Probes((0, true, 10), (Step - 5_000, true, 20));
         var shown = new ShownSeries([-60_000], [12]);
 
@@ -24,7 +23,6 @@ public sealed class FreshnessEvaluatorTests
         Assert.Equal((60 + 960) / 2.0, popular.AoiMeanSeconds);
         Assert.Equal((2 + 8) / 2.0, popular.PlayerMae);
         Assert.Equal(0.5, popular.ShareOffByMoreThan5);
-        // (10 * 60 + 20 * 960) / 30
         Assert.Equal(660, popular.PlayerWeightedAoiSeconds);
     }
 
@@ -32,9 +30,9 @@ public sealed class FreshnessEvaluatorTests
     public void Evaluate_CountsOnlyPointsWithAnAnsweredProbeInTheLast20Seconds()
     {
         var truth = Probes(
-            (-20_000, true, 5),     // exactly 20 s before t = 0: outside (t - 20 s, t]
-            (Step - 1_000, false, 0), // failed probe at the second point
-            (2 * Step + 1, true, 7)); // after the third point
+            (-20_000, true, 5),
+            (Step - 1_000, false, 0),
+            (2 * Step + 1, true, 7));
         var shown = new ShownSeries([-100_000], [5]);
 
         var summary = Evaluate([new EvaluationInput(StudyStratum.Small, truth, shown)], 0, 3 * Step);

@@ -1,15 +1,11 @@
 namespace RustIQ.Simulator.Engine;
 
-/// <summary>
-/// One server's snapshots as the ranking sees them: production's snapshots before the period, then the
-/// simulated and replayed ones, kept in time order.
-/// </summary>
 public sealed class ServerHistory
 {
-    private long[] _times = [];
-    private short[] _players = [];
-    private short[] _maxPlayers = [];
-    private bool[] _answered = [];
+    private long[] _times = new long[0];
+    private short[] _players = new short[0];
+    private short[] _maxPlayers = new short[0];
+    private bool[] _answered = new bool[0];
 
     public int Count { get; private set; }
 
@@ -17,15 +13,14 @@ public sealed class ServerHistory
     {
         if (Count == _times.Length)
         {
-            var capacity = Math.Max(16, Count * 2);
+            int capacity = Math.Max(16, Count * 2);
             Array.Resize(ref _times, capacity);
             Array.Resize(ref _players, capacity);
             Array.Resize(ref _maxPlayers, capacity);
             Array.Resize(ref _answered, capacity);
         }
 
-        // Nearly always appended; a replayed poll can land between the polls of a long tick.
-        var position = Count;
+        int position = Count;
         while (position > 0 && _times[position - 1] > atMs)
         {
             _times[position] = _times[position - 1];
@@ -42,27 +37,35 @@ public sealed class ServerHistory
         Count++;
     }
 
-    /// <summary>Snapshot count, average and peak players over [fromMs, toMs].</summary>
     public (int Count, double Average, int Peak) Window(long fromMs, long toMs)
     {
-        var start = FirstAtOrAfter(fromMs);
+        int start = FirstAtOrAfter(fromMs);
         long sum = 0;
-        var peak = 0;
-        var count = 0;
-        for (var i = start; i < Count && _times[i] <= toMs; i++)
+        int peak = 0;
+        int count = 0;
+        for (int i = start; i < Count && _times[i] <= toMs; i++)
         {
             sum += _players[i];
-            peak = Math.Max(peak, _players[i]);
+            if (_players[i] > peak)
+            {
+                peak = _players[i];
+            }
+
             count++;
         }
 
-        return (count, count == 0 ? 0 : (double)sum / count, peak);
+        double average = 0;
+        if (count != 0)
+        {
+            average = (double)sum / count;
+        }
+
+        return (count, average, peak);
     }
 
-    /// <summary>Time of the last answered snapshot at or before <paramref name="atMs"/>.</summary>
     public long? LastAnsweredAtOrBefore(long atMs)
     {
-        for (var i = LastAtOrBefore(atMs); i >= 0; i--)
+        for (int i = LastAtOrBefore(atMs); i >= 0; i--)
         {
             if (_answered[i])
             {
@@ -73,25 +76,39 @@ public sealed class ServerHistory
         return null;
     }
 
-    /// <summary>MaxPlayers recorded by the last snapshot at or before <paramref name="atMs"/>.</summary>
     public int? MaxPlayersAtOrBefore(long atMs)
     {
-        var i = LastAtOrBefore(atMs);
-        return i >= 0 ? _maxPlayers[i] : null;
+        int i = LastAtOrBefore(atMs);
+        if (i >= 0)
+        {
+            return _maxPlayers[i];
+        }
+
+        return null;
     }
 
     private int FirstAtOrAfter(long atMs)
     {
-        int low = 0, high = Count;
+        int low = 0;
+        int high = Count;
         while (low < high)
         {
-            var mid = (low + high) >>> 1;
-            if (_times[mid] < atMs) low = mid + 1;
-            else high = mid;
+            int mid = low + (high - low) / 2;
+            if (_times[mid] < atMs)
+            {
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid;
+            }
         }
 
         return low;
     }
 
-    private int LastAtOrBefore(long atMs) => FirstAtOrAfter(atMs + 1) - 1;
+    private int LastAtOrBefore(long atMs)
+    {
+        return FirstAtOrAfter(atMs + 1) - 1;
+    }
 }

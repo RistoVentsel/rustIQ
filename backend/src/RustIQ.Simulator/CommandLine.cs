@@ -2,12 +2,9 @@ using System.Globalization;
 
 namespace RustIQ.Simulator;
 
-/// <summary>
-/// <c>&lt;command&gt; --name value [value ...] --flag</c>. An option may take several values (e.g. <c>--data a b</c>).
-/// </summary>
 public sealed class CommandLine
 {
-    private readonly Dictionary<string, List<string>> _options = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<string>> _options = new Dictionary<string, List<string>>(StringComparer.Ordinal);
 
     private CommandLine(string command)
     {
@@ -16,7 +13,10 @@ public sealed class CommandLine
 
     public string Command { get; }
 
-    public IReadOnlyDictionary<string, List<string>> Options => _options;
+    public IReadOnlyDictionary<string, List<string>> Options
+    {
+        get { return _options; }
+    }
 
     public static CommandLine Parse(IReadOnlyList<string> args)
     {
@@ -25,22 +25,23 @@ public sealed class CommandLine
             throw new ArgumentException("The first argument must be a command.");
         }
 
-        var commandLine = new CommandLine(args[0]);
+        CommandLine commandLine = new CommandLine(args[0]);
         List<string>? current = null;
-        foreach (var arg in args.Skip(1))
+        for (int i = 1; i < args.Count; i++)
         {
+            string arg = args[i];
             if (arg.StartsWith("--", StringComparison.Ordinal))
             {
-                var name = arg[2..];
+                string name = arg.Substring(2);
                 if (commandLine._options.ContainsKey(name))
                 {
                     throw new ArgumentException($"--{name} is given twice.");
                 }
 
-                current = [];
+                current = new List<string>();
                 commandLine._options[name] = current;
             }
-            else if (current is null)
+            else if (current == null)
             {
                 throw new ArgumentException($"'{arg}' does not belong to an option.");
             }
@@ -53,33 +54,80 @@ public sealed class CommandLine
         return commandLine;
     }
 
-    public bool Has(string name) => _options.ContainsKey(name);
+    public bool Has(string name)
+    {
+        return _options.ContainsKey(name);
+    }
 
-    public IReadOnlyList<string> Values(string name) =>
-        _options.TryGetValue(name, out var values) && values.Count > 0
-            ? values
-            : throw new ArgumentException($"--{name} needs a value.");
+    public IReadOnlyList<string> Values(string name)
+    {
+        List<string>? values;
+        if (_options.TryGetValue(name, out values) && values.Count > 0)
+        {
+            return values;
+        }
+
+        throw new ArgumentException($"--{name} needs a value.");
+    }
 
     public string? Optional(string name)
     {
-        if (!_options.TryGetValue(name, out var values))
+        List<string>? values;
+        if (!_options.TryGetValue(name, out values))
         {
             return null;
         }
 
-        return values.Count == 1 ? values[0] : throw new ArgumentException($"--{name} takes one value.");
+        if (values.Count != 1)
+        {
+            throw new ArgumentException($"--{name} takes one value.");
+        }
+
+        return values[0];
     }
 
-    public string Required(string name) => Optional(name) ?? throw new ArgumentException($"--{name} is required.");
+    public string Required(string name)
+    {
+        string? value = Optional(name);
+        if (value == null)
+        {
+            throw new ArgumentException($"--{name} is required.");
+        }
 
-    public DateTimeOffset Time(string name, DateTimeOffset fallback) =>
-        Optional(name) is { } text
-            ? DateTimeOffset.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal).ToUniversalTime()
-            : fallback;
+        return value;
+    }
 
-    public double Double(string name, double fallback) =>
-        Optional(name) is { } text ? double.Parse(text, CultureInfo.InvariantCulture) : fallback;
+    public DateTimeOffset Time(string name, DateTimeOffset fallback)
+    {
+        string? text = Optional(name);
+        if (text == null)
+        {
+            return fallback;
+        }
 
-    public int Int(string name, int fallback) =>
-        Optional(name) is { } text ? int.Parse(text, CultureInfo.InvariantCulture) : fallback;
+        DateTimeOffset parsed = DateTimeOffset.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
+        return parsed.ToUniversalTime();
+    }
+
+    public double Double(string name, double fallback)
+    {
+        string? text = Optional(name);
+        if (text == null)
+        {
+            return fallback;
+        }
+
+        return double.Parse(text, CultureInfo.InvariantCulture);
+    }
+
+    public int Int(string name, int fallback)
+    {
+        string? text = Optional(name);
+        if (text == null)
+        {
+            return fallback;
+        }
+
+        return int.Parse(text, CultureInfo.InvariantCulture);
+    }
 }
