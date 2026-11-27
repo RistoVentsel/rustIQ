@@ -24,6 +24,7 @@ public static class WipeEvaluation
         DateTimeOffset fromUtc = commandLine.Time("from", new DateTimeOffset(2026, 11, 4, 0, 0, 0, TimeSpan.Zero));
         DateTimeOffset toUtc = commandLine.Time("to", new DateTimeOffset(2026, 11, 22, 21, 0, 0, TimeSpan.Zero));
         string roundName = commandLine.Optional("same-moment-round") ?? "3";
+        DateTimeOffset evalFromUtc = commandLine.Time("eval-from", new DateTimeOffset(2026, 11, 13, 0, 0, 0, TimeSpan.Zero));
         string outDir = commandLine.Required("out");
         Directory.CreateDirectory(outDir);
 
@@ -76,7 +77,7 @@ public static class WipeEvaluation
             Guid serverId = row.Guid(1);
             if (serversById.ContainsKey(serverId))
             {
-                serversById[serverId].Snapshots.Add(new Snapshot(row.Timestamp(2), row.NullableTimestamp(3)));
+                serversById[serverId].Snapshots.Add(new Snapshot(row.Timestamp(2), row.NullableTimestamp(3), row.NullableTimestamp(4)));
             }
         });
 
@@ -239,11 +240,15 @@ public static class WipeEvaluation
                 s.Category = nextWipe == null ? "" : Category(nextWipe.Value, cycle);
                 s.BattleMetrics = sameRound.NextWipe;
                 s.App = app;
+                s.AppFallback = app != null && IsAppFallback(app.Value, LastKeywords(rowsBefore), described);
                 s.Predicted = WipePredictor.Predict(knownBefore, Tag(LastKeywords(rowsBefore)), described, sameRound.CheckedAt);
                 sameMoments.Add(s);
             }
         }
 
+        List<HorizonCase> horizonCases = EvaluateHorizons(servers, evalFromUtc, toUtc);
+        File.WriteAllText(Path.Combine(outDir, "horizons.csv"), HorizonsCsv(horizonCases));
+        File.WriteAllText(Path.Combine(outDir, "summary_horizons.csv"), HorizonSummary(horizonCases));
         File.WriteAllText(Path.Combine(outDir, "wipes.csv"), WipesCsv(events));
         File.WriteAllText(Path.Combine(outDir, "same_moment.csv"), SameMomentCsv(sameMoments));
         string summary = Summary(events, sameMoments);
@@ -258,6 +263,206 @@ public static class WipeEvaluation
         log($"{events.Count} wipes from {fromUtc:yyyy-MM-dd HH:mm} to {toUtc:yyyy-MM-dd HH:mm} UTC, " +
             $"{pairs} same-moment pairs; wrote {outDir}");
         Console.Write(summary);
+    }
+
+    private static readonly double[] HorizonHours = { 1, 24, 72 };
+    private const double FalseAlarmHours = 1;
+
+    private static List<HorizonCase> EvaluateHorizons(List<SampleServer> servers, DateTimeOffset evalFromUtc, DateTimeOffset toUtc)
+    {
+        List<HorizonCase> cases = new List<HorizonCase>();
+        foreach (SampleServer server in servers)
+        {
+            List<KnownWipe> history = FindKnownWipes(server.Observations);
+            List<DateTimeOffset> allWipes = new List<DateTimeOffset>();
+            for (int i = 0; i < history.Count; i++)
+            {
+                allWipes.Add(history[i].Born);
+            }
+
+            double? cycle = MedianGap(allWipes);
+
+            for (int i = 1; i < history.Count; i++)
+            {
+                KnownWipe wipe = history[i];
+                if (!wipe.IsChange || wipe.Born < evalFromUtc || wipe.Born > toUtc)
+                {
+                    continue;
+                }
+
+                foreach (double hours in HorizonHours)
+                {
+                    DateTimeOffset at = wipe.Born.AddHours(-hours);
+                    HorizonCase c = new HorizonCase();
+                    c.ServerIdx = server.Idx;
+                    c.Stratum = server.Stratum;
+                    c.HorizonHours = hours;
+                    c.Wipe = wipe.Born;
+                    c.Category = Category(wipe.Born, cycle);
+                    c.MedianGapHours = cycle;
+                    c.Applicable = history[i - 1].Born < at;
+                    if (!c.Applicable)
+                    {
+                        cases.Add(c);
+                        continue;
+                    }
+
+                    List<Observation> rowsBefore = new List<Observation>();
+                    foreach (Observation observation in server.Observations)
+                    {
+                        if (observation.At < at)
+                        {
+                            rowsBefore.Add(observation);
+                        }
+                    }
+
+                    List<DateTimeOffset> knownBefore = new List<DateTimeOffset>();
+                    foreach (KnownWipe known in FindKnownWipes(rowsBefore))
+                    {
+                        knownBefore.Add(known.Born);
+                    }
+
+                    DateTimeOffset? described = DescribedNextWipe(server.Descriptions, knownBefore, at);
+                    c.Predicted = WipePredictor.Predict(knownBefore, Tag(LastKeywords(rowsBefore)), described, at);
+
+                    Snapshot? snapshot = null;
+                    foreach (Snapshot s in server.Snapshots)
+                    {
+                        if (s.At <= at && s.At > at.AddHours(-2))
+                        {
+                            snapshot = s;
+                        }
+                    }
+
+                    if (snapshot != null && snapshot.Displayed != null)
+                    {
+                        c.App = snapshot.Displayed;
+                        c.AppFallback = IsAppFallback(snapshot.Displayed.Value, LastKeywords(rowsBefore), described);
+                    }
+
+                    Round? round = null;
+                    foreach (Round r in server.Rounds)
+                    {
+                        if (r.CheckedAt <= at && r.CheckedAt >= wipe.Born.AddDays(-7))
+                        {
+                            if (round == null || r.CheckedAt > round.CheckedAt)
+                            {
+                                round = r;
+                            }
+                        }
+                    }
+
+                    c.Round = round;
+                    cases.Add(c);
+                }
+            }
+        }
+
+        return cases;
+    }
+
+    private static bool IsFalseAlarm(DateTimeOffset predicted, DateTimeOffset actual)
+    {
+        return predicted < actual.AddHours(-FalseAlarmHours);
+    }
+
+    private static string HorizonSummary(List<HorizonCase> cases)
+    {
+        StringBuilder text = new StringBuilder("horizon_h,category,stratum,source,wipes,applicable,with_value,median_h,mean_h,false_alarm_share\n");
+        string[] categories = { "regular", "short", "forced" };
+        foreach (double hours in HorizonHours)
+        {
+            foreach (string category in categories)
+            {
+                foreach (string stratum in Strata)
+                {
+                    int all = 0;
+                    int applicable = 0;
+                    List<double> predictor = new List<double>();
+                    List<double> app = new List<double>();
+                    List<double> bm = new List<double>();
+                    List<double> bmAge = new List<double>();
+                    int predictorFalse = 0;
+                    int appFalse = 0;
+                    int bmFalse = 0;
+                    foreach (HorizonCase c in cases)
+                    {
+                        if (c.HorizonHours != hours || c.Category != category) continue;
+                        if (stratum != "All" && c.Stratum != stratum) continue;
+                        all++;
+                        if (!c.Applicable) continue;
+                        applicable++;
+                        if (c.Predicted != null && c.Predicted.FromServerData)
+                        {
+                            predictor.Add(Error(c.Predicted.NextWipeAtUtc, c.Wipe));
+                            if (IsFalseAlarm(c.Predicted.NextWipeAtUtc, c.Wipe)) predictorFalse++;
+                        }
+
+                        if (c.App != null && !c.AppFallback)
+                        {
+                            app.Add(Error(c.App.Value, c.Wipe));
+                            if (IsFalseAlarm(c.App.Value, c.Wipe)) appFalse++;
+                        }
+
+                        if (c.Round != null && c.Round.NextWipe != null)
+                        {
+                            bm.Add(Error(c.Round.NextWipe.Value, c.Wipe));
+                            bmAge.Add((c.Wipe - c.Round.CheckedAt).TotalHours);
+                            if (IsFalseAlarm(c.Round.NextWipe.Value, c.Wipe)) bmFalse++;
+                        }
+                    }
+
+                    HorizonLine(text, hours, category, stratum, "predictor_own", all, applicable, predictor, predictorFalse);
+                    HorizonLine(text, hours, category, stratum, "app_own", all, applicable, app, appFalse);
+                    HorizonLine(text, hours, category, stratum, "battlemetrics", all, applicable, bm, bmFalse);
+                    HorizonLine(text, hours, category, stratum, "battlemetrics_age", all, applicable, bmAge, 0);
+                }
+            }
+        }
+
+        return text.ToString();
+    }
+
+    private static void HorizonLine(StringBuilder text, double hours, string category, string stratum, string source,
+        int all, int applicable, List<double> errors, int falseAlarms)
+    {
+        double median = double.NaN;
+        double mean = double.NaN;
+        double share = double.NaN;
+        if (errors.Count > 0)
+        {
+            median = Percentile(errors, 0.5);
+            double sum = 0;
+            foreach (double error in errors)
+            {
+                sum += error;
+            }
+
+            mean = sum / errors.Count;
+            share = (double)falseAlarms / errors.Count;
+        }
+
+        text.Append(Number(hours)).Append(',').Append(category).Append(',').Append(stratum).Append(',').Append(source).Append(',');
+        text.Append(all).Append(',').Append(applicable).Append(',').Append(errors.Count).Append(',');
+        text.Append(Number(median)).Append(',').Append(Number(mean)).Append(',').Append(share.ToString("0.###", CultureInfo.InvariantCulture)).Append('\n');
+    }
+
+    private static string HorizonsCsv(List<HorizonCase> cases)
+    {
+        StringBuilder text = new StringBuilder("server_idx,stratum,horizon_h,wipe_utc,category,median_gap_h,applicable,predictor_utc,predictor_source,app_utc,app_fallback,bm_round,bm_utc\n");
+        foreach (HorizonCase c in cases)
+        {
+            text.Append(c.ServerIdx).Append(',').Append(c.Stratum).Append(',').Append(Number(c.HorizonHours)).Append(',');
+            text.Append(Iso(c.Wipe)).Append(',').Append(c.Category).Append(',');
+            text.Append(c.MedianGapHours == null ? "" : Number(c.MedianGapHours.Value)).Append(',');
+            text.Append(c.Applicable ? "1" : "0").Append(',');
+            text.Append(c.Predicted == null ? "" : Iso(c.Predicted.NextWipeAtUtc)).Append(',');
+            text.Append(c.Predicted == null ? "" : c.Predicted.Source.ToString()).Append(',');
+            text.Append(Iso(c.App)).Append(',').Append(c.AppFallback ? "1" : "0").Append(',');
+            text.Append(c.Round == null ? "" : c.Round.Name).Append(',').Append(c.Round == null ? "" : Iso(c.Round.NextWipe)).Append('\n');
+        }
+
+        return text.ToString();
     }
 
     private static DateTimeOffset? DescribedNextWipe(List<Description> descriptions, List<DateTimeOffset> knownWipes, DateTimeOffset at)
@@ -462,7 +667,8 @@ public static class WipeEvaluation
         {
             int count = 0;
             List<double> bm = new List<double>();
-            List<double> app = new List<double>();
+            List<double> appOwn = new List<double>();
+            List<double> appAll = new List<double>();
             List<double> predictorOwn = new List<double>();
             List<double> predictorAll = new List<double>();
             foreach (SameMoment s in sameMoments)
@@ -472,13 +678,15 @@ public static class WipeEvaluation
 
                 count++;
                 if (s.BattleMetrics != null) bm.Add(Error(s.BattleMetrics.Value, s.Wipe.Value));
-                if (s.App != null) app.Add(Error(s.App.Value, s.Wipe.Value));
+                if (s.App != null && !s.AppFallback) appOwn.Add(Error(s.App.Value, s.Wipe.Value));
+                if (s.App != null) appAll.Add(Error(s.App.Value, s.Wipe.Value));
                 if (s.Predicted.FromServerData) predictorOwn.Add(Error(s.Predicted.NextWipeAtUtc, s.Wipe.Value));
                 predictorAll.Add(Error(s.Predicted.NextWipeAtUtc, s.Wipe.Value));
             }
 
             AddLine(text, "same_moment", "not_forced", stratum, "battlemetrics", count, bm, bm.Count);
-            AddLine(text, "same_moment", "not_forced", stratum, "app", count, app, app.Count);
+            AddLine(text, "same_moment", "not_forced", stratum, "app_own", count, appOwn, appOwn.Count);
+            AddLine(text, "same_moment", "not_forced", stratum, "app_all", count, appAll, appAll.Count);
             AddLine(text, "same_moment", "not_forced", stratum, "predictor_own", count, predictorOwn, predictorOwn.Count);
             AddLine(text, "same_moment", "not_forced", stratum, "predictor_all", count, predictorAll, predictorAll.Count);
         }
@@ -566,12 +774,12 @@ public static class WipeEvaluation
 
     private static string SameMomentCsv(List<SameMoment> rows)
     {
-        StringBuilder text = new StringBuilder("server_idx,stratum,checked_utc,wipe_utc,category,bm_utc,app_utc,predictor_utc,predictor_source\n");
+        StringBuilder text = new StringBuilder("server_idx,stratum,checked_utc,wipe_utc,category,bm_utc,app_utc,app_fallback,predictor_utc,predictor_source\n");
         foreach (SameMoment s in rows)
         {
             text.Append(s.ServerIdx).Append(',').Append(s.Stratum).Append(',').Append(Iso(s.CheckedAt)).Append(',');
             text.Append(Iso(s.Wipe)).Append(',').Append(s.Category).Append(',').Append(Iso(s.BattleMetrics)).Append(',');
-            text.Append(Iso(s.App)).Append(',').Append(Iso(s.Predicted.NextWipeAtUtc)).Append(',').Append(s.Predicted.Source).Append('\n');
+            text.Append(Iso(s.App)).Append(',').Append(s.AppFallback ? "1" : "0").Append(',').Append(Iso(s.Predicted.NextWipeAtUtc)).Append(',').Append(s.Predicted.Source).Append('\n');
         }
 
         return text.ToString();
@@ -633,14 +841,31 @@ public static class WipeEvaluation
 
     private sealed class Snapshot
     {
-        public Snapshot(DateTimeOffset at, DateTimeOffset? next)
+        public Snapshot(DateTimeOffset at, DateTimeOffset? next, DateTimeOffset? displayed)
         {
             At = at;
             Next = next;
+            Displayed = displayed;
         }
 
         public DateTimeOffset At;
         public DateTimeOffset? Next;
+        public DateTimeOffset? Displayed;
+    }
+
+    private sealed class HorizonCase
+    {
+        public int ServerIdx;
+        public string Stratum = "";
+        public double HorizonHours;
+        public DateTimeOffset Wipe;
+        public string Category = "";
+        public double? MedianGapHours;
+        public bool Applicable;
+        public WipePrediction? Predicted;
+        public DateTimeOffset? App;
+        public bool AppFallback;
+        public Round? Round;
     }
 
     private sealed class Round
@@ -680,6 +905,7 @@ public static class WipeEvaluation
         public string Category = "";
         public DateTimeOffset? BattleMetrics;
         public DateTimeOffset? App;
+        public bool AppFallback;
         public WipePrediction Predicted = null!;
     }
 }
