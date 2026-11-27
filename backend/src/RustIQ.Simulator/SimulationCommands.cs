@@ -27,7 +27,7 @@ public static class SimulationCommands
 
     public static void Run(CommandLine commandLine, Action<string> log)
     {
-        List<string> allowedOptions = new List<string> { "strategy", "budget", "batch-scale", "validate" };
+        List<string> allowedOptions = new List<string> { "strategy", "budget", "batch-scale", "validate", "normal-batch", "offline-scale" };
         allowedOptions.AddRange(PriorityOptionNames);
         CheckOptions(commandLine, allowedOptions);
 
@@ -71,7 +71,7 @@ public static class SimulationCommands
 
     public static void Sweep(CommandLine commandLine, Action<string> log)
     {
-        List<string> allowedOptions = new List<string> { "budgets", "strategies" };
+        List<string> allowedOptions = new List<string> { "budgets", "strategies", "normal-batch", "offline-scale" };
         allowedOptions.AddRange(PriorityOptionNames);
         CheckOptions(commandLine, allowedOptions);
 
@@ -684,6 +684,21 @@ public static class SimulationCommands
             return new FourLanePollingStrategy(new FourLaneOptions { BatchScale = batchScale });
         }
 
+        if (name == "fourlane-shift")
+        {
+            // The current lanes with the two offline lanes scaled by offline-scale (0 turns them off);
+            // the freed queries go to the normal lane, whose batch is set with normal-batch.
+            double offlineScale = commandLine.Double("offline-scale", 0);
+            FourLaneOptions defaults = new FourLaneOptions();
+            return new FourLanePollingStrategy(new FourLaneOptions
+            {
+                NormalOnlineLaneBatchSize = commandLine.Int("normal-batch", defaults.NormalOnlineLaneBatchSize),
+                SlowOfflineLaneBatchSize = (int)Math.Round(defaults.SlowOfflineLaneBatchSize * offlineScale, MidpointRounding.AwayFromZero),
+                VeryStaleOfflineLaneBatchSize = (int)Math.Round(defaults.VeryStaleOfflineLaneBatchSize * offlineScale, MidpointRounding.AwayFromZero),
+                BatchScale = batchScale
+            });
+        }
+
         if (name == "uniform")
         {
             if (!budget.HasValue)
@@ -717,7 +732,7 @@ public static class SimulationCommands
             return new PriorityPollingStrategy(budget.Value, options);
         }
 
-        throw new ArgumentException($"Unknown strategy '{name}': fourlane, uniform or priority.");
+        throw new ArgumentException($"Unknown strategy '{name}': fourlane, fourlane-shift, uniform or priority.");
     }
 
     private static double MaxAgeShare(CommandLine commandLine)

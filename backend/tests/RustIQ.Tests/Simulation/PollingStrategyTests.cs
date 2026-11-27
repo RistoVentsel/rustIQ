@@ -130,6 +130,24 @@ public sealed class PollingStrategyTests
     }
 
     [Fact]
+    public void FourLane_WithoutOfflineLanesPollsOnlyOnlineServers()
+    {
+        var strategy = new FourLanePollingStrategy(new FourLaneOptions
+        {
+            NormalOnlineLaneBatchSize = 3,
+            SlowOfflineLaneBatchSize = 0,
+            VeryStaleOfflineLaneBatchSize = 0
+        });
+        var online = Enumerable.Range(0, 4).Select(i => Online(i, players: 10)).ToArray();
+        var offline = new[] { Offline(4, lastSeen: Now - 2 * 60 * Minute), Offline(5, lastSeen: null) };
+        var executor = new RecordingExecutor();
+
+        strategy.Tick(Now, [.. online, .. offline], executor);
+
+        Assert.Equal([("NormalOnline", 3)], executor.Calls.Select(call => (call.Lane, call.Servers.Count)));
+    }
+
+    [Fact]
     public void FourLane_SkipsServersAnEarlierLanePolledInTheSameTick()
     {
         var strategy = new FourLanePollingStrategy();
